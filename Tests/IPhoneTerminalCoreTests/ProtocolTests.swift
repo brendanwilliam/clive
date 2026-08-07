@@ -68,3 +68,16 @@ import Testing
     let request = PairingRequest(oneTimeSecret: "secret", deviceID: "phone-a", deviceName: "Phone", certificate: Data([1, 2]))
     #expect(try ProtocolPayload.decode(PairingRequest.self, from: ProtocolPayload.encode(request)) == request)
 }
+
+@Test func approvedPairingStoresPinnedDeviceAndConsumesTicket() async throws {
+    let storeURL = URL.temporaryDirectory.appending(path: "iphone-terminal-tests/\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: storeURL.deletingLastPathComponent()) }
+    let store = try TrustStore(url: storeURL)
+    let ticket = PairingTicket(endpoint: "127.0.0.1", port: 4444, expiresAt: Date.now.addingTimeInterval(60), oneTimeSecret: "secret", pairingCertificateFingerprint: "abc")
+    let secret = PairingSecret(ticket: ticket)
+    let coordinator = PairingCoordinator(secret: secret, trustStore: store, macID: "mac-a", macCertificate: Data([9])) { _ in true }
+    let request = PairingRequest(oneTimeSecret: "secret", deviceID: "phone-a", deviceName: "Phone", certificate: Data([1, 2]))
+    #expect(try await coordinator.accept(request) == PairingAcceptance(macID: "mac-a", certificate: Data([9])))
+    #expect(await store.device(id: "phone-a")?.certificateFingerprint == Fingerprint.sha256(of: Data([1, 2])))
+    await #expect(throws: PairingError.consumed) { try await coordinator.accept(request) }
+}

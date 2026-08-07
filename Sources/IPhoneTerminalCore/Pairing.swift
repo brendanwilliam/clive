@@ -85,6 +85,32 @@ public enum PairingError: Error, Equatable, Sendable {
     case consumed
     case secretMismatch
     case malformedRequest
+    case rejected
+}
+
+public actor PairingCoordinator {
+    private let secret: PairingSecret
+    private let trustStore: TrustStore
+    private let macID: String
+    private let macCertificate: Data
+    private let approval: @Sendable (PairingRequest) async -> Bool
+
+    public init(secret: PairingSecret, trustStore: TrustStore, macID: String, macCertificate: Data, approval: @escaping @Sendable (PairingRequest) async -> Bool) {
+        self.secret = secret
+        self.trustStore = trustStore
+        self.macID = macID
+        self.macCertificate = macCertificate
+        self.approval = approval
+    }
+
+    public func accept(_ request: PairingRequest, now: Date = .now) async throws -> PairingAcceptance {
+        try await secret.validate(request: request, now: now)
+        guard await approval(request) else { throw PairingError.rejected }
+        let device = PairedDevice(id: request.deviceID, displayName: request.deviceName, certificateFingerprint: Fingerprint.sha256(of: request.certificate), createdAt: now)
+        try await trustStore.upsert(device)
+        try await secret.consume(secret: request.oneTimeSecret, now: now)
+        return PairingAcceptance(macID: macID, certificate: macCertificate)
+    }
 }
 
 public actor PairingSecret {
