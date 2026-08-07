@@ -43,7 +43,12 @@ struct IPhoneTerminalDaemon {
             guard allowsNonPrivateNetwork || isPrivateNetworkEnvironment() else {
                 throw CommandError.nonPrivateNetwork
             }
-            print("Starting foreground service. The Bonjour/TLS listener is not configured until a local identity is provisioned.")
+            let identityStore = TLSIdentityStore()
+            let identity = try identityStore.loadOrCreate()
+            let listener = try SecureListener(identity: identity)
+            listener.start()
+            print("Listening with TLS 1.3 on port \(listener.port.map(String.init) ?? "pending") (certificate \(try identityStore.fingerprint(of: identity))).")
+            dispatchMain()
         case "shell":
             try requireInteractiveTerminal()
             try runLocalShell()
