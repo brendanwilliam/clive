@@ -12,7 +12,16 @@ The first release is deliberately **local-network only**: the iPhone and Mac mus
 
 ## Status
 
-This repository currently contains the product and security specification only. No terminal service or iOS application has been implemented yet.
+The repository contains the shared Swift protocol package, a macOS CLI foundation, and an iOS 17+ SwiftUI target source tree. The foreground network listener, QR renderer, certificate issuer, and iOS target project configuration are the next delivery increment; the security and protocol documents remain the contract for those components.
+
+## Development
+
+```sh
+swift test
+swift run iphone-terminald status
+```
+
+`swift test` runs shared protocol and pairing tests. `iphone-terminald` currently provides local pairing-record status and revocation commands; it refuses non-private-network startup unless explicitly overridden. Open `Apps/iPhoneTerminal` in an iOS Xcode target after adding the local package and SwiftTerm dependency as described there.
 
 ## Documentation
 
