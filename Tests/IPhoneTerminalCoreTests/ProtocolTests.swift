@@ -39,3 +39,18 @@ import Testing
     #expect(await registry.sessions(forDeviceID: "phone-a").isEmpty)
     #expect(await registry.sessions(forDeviceID: "phone-b").count == 1)
 }
+
+@Test func pairingTicketUsesQRCompatiblePayload() throws {
+    let ticket = PairingTicket(endpoint: "192.168.1.10", port: 4242, expiresAt: Date(timeIntervalSince1970: 1_700_000_000), oneTimeSecret: "secret", pairingCertificateFingerprint: "abc")
+    let payload = try PairingPayload.encode(ticket)
+    #expect(!payload.contains("="))
+    #expect(try PairingPayload.decode(payload) == ticket)
+}
+
+@Test func pairingRequestCannotConsumeSecretWhenMalformed() async throws {
+    let ticket = PairingTicket(endpoint: "127.0.0.1", port: 4444, expiresAt: Date.now.addingTimeInterval(60), oneTimeSecret: "secret", pairingCertificateFingerprint: "abc")
+    let secret = PairingSecret(ticket: ticket)
+    let malformed = PairingRequest(oneTimeSecret: "secret", deviceID: "", deviceName: "Phone", certificate: Data())
+    await #expect(throws: PairingError.malformedRequest) { try await secret.validate(request: malformed) }
+    try await secret.consume(secret: "secret")
+}
