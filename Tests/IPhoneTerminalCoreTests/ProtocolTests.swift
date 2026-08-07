@@ -54,3 +54,17 @@ import Testing
     await #expect(throws: PairingError.malformedRequest) { try await secret.validate(request: malformed) }
     try await secret.consume(secret: "secret")
 }
+
+@Test func validPairingRequestDoesNotConsumeSecretBeforeApproval() async throws {
+    let ticket = PairingTicket(endpoint: "127.0.0.1", port: 4444, expiresAt: Date.now.addingTimeInterval(60), oneTimeSecret: "secret", pairingCertificateFingerprint: "abc")
+    let secret = PairingSecret(ticket: ticket)
+    let request = PairingRequest(oneTimeSecret: "secret", deviceID: "phone-a", deviceName: "Phone", certificate: Data([1]))
+    try await secret.validate(request: request)
+    try await secret.consume(secret: request.oneTimeSecret)
+    await #expect(throws: PairingError.consumed) { try await secret.validate(request: request) }
+}
+
+@Test func protocolPayloadRoundTripsPairingRequest() throws {
+    let request = PairingRequest(oneTimeSecret: "secret", deviceID: "phone-a", deviceName: "Phone", certificate: Data([1, 2]))
+    #expect(try ProtocolPayload.decode(PairingRequest.self, from: ProtocolPayload.encode(request)) == request)
+}

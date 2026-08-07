@@ -104,7 +104,31 @@ public actor PairingSecret {
         guard !request.deviceID.isEmpty, !request.deviceName.isEmpty, !request.certificate.isEmpty else {
             throw PairingError.malformedRequest
         }
-        try consume(secret: request.oneTimeSecret, now: now)
+        try verify(secret: request.oneTimeSecret, now: now)
+    }
+
+    public func verify(secret: String, now: Date = .now) throws {
+        guard now <= ticket.expiresAt else { throw PairingError.expired }
+        guard !consumed else { throw PairingError.consumed }
+        guard secret == ticket.oneTimeSecret else { throw PairingError.secretMismatch }
+    }
+}
+
+public enum ProtocolPayloadError: Error, Equatable, Sendable {
+    case malformed
+}
+
+public enum ProtocolPayload {
+    public static func encode<Value: Encodable>(_ value: Value) throws -> Data {
+        try JSONEncoder().encode(value)
+    }
+
+    public static func decode<Value: Decodable>(_ type: Value.Type, from data: Data) throws -> Value {
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw ProtocolPayloadError.malformed
+        }
     }
 }
 
