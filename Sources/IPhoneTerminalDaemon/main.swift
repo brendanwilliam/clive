@@ -1,11 +1,13 @@
+import Darwin
+import Dispatch
 import Foundation
 import IPhoneTerminalCore
 
-@main
 struct IPhoneTerminalDaemon {
     static func main() async {
         do {
             try await run(arguments: Array(CommandLine.arguments.dropFirst()))
+            Foundation.exit(0)
         } catch {
             FileHandle.standardError.write(Data("iphone-terminald: \(error.localizedDescription)\n".utf8))
             Foundation.exit(1)
@@ -41,7 +43,10 @@ struct IPhoneTerminalDaemon {
             guard allowsNonPrivateNetwork || isPrivateNetworkEnvironment() else {
                 throw CommandError.nonPrivateNetwork
             }
-            print("iphone-terminald start is reserved for the foreground Bonjour/TLS service. Network transport is the next implementation milestone.")
+            print("Starting foreground service. The Bonjour/TLS listener is not configured until a local identity is provisioned.")
+        case "shell":
+            try requireInteractiveTerminal()
+            try runLocalShell()
         case "stop":
             print("No foreground iphone-terminald service is running in this process.")
         case "help", "--help", "-h":
@@ -69,12 +74,33 @@ struct IPhoneTerminalDaemon {
     static let usage = """
     Usage: iphone-terminald <start|pair|status|revoke|stop> [options]
       start [--allow-non-private-network]
+      shell                 Start a local PTY-backed login shell for transport diagnostics.
       pair
       status
       revoke <device-id>
       stop
     """
+
+    private static func runLocalShell() throws {
+        let shell = try PTYProcess(size: TerminalSize(columns: 80, rows: 24)) { data in
+            FileHandle.standardOutput.write(data)
+        }
+        let input = DispatchSource.makeReadSource(fileDescriptor: STDIN_FILENO, queue: .global(qos: .userInitiated))
+        input.setEventHandler {
+            var bytes = [UInt8](repeating: 0, count: 4096)
+            let count = Darwin.read(STDIN_FILENO, &bytes, bytes.count)
+            if count > 0 { try? shell.write(Data(bytes.prefix(Int(count)))) }
+            else { shell.terminate(); input.cancel(); Foundation.exit(0) }
+        }
+        input.resume()
+        dispatchMain()
+    }
 }
+
+Task {
+    await IPhoneTerminalDaemon.main()
+}
+dispatchMain()
 
 private enum CommandError: LocalizedError {
     case usage
