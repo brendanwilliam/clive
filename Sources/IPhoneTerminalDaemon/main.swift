@@ -35,9 +35,11 @@ struct IPhoneTerminalDaemon {
                 oneTimeSecret: UUID().uuidString.lowercased(),
                 pairingCertificateFingerprint: "<ephemeral-tls-fingerprint>"
             )
-            let encoded = try JSONEncoder().encode(ticket).base64EncodedString()
-            print("Pairing ticket (expires in five minutes):\n\(encoded)")
-            print("Run `iphone-terminald start` first to advertise a pairing endpoint, then render this payload as a QR code.")
+            let payload = try PairingPayload.encode(ticket)
+            print("Pairing ticket (expires in five minutes):")
+            print(try TerminalQRCode.render(payload: payload))
+            print("Payload: \(payload)")
+            print("Run `iphone-terminald start` first to advertise a pairing endpoint. The exchange handler is added next.")
         case "start":
             let allowsNonPrivateNetwork = arguments.contains("--allow-non-private-network")
             guard allowsNonPrivateNetwork || isPrivateNetworkEnvironment() else {
