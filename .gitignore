@@ -1,0 +1,14 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager
+.build/
+
+# Secrets and local pairing state
+*.p12
+*.mobileprovision
+Secrets/
+Pairings/
