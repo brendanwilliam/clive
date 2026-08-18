@@ -2,12 +2,12 @@
 
 `iphone-terminal` is a native iOS client and macOS companion for using a paired Mac's terminal from an iPhone.
 
-The first release is deliberately **local-network only**: the iPhone and Mac must be on the same LAN. Pairing and terminal traffic are end-to-end encrypted, and a paired phone never receives access unless the Mac companion is running.
+The default is local-network only. An opt-in same-Apple-Account cellular mode publishes encrypted, short-lived direct-WAN rendezvous metadata through CloudKit; terminal traffic remains direct, mutually authenticated, and available only while the Mac companion is running.
 
 ## Product shape
 
 - **iOS app:** SwiftUI terminal client with a touch-friendly terminal view, saved paired Macs, and Face ID/Touch ID protection.
-- **macOS companion:** a user-started CLI service that exposes an interactive PTY-backed `zsh` session under the invoking macOS account.
+- **macOS companion:** a signed, user-started menu bar app that owns listeners and PTYs; `iphone-terminald` remains its local control client.
 - **Pairing:** the Mac prints a short-lived QR code; scanning it creates a mutually authenticated device relationship.
 
 ## Prototype status
@@ -27,7 +27,7 @@ xcodebuild -project iPhoneTerminal.xcodeproj -scheme iPhoneTerminal -destination
 
 `swift test` runs shared protocol and pairing tests. Startup requires RFC1918 IPv4, IPv6 ULA/link-local, or loopback connectivity unless `--allow-non-private-network` is supplied. The packaging script creates an unsigned arm64 development PKG by default; set `DEVELOPER_ID_APPLICATION`, `DEVELOPER_ID_INSTALLER`, and optionally `NOTARY_PROFILE` for signing and notarization.
 
-The PKG installs only `/usr/local/bin/iphone-terminald`, with no launch agent or privileged helper. Run `iphone-terminald start` in one terminal, then use `pair`, `status`, `revoke <device-id>`, and `stop` from another. The control socket and state live under `~/Library/Application Support/iphone-terminal`; the certificate and encrypted P-256 PKCS#12 identity are mode `0600`.
+The PKG installs `/Applications/iPhone Terminal.app` and `/usr/local/bin/iphone-terminald`, with no launch agent or privileged helper. Run `iphone-terminald start`, then use `pair`, `status`, `cellular <on|off>`, `revoke <device-id>`, and `stop`. Cellular access is disabled by default and remains visibly indicated in the menu bar while enabled. State lives under `~/Library/Application Support/iphone-terminal`; cryptographic identities remain device-local and owner protected.
 
 To remove the prototype, delete `/usr/local/bin/iphone-terminald`. Remove the Application Support directory separately only when you also intend to erase the daemon identity and every pairing.
 
@@ -44,7 +44,7 @@ Before calling a build complete, install the PKG on an Apple-silicon Mac and the
 
 ## Non-goals for version 1
 
-- Internet/WAN access, relays, or cloud accounts
+- Automatic IPv4 NAT traversal, CGNAT bypass, or relays
 - Background launch daemons and unattended persistent access
 - Multi-user shells or privilege escalation beyond the macOS user that started the companion
 

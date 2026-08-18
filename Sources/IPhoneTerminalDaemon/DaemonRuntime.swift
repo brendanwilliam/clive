@@ -9,6 +9,7 @@ final class DaemonRuntime: @unchecked Sendable {
     private let identityStore: TLSIdentityStore
     private let state: DaemonState
     private let trustStore: TrustStore
+    private let rendezvous: MacRendezvousController
     private let registry = SessionRegistry()
     private let peerTrust = PeerTrustCache()
     private var sessionListener: SecureListener?
@@ -25,19 +26,24 @@ final class DaemonRuntime: @unchecked Sendable {
         identity = try identityStore.loadOrCreate()
         state = try DaemonState.loadOrCreate(url: paths.stateURL)
         trustStore = try TrustStore(url: paths.pairingStoreURL)
+        rendezvous = try MacRendezvousController(state: state, trustStore: trustStore, baseURL: paths.baseURL)
         self.onStopped = onStopped
         controlServer = try ControlSocketServer(url: paths.controlSocketURL) { [weak self] request, channel in
             await self?.handle(request, channel: channel)
         }
-        sessionListener = try SecureListener(identity: identity, port: state.remoteEndpoint?.port, serviceID: state.serviceID, peerTrust: peerTrust, onReady: { [remoteEndpoint = state.remoteEndpoint] port in
+        sessionListener = try SecureListener(identity: identity, port: state.remoteEndpoint?.port, serviceID: state.serviceID, peerTrust: peerTrust, onReady: { [remoteEndpoint = state.remoteEndpoint, rendezvous] port in
             if let remoteEndpoint {
                 print("iphone-terminald listening on private VPN port \(port) for \(remoteEndpoint.host).")
             } else {
                 print("iphone-terminald listening on port \(port).")
             }
-        }, onConnection: { [weak self] connection, queue, deviceID in
+            Task { await rendezvous.prepare(listenerPort: port) }
+        }, onConnection: { [weak self] connection, queue, deviceID, certificate, requiresWANGate in
             guard let self, let deviceID else { connection.cancel(); return }
-            self.openSession(connection: connection, queue: queue, deviceID: deviceID)
+            Task {
+                let capability = await self.rendezvous.capability()
+                self.openSession(connection: connection, queue: queue, deviceID: deviceID, certificate: certificate, requiresWANGate: requiresWANGate, localCapability: capability)
+            }
         })
     }
 
@@ -47,6 +53,8 @@ final class DaemonRuntime: @unchecked Sendable {
         sessionListener?.start()
     }
 
+    func cloudDidChange() { Task { await rendezvous.cloudDidChange() } }
+
     private func handle(_ request: ControlRequest, channel: ControlChannel) async {
         switch request.command {
         case .status:
@@ -54,11 +62,12 @@ final class DaemonRuntime: @unchecked Sendable {
             let devices = await trustStore.all().map { device in
                 ControlDevice(id: device.id, displayName: device.displayName, certificateFingerprint: device.certificateFingerprint, activeSessionCount: sessions.filter { $0.deviceID == device.id }.count)
             }
-            try? channel.send(ControlResponse(success: true, devices: devices))
+            try? channel.send(ControlResponse(success: true, devices: devices, cellularStatus: await rendezvous.status()))
         case .revoke:
             guard let deviceID = request.deviceID else { try? channel.send(ControlResponse(success: false, message: "A device ID is required.")); return }
             do {
                 guard try await trustStore.revoke(id: deviceID) else { try channel.send(ControlResponse(success: false, message: "No paired device with ID \(deviceID).")); return }
+                await rendezvous.revoke(deviceID: deviceID)
                 await refreshTrust()
                 let owned = lock.withLock { handlers.values.filter { $0.deviceID == deviceID }.map(\.handler) }
                 owned.forEach { $0.revoke() }
@@ -69,7 +78,7 @@ final class DaemonRuntime: @unchecked Sendable {
             guard lock.withLock({ pairing == nil }) else { try? channel.send(ControlResponse(success: false, message: "Another pairing operation is active.")); return }
             guard let endpoint = PrivateNetwork.eligibleAddresses().first else { try? channel.send(ControlResponse(success: false, message: "No eligible private network interface.")); return }
             do {
-                let operation = try PairingOperation(identity: identity, identityStore: identityStore, state: state, trustStore: trustStore, endpoint: endpoint, channel: channel, onPaired: { [weak self] in await self?.refreshTrust() }) { [weak self] in
+                let operation = try PairingOperation(identity: identity, identityStore: identityStore, state: state, trustStore: trustStore, endpoint: endpoint, channel: channel, rendezvousCapability: await rendezvous.capability(), onPaired: { [weak self] in await self?.refreshTrust(); await self?.rendezvous.pairingChanged() }) { [weak self] in
                     self?.lock.withLock { self?.pairing = nil }
                     Task { await self?.refreshTrust() }
                 }
@@ -80,6 +89,12 @@ final class DaemonRuntime: @unchecked Sendable {
             stop()
         case .approvePairing:
             try? channel.send(ControlResponse(success: false, message: "Approval is only valid on an active pairing channel."))
+        case .setCellularAccess:
+            guard let enabled = request.cellularEnabled else { try? channel.send(ControlResponse(success: false, message: "An enabled value is required.")); return }
+            do {
+                try await rendezvous.setEnabled(enabled, manualEndpoint: request.manualEndpoint)
+                try channel.send(ControlResponse(success: true, cellularStatus: await rendezvous.status()))
+            } catch { try? channel.send(ControlResponse(success: false, message: error.localizedDescription, cellularStatus: await rendezvous.status())) }
         }
     }
 
@@ -89,8 +104,13 @@ final class DaemonRuntime: @unchecked Sendable {
         peerTrust.replace(devices: mapping)
     }
 
-    private func openSession(connection: NWConnection, queue: DispatchQueue, deviceID: String) {
-        let handler = SessionConnectionHandler(deviceID: deviceID, registry: registry, queue: queue, onClosed: { [weak self] id in
+    private func openSession(connection: NWConnection, queue: DispatchQueue, deviceID: String, certificate: Data?, requiresWANGate: Bool, localCapability: RendezvousCapability?) {
+        let handler = SessionConnectionHandler(deviceID: deviceID, peerCertificate: certificate, requiresWANGate: requiresWANGate, localCapability: localCapability, registry: registry, queue: queue, validateGate: { [weak rendezvous] deviceID, token in
+            await rendezvous?.validateGate(deviceID: deviceID, token: token) == true
+        }, upgradePeer: { [weak trustStore, weak rendezvous] deviceID, certificate, capability in
+            guard let trustStore, (try? await trustStore.upgrade(id: deviceID, certificate: certificate, rendezvousCapability: capability)) == true else { return }
+            await rendezvous?.pairingChanged()
+        }, onClosed: { [weak self] id in
             _ = self?.lock.withLock {
                 self?.handlers.removeValue(forKey: id)
                 self?.handlersByWorkspaceSession = self?.handlersByWorkspaceSession.filter { $0.value != id } ?? [:]

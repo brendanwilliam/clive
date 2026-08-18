@@ -21,6 +21,8 @@
 - Test real-device pairing across common home and office LANs, connection loss, macOS sleep/wake, terminal resizing, and CLI shutdown.
 - Add privacy documentation and a clear user-facing warning that terminal access has the permissions of the Mac account running the CLI.
 
-## Future: secure internet access
+## 5. Same-account direct cellular access — implemented; signed-device acceptance pending
 
-Design WAN connectivity as a new trust boundary. Evaluate a user-managed mesh VPN (such as Tailscale/WireGuard) before any hosted relay. Reuse the V1 mutual-TLS pairing identity; do not treat network membership or a cloud account as a substitute for device authentication.
+- Ship the signed menu bar owner, private CloudKit rendezvous, public-IPv6 direct paths, visible opt-in, and route diagnostics.
+- Preserve mutual TLS, pins, revocation, biometrics, bounded framing, and fresh-shell reconnects.
+- Complete [the NAT-traversal spike](nat-traversal-spike.md); a relay remains out of scope.

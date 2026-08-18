@@ -13,6 +13,8 @@ Bonjour and the LAN are untrusted. The QR code is an out-of-band authorization c
 
 ## Controls
 
+WAN, CloudKit records, APNs hints, endpoint metadata, and Apple Account membership are untrusted for terminal authorization. Cellular advertisements are encrypted and signed per paired phone, expire after five minutes, and carry replay metadata plus a random WAN gate token. Non-private inbound connections require that token in addition to pinned mutual TLS; disable and revocation invalidate tokens locally before cloud cleanup.
+
 - TLS 1.3 and mutual certificate authentication protect every session.
 - Pairing QR codes are single-use, short-lived, and require a local Mac-user confirmation.
 - The iOS app requires biometrics before initiating or resuming a connection.

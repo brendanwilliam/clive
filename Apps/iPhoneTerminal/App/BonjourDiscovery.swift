@@ -1,6 +1,10 @@
 import Foundation
 
-struct MacRoute: Equatable, Sendable { let host: String; let port: UInt16 }
+enum MacRouteKind: String, Equatable, Sendable { case lan, privateVPN, publicIPv6, manualPublicEndpoint }
+struct MacRoute: Equatable, Sendable {
+    let host: String; let port: UInt16; let kind: MacRouteKind; let wanGateToken: Data?
+    init(host: String, port: UInt16, kind: MacRouteKind = .lan, wanGateToken: Data? = nil) { self.host = host; self.port = port; self.kind = kind; self.wanGateToken = wanGateToken }
+}
 
 final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
     var onChange: (([String: MacRoute]) -> Void)?

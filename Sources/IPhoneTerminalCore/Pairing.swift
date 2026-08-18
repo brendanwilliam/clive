@@ -35,12 +35,14 @@ public struct PairingRequest: Codable, Equatable, Sendable {
     public let deviceName: String
     /// DER-encoded, self-signed device certificate. The Mac pins its fingerprint after approval.
     public let certificate: Data
+    public let rendezvousCapability: RendezvousCapability?
 
-    public init(oneTimeSecret: String, deviceID: String, deviceName: String, certificate: Data) {
+    public init(oneTimeSecret: String, deviceID: String, deviceName: String, certificate: Data, rendezvousCapability: RendezvousCapability? = nil) {
         self.oneTimeSecret = oneTimeSecret
         self.deviceID = deviceID
         self.deviceName = deviceName
         self.certificate = certificate
+        self.rendezvousCapability = rendezvousCapability
     }
 }
 
@@ -49,12 +51,14 @@ public struct PairingAcceptance: Codable, Equatable, Sendable {
     public let displayName: String
     public let serviceID: String
     public let certificate: Data
+    public let rendezvousCapability: RendezvousCapability?
 
-    public init(macID: String, displayName: String, serviceID: String, certificate: Data) {
+    public init(macID: String, displayName: String, serviceID: String, certificate: Data, rendezvousCapability: RendezvousCapability? = nil) {
         self.macID = macID
         self.displayName = displayName
         self.serviceID = serviceID
         self.certificate = certificate
+        self.rendezvousCapability = rendezvousCapability
     }
 }
 
@@ -108,17 +112,19 @@ public actor PairingCoordinator {
     private let macCertificate: Data
     private let displayName: String
     private let serviceID: String
+    private let rendezvousCapability: RendezvousCapability?
     private let approval: @Sendable (PairingRequest) async -> Bool
     private let didPair: @Sendable () async -> Void
     private var requestInProgress = false
 
-    public init(secret: PairingSecret, trustStore: TrustStore, macID: String, displayName: String, serviceID: String, macCertificate: Data, approval: @escaping @Sendable (PairingRequest) async -> Bool, didPair: @escaping @Sendable () async -> Void = {}) {
+    public init(secret: PairingSecret, trustStore: TrustStore, macID: String, displayName: String, serviceID: String, macCertificate: Data, rendezvousCapability: RendezvousCapability? = nil, approval: @escaping @Sendable (PairingRequest) async -> Bool, didPair: @escaping @Sendable () async -> Void = {}) {
         self.secret = secret
         self.trustStore = trustStore
         self.macID = macID
         self.macCertificate = macCertificate
         self.displayName = displayName
         self.serviceID = serviceID
+        self.rendezvousCapability = rendezvousCapability
         self.approval = approval
         self.didPair = didPair
     }
@@ -129,11 +135,11 @@ public actor PairingCoordinator {
         defer { requestInProgress = false }
         try await secret.validate(request: request, now: now)
         guard await approval(request) else { throw PairingError.rejected }
-        let device = PairedDevice(id: request.deviceID, displayName: request.deviceName, certificateFingerprint: Fingerprint.sha256(of: request.certificate), createdAt: now)
+        let device = PairedDevice(id: request.deviceID, displayName: request.deviceName, certificateFingerprint: Fingerprint.sha256(of: request.certificate), createdAt: now, certificate: request.certificate, rendezvousCapability: request.rendezvousCapability)
         try await trustStore.upsert(device)
         try await secret.consume(secret: request.oneTimeSecret, now: now)
         await didPair()
-        return PairingAcceptance(macID: macID, displayName: displayName, serviceID: serviceID, certificate: macCertificate)
+        return PairingAcceptance(macID: macID, displayName: displayName, serviceID: serviceID, certificate: macCertificate, rendezvousCapability: rendezvousCapability)
     }
 }
 
@@ -187,10 +193,13 @@ public struct PairedIPhone: Codable, Equatable, Identifiable, Sendable {
     public let displayName: String
     public let certificateFingerprint: String
     public let createdAt: Date
+    public let certificate: Data?
+    public let rendezvousCapability: RendezvousCapability?
 
-    public init(id: String, displayName: String, certificateFingerprint: String, createdAt: Date) {
+    public init(id: String, displayName: String, certificateFingerprint: String, createdAt: Date, certificate: Data? = nil, rendezvousCapability: RendezvousCapability? = nil) {
         self.id = id; self.displayName = displayName
         self.certificateFingerprint = certificateFingerprint; self.createdAt = createdAt
+        self.certificate = certificate; self.rendezvousCapability = rendezvousCapability
     }
 }
 
@@ -202,11 +211,14 @@ public struct PairedMac: Codable, Equatable, Identifiable, Sendable {
     public let certificateFingerprint: String
     public let createdAt: Date
     public let remoteEndpoint: RemoteEndpoint?
+    public let certificate: Data?
+    public let rendezvousCapability: RendezvousCapability?
 
-    public init(id: String, displayName: String, serviceID: String, certificateFingerprint: String, createdAt: Date, remoteEndpoint: RemoteEndpoint? = nil) {
+    public init(id: String, displayName: String, serviceID: String, certificateFingerprint: String, createdAt: Date, remoteEndpoint: RemoteEndpoint? = nil, certificate: Data? = nil, rendezvousCapability: RendezvousCapability? = nil) {
         self.id = id; self.displayName = displayName; self.serviceID = serviceID
         self.certificateFingerprint = certificateFingerprint; self.createdAt = createdAt
         self.remoteEndpoint = remoteEndpoint
+        self.certificate = certificate; self.rendezvousCapability = rendezvousCapability
     }
 }
 

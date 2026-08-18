@@ -18,7 +18,7 @@ enum SecureListenerError: LocalizedError {
 final class PeerTrustCache: @unchecked Sendable {
     private let lock = NSLock()
     private var devicesByFingerprint: [String: String] = [:]
-    private var verifiedMetadata: [ObjectIdentifier: String] = [:]
+    private var verifiedMetadata: [ObjectIdentifier: (deviceID: String, certificate: Data)] = [:]
 
     func replace(devices: [String: String]) { lock.withLock { devicesByFingerprint = devices } }
 
@@ -28,18 +28,18 @@ final class PeerTrustCache: @unchecked Sendable {
         let fingerprint = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
         return lock.withLock {
             guard let deviceID = devicesByFingerprint[fingerprint] else { return false }
-            verifiedMetadata[ObjectIdentifier(metadata)] = deviceID
+            verifiedMetadata[ObjectIdentifier(metadata)] = (deviceID, SecCertificateCopyData(certificate) as Data)
             return true
         }
     }
 
-    func consume(metadata: sec_protocol_metadata_t) -> String? {
+    func consume(metadata: sec_protocol_metadata_t) -> (deviceID: String, certificate: Data)? {
         lock.withLock { verifiedMetadata.removeValue(forKey: ObjectIdentifier(metadata)) }
     }
 }
 
 final class SecureListener: @unchecked Sendable {
-    typealias ConnectionHandler = @Sendable (NWConnection, DispatchQueue, String?) -> Void
+    typealias ConnectionHandler = @Sendable (NWConnection, DispatchQueue, String?, Data?, Bool) -> Void
     private let listener: NWListener
     private let queue: DispatchQueue
     private let peerTrust: PeerTrustCache?
@@ -84,23 +84,28 @@ final class SecureListener: @unchecked Sendable {
     var port: UInt16? { listener.port?.rawValue }
 
     private func prepare(_ connection: NWConnection) {
-        guard peerTrust != nil else { onConnection(connection, queue, nil); return }
+        guard peerTrust != nil else { onConnection(connection, queue, nil, nil, false); return }
         connection.stateUpdateHandler = { [weak self, weak connection] state in
             guard let self, let connection else { return }
             switch state {
             case .ready:
                 guard let metadata = connection.metadata(definition: NWProtocolTLS.definition) as? NWProtocolTLS.Metadata,
-                      let deviceID = peerTrust?.consume(metadata: metadata.securityProtocolMetadata) else {
+                      let peer = peerTrust?.consume(metadata: metadata.securityProtocolMetadata) else {
                     print("Session: TLS completed without a trusted device mapping.")
                     connection.cancel(); return
                 }
                 print("Session: authenticated connection received.")
-                onConnection(connection, queue, deviceID)
+                onConnection(connection, queue, peer.deviceID, peer.certificate, Self.requiresWANGate(connection.endpoint))
             case .failed(let error):
                 print("Session: TLS authentication failed: \(error.localizedDescription)")
             default: break
             }
         }
         connection.start(queue: queue)
+    }
+
+    private static func requiresWANGate(_ endpoint: NWEndpoint) -> Bool {
+        guard case .hostPort(let host, _) = endpoint else { return true }
+        return !PrivateNetwork.isPrivate(String(describing: host))
     }
 }

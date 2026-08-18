@@ -9,6 +9,7 @@ final class SessionClient: @unchecked Sendable {
     var onOutput: ((Data) -> Void)?
     var onActivityOutput: ((Data) -> Void)?
     var onState: ((State) -> Void)?
+    var onRendezvousUpgrade: ((Data, RendezvousCapability) -> Void)?
     enum State: Equatable {
         case connecting, active(UUID), disconnected, revoked, certificateChanged, protocolError, networkError(String)
     }
@@ -19,11 +20,16 @@ final class SessionClient: @unchecked Sendable {
     private var certificateMismatch = false
     private var terminalStateReported = false
     private var pendingResize: TerminalSize?
+    private var peerCertificate: Data?
+    private var rendezvousCapability: RendezvousCapability?
+    private var wanGateToken: Data?
+    private var timeout: DispatchWorkItem?
 
-    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, size: TerminalSize) {
+    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, size: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil) {
         opened = false
         terminalStateReported = false
         pendingResize = nil
+        peerCertificate = nil; self.rendezvousCapability = rendezvousCapability; self.wanGateToken = wanGateToken
         let tls = NWProtocolTLS.Options(); sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv13)
         if let localIdentity = sec_identity_create(identity) { sec_protocol_options_set_local_identity(tls.securityProtocolOptions, localIdentity) }
         sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { metadata, trust, complete in
@@ -31,6 +37,7 @@ final class SessionClient: @unchecked Sendable {
             guard let chain = SecTrustCopyCertificateChain(secTrust) as? [SecCertificate], let certificate = chain.first else { complete(false); return }
             let fingerprint = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
             let matches = fingerprint == pinnedFingerprint.lowercased()
+            if matches { self.peerCertificate = SecCertificateCopyData(certificate) as Data }
             if !matches { self.certificateMismatch = true }
             complete(matches)
         }, queue)
@@ -39,8 +46,11 @@ final class SessionClient: @unchecked Sendable {
         connection.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             switch state {
-            case .ready: self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(clientSessionID: clientSessionID, initialSize: size))) ?? Data())); self.receive()
+            case .ready:
+                self.timeout?.cancel()
+                self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(clientSessionID: clientSessionID, initialSize: size, rendezvousCapability: self.rendezvousCapability, wanGateToken: self.wanGateToken))) ?? Data())); self.receive()
             case .failed(let error):
+                self.timeout?.cancel()
                 self.terminalStateReported = true
                 self.onState?(self.certificateMismatch ? .certificateChanged : .networkError(error.localizedDescription))
             case .cancelled:
@@ -49,6 +59,11 @@ final class SessionClient: @unchecked Sendable {
             }
         }
         connection.start(queue: queue)
+        let timeout = DispatchWorkItem { [weak self, weak connection] in
+            guard let self, !self.opened else { return }
+            self.terminalStateReported = true; self.onState?(.networkError("Connection attempt timed out.")); connection?.cancel()
+        }
+        self.timeout = timeout; queue.asyncAfter(deadline: .now() + 5, execute: timeout)
     }
     func sendInput(_ data: Data) {
         guard opened else { return }
@@ -74,6 +89,7 @@ final class SessionClient: @unchecked Sendable {
             guard frame.kind == .sessionOpened else { throw ClientError.protocolViolation }
             let reply = try ProtocolPayload.decode(SessionOpened.self, from: frame.payload)
             opened = true
+            if let certificate = peerCertificate, let capability = reply.rendezvousCapability { onRendezvousUpgrade?(certificate, capability) }
             if let pendingResize { self.pendingResize = nil; sendResize(pendingResize) }
             onState?(.active(reply.serverSessionID)); return
         }
