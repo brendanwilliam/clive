@@ -2,7 +2,8 @@ import Foundation
 import IPhoneTerminalCore
 import Network
 
-/// Implements the V1 invariant that one authenticated TLS connection owns one shell.
+/// One authenticated TLS connection owns one PTY. The stable client ID permits a fresh
+/// connection to replace a stale PTY after network handoff.
 final class SessionConnectionHandler: @unchecked Sendable {
     let identifier = UUID()
     private let deviceID: String
@@ -15,10 +16,12 @@ final class SessionConnectionHandler: @unchecked Sendable {
     private var flow = OutputBackpressure()
     private var closed = false
     private let onClosed: @Sendable (UUID) -> Void
+    private let replaceExisting: @Sendable (String, UUID, SessionConnectionHandler) async -> Void
 
-    init(deviceID: String, registry: SessionRegistry, queue: DispatchQueue, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }) {
+    init(deviceID: String, registry: SessionRegistry, queue: DispatchQueue, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }, replaceExisting: @escaping @Sendable (String, UUID, SessionConnectionHandler) async -> Void = { _, _, _ in }) {
         self.deviceID = deviceID; self.registry = registry; self.queue = queue
         self.onClosed = onClosed
+        self.replaceExisting = replaceExisting
     }
 
     func start(_ connection: NWConnection) {
@@ -49,7 +52,8 @@ final class SessionConnectionHandler: @unchecked Sendable {
             print("Session: opening shell.")
             opening = true
             Task {
-                let session = await registry.open(deviceID: deviceID, size: request.initialSize)
+                await replaceExisting(deviceID, request.clientSessionID, self)
+                let session = await registry.open(deviceID: deviceID, clientSessionID: request.clientSessionID, size: request.initialSize)
                 queue.async { [weak self] in self?.finishOpening(session: session, size: request.initialSize) }
             }
             return
@@ -76,7 +80,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 guard let owner = self else { return }; owner.queue.async { [weak owner] in owner?.sendOutput(bytes) }
             }
             sessionID = session.id
-            let data = try ProtocolPayload.encode(SessionOpened(sessionID: session.id))
+            let data = try ProtocolPayload.encode(SessionOpened(serverSessionID: session.id))
             framed?.send(ProtocolFrame(kind: .sessionOpened, payload: data))
             print("Session: shell opened.")
         } catch {

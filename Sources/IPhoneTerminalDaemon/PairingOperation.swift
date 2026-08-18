@@ -32,7 +32,7 @@ final class PairingOperation: @unchecked Sendable {
         }, didPair: onPaired)
         listener = try SecureListener(identity: identity, onReady: { [weak self] port in
             guard let self else { return }
-            let ticket = PairingTicket(endpoint: endpoint, port: port, expiresAt: placeholder.expiresAt, oneTimeSecret: secretValue, daemonCertificateFingerprint: fingerprint)
+            let ticket = PairingTicket(endpoint: endpoint, port: port, expiresAt: placeholder.expiresAt, oneTimeSecret: secretValue, daemonCertificateFingerprint: fingerprint, remoteEndpoint: state.remoteEndpoint)
             // Recreate the ticket's externally visible port without changing the secret validation fields.
             try? channel.send(ControlResponse(kind: .pairingTicket, success: true, pairingTicket: ticket))
         }, onConnection: { [weak self] connection, queue, _ in self?.accept(connection, queue: queue) })

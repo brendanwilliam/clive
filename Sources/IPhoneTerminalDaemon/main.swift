@@ -19,6 +19,13 @@ struct IPhoneTerminalDaemon {
         switch command {
         case "start":
             let allowsNonPrivateNetwork = arguments.contains("--allow-non-private-network")
+            let remote = try parseRemoteEndpoint(arguments)
+            if arguments.contains("--clear-remote") {
+                guard arguments.count == 2 else { throw CommandError.usage }
+                try DaemonState.updateRemoteEndpoint(url: RuntimePaths.live.stateURL, endpoint: nil)
+                return
+            }
+            if let remote { try DaemonState.updateRemoteEndpoint(url: RuntimePaths.live.stateURL, endpoint: remote) }
             guard allowsNonPrivateNetwork || !PrivateNetwork.eligibleAddresses().isEmpty else { throw CommandError.nonPrivateNetwork }
             try await runDaemon()
         case "pair":
@@ -92,13 +99,25 @@ struct IPhoneTerminalDaemon {
 
     static let usage = """
     Usage: iphone-terminald <start|pair|status|revoke|stop> [options]
-      start [--allow-non-private-network]
+      start [--allow-non-private-network] [--remote-host <private-vpn-host-or-ip> --session-port <port>]
+      start --clear-remote
       pair
       status
       revoke <device-id>
       stop
       shell
     """
+
+    private static func parseRemoteEndpoint(_ arguments: [String]) throws -> RemoteEndpoint? {
+        let hostIndex = arguments.firstIndex(of: "--remote-host")
+        let portIndex = arguments.firstIndex(of: "--session-port")
+        guard hostIndex != nil || portIndex != nil else { return nil }
+        guard let hostIndex, let portIndex,
+              hostIndex + 1 < arguments.count, portIndex + 1 < arguments.count,
+              !arguments[hostIndex + 1].isEmpty,
+              let port = UInt16(arguments[portIndex + 1]), port > 0 else { throw CommandError.usage }
+        return RemoteEndpoint(host: arguments[hostIndex + 1], port: port)
+    }
 
     private static func runLocalShell() throws {
         let shell = try PTYProcess(size: TerminalSize(columns: 80, rows: 24)) { FileHandle.standardOutput.write($0) }

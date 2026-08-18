@@ -20,13 +20,19 @@ public enum FrameKind: UInt8, Sendable, CaseIterable {
 }
 
 public struct SessionOpenRequest: Codable, Equatable, Sendable {
+    /// Stable across reconnects. It identifies a workspace shell, not a daemon PTY.
+    public let clientSessionID: UUID
     public let initialSize: TerminalSize
-    public init(initialSize: TerminalSize) { self.initialSize = initialSize }
+    public init(clientSessionID: UUID, initialSize: TerminalSize) {
+        self.clientSessionID = clientSessionID
+        self.initialSize = initialSize
+    }
 }
 
 public struct SessionOpened: Codable, Equatable, Sendable {
-    public let sessionID: UUID
-    public init(sessionID: UUID) { self.sessionID = sessionID }
+    /// Ephemeral ID allocated by the daemon for this particular PTY.
+    public let serverSessionID: UUID
+    public init(serverSessionID: UUID) { self.serverSessionID = serverSessionID }
 }
 
 public struct SessionError: Codable, Equatable, Sendable {
@@ -51,7 +57,7 @@ public struct TerminalSize: Codable, Equatable, Sendable {
 }
 
 public struct ProtocolFrame: Equatable, Sendable {
-    public static let version: UInt16 = 1
+    public static let version: UInt16 = 2
     public static let defaultMaximumPayloadSize = 1_048_576
 
     public let version: UInt16

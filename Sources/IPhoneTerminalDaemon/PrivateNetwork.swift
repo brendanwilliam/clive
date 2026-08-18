@@ -35,7 +35,8 @@ enum PrivateNetwork {
         var v4 = in_addr()
         if inet_pton(AF_INET, address, &v4) == 1 {
             let value = UInt32(bigEndian: v4.s_addr)
-            return value >> 24 == 10 || value >> 20 == 0xac1 || value >> 16 == 0xc0a8 || value >> 24 == 127
+            // RFC1918, loopback for local integration, and RFC6598 carrier-grade/overlay space.
+            return value >> 24 == 10 || value >> 20 == 0xac1 || value >> 16 == 0xc0a8 || value >> 24 == 127 || value >> 22 == 0x191
         }
         var v6 = in6_addr()
         let bare = address.components(separatedBy: "%")[0]

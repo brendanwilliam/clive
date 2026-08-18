@@ -1,6 +1,7 @@
 import CryptoKit
 import Dispatch
 import Foundation
+import IPhoneTerminalCore
 import Network
 import Security
 
@@ -62,7 +63,7 @@ final class SecureListener: @unchecked Sendable {
         }
         listener = try NWListener(using: NWParameters(tls: tls, tcp: NWProtocolTCP.Options()))
         if let serviceID {
-            let txt = NetService.data(fromTXTRecord: ["id": Data(serviceID.utf8), "v": Data(String(1).utf8)])
+            let txt = NetService.data(fromTXTRecord: ["id": Data(serviceID.utf8), "v": Data(String(ProtocolFrame.version).utf8)])
             listener.service = NWListener.Service(name: serviceID, type: "_iphone-term._tcp", txtRecord: txt)
         }
         listener.newConnectionHandler = { [weak self] connection in self?.prepare(connection) }
