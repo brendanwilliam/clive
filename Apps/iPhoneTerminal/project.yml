@@ -6,7 +6,7 @@ packages:
     path: ../..
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm.git
-    from: 1.15.0
+    exactVersion: 1.15.0
 targets:
   iPhoneTerminal:
     type: application
@@ -15,9 +15,10 @@ targets:
     sources: [App]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.iphoneterminal
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourcompany.iphoneterminal
         SWIFT_VERSION: 6.0
         INFOPLIST_KEY_NSCameraUsageDescription: Scan a Mac pairing code.
+        INFOPLIST_KEY_NSFaceIDUsageDescription: Unlock access to your paired Mac terminals.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: Find paired Macs on the local network.
         INFOPLIST_KEY_NSBonjourServices: _iphone-terminal._tcp
     dependencies:

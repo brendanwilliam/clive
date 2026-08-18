@@ -2,7 +2,7 @@ import IPhoneTerminalCore
 import SwiftUI
 
 struct TerminalTabsView: View {
-    let device: PairedDevice
+    let device: PairedMac
     @State private var sessions: [UUID] = [UUID()]
     @State private var selectedSession: UUID?
 
@@ -15,7 +15,7 @@ struct TerminalTabsView: View {
             }
             .pickerStyle(.segmented)
             .padding()
-            TerminalSurfaceView()
+            TerminalSurfaceView(session: nil)
         }
         .navigationTitle(device.displayName)
         .toolbar {

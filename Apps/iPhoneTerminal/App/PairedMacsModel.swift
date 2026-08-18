@@ -11,11 +11,12 @@ final class PairedMacsModel {
         case failed(String)
     }
 
-    var devices: [PairedDevice] = []
+    var devices: [PairedMac] = []
     var state: ConnectionState = .disconnected
 
     func refresh() {
-        // The iOS Keychain-backed store and Bonjour resolver are added with the transport layer.
+        do { devices = try PairedMacStore().load() }
+        catch { state = .failed("Paired Mac records could not be read.") }
     }
 
     func unlockBeforeConnecting() async {

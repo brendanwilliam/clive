@@ -7,16 +7,16 @@ public struct PairingTicket: Codable, Equatable, Sendable {
     public let protocolVersion: UInt16
     public let expiresAt: Date
     public let oneTimeSecret: String
-    /// SHA-256 fingerprint of the ephemeral TLS identity used only for this pairing exchange.
-    public let pairingCertificateFingerprint: String
+    /// SHA-256 fingerprint of the persistent daemon identity used for pairing and sessions.
+    public let daemonCertificateFingerprint: String
 
-    public init(endpoint: String, port: UInt16, expiresAt: Date, oneTimeSecret: String, pairingCertificateFingerprint: String, protocolVersion: UInt16 = ProtocolFrame.version) {
+    public init(endpoint: String, port: UInt16, expiresAt: Date, oneTimeSecret: String, daemonCertificateFingerprint: String, protocolVersion: UInt16 = ProtocolFrame.version) {
         self.endpoint = endpoint
         self.port = port
         self.protocolVersion = protocolVersion
         self.expiresAt = expiresAt
         self.oneTimeSecret = oneTimeSecret
-        self.pairingCertificateFingerprint = pairingCertificateFingerprint
+        self.daemonCertificateFingerprint = daemonCertificateFingerprint
     }
 }
 
@@ -37,10 +37,14 @@ public struct PairingRequest: Codable, Equatable, Sendable {
 
 public struct PairingAcceptance: Codable, Equatable, Sendable {
     public let macID: String
+    public let displayName: String
+    public let serviceID: String
     public let certificate: Data
 
-    public init(macID: String, certificate: Data) {
+    public init(macID: String, displayName: String, serviceID: String, certificate: Data) {
         self.macID = macID
+        self.displayName = displayName
+        self.serviceID = serviceID
         self.certificate = certificate
     }
 }
@@ -93,13 +97,17 @@ public actor PairingCoordinator {
     private let trustStore: TrustStore
     private let macID: String
     private let macCertificate: Data
+    private let displayName: String
+    private let serviceID: String
     private let approval: @Sendable (PairingRequest) async -> Bool
 
-    public init(secret: PairingSecret, trustStore: TrustStore, macID: String, macCertificate: Data, approval: @escaping @Sendable (PairingRequest) async -> Bool) {
+    public init(secret: PairingSecret, trustStore: TrustStore, macID: String, displayName: String, serviceID: String, macCertificate: Data, approval: @escaping @Sendable (PairingRequest) async -> Bool) {
         self.secret = secret
         self.trustStore = trustStore
         self.macID = macID
         self.macCertificate = macCertificate
+        self.displayName = displayName
+        self.serviceID = serviceID
         self.approval = approval
     }
 
@@ -109,7 +117,7 @@ public actor PairingCoordinator {
         let device = PairedDevice(id: request.deviceID, displayName: request.deviceName, certificateFingerprint: Fingerprint.sha256(of: request.certificate), createdAt: now)
         try await trustStore.upsert(device)
         try await secret.consume(secret: request.oneTimeSecret, now: now)
-        return PairingAcceptance(macID: macID, certificate: macCertificate)
+        return PairingAcceptance(macID: macID, displayName: displayName, serviceID: serviceID, certificate: macCertificate)
     }
 }
 
@@ -158,12 +166,33 @@ public enum ProtocolPayload {
     }
 }
 
-public struct PairedDevice: Codable, Equatable, Identifiable, Sendable {
+public struct PairedIPhone: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let displayName: String
     public let certificateFingerprint: String
     public let createdAt: Date
+
+    public init(id: String, displayName: String, certificateFingerprint: String, createdAt: Date) {
+        self.id = id; self.displayName = displayName
+        self.certificateFingerprint = certificateFingerprint; self.createdAt = createdAt
+    }
 }
+
+
+public struct PairedMac: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let displayName: String
+    public let serviceID: String
+    public let certificateFingerprint: String
+    public let createdAt: Date
+
+    public init(id: String, displayName: String, serviceID: String, certificateFingerprint: String, createdAt: Date) {
+        self.id = id; self.displayName = displayName; self.serviceID = serviceID
+        self.certificateFingerprint = certificateFingerprint; self.createdAt = createdAt
+    }
+}
+
+public typealias PairedDevice = PairedIPhone
 
 public enum Fingerprint {
     public static func sha256(of data: Data) -> String {

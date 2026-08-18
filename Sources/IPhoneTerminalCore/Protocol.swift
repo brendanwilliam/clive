@@ -16,6 +16,26 @@ public enum FrameKind: UInt8, Sendable, CaseIterable {
     case sessionError = 0x06
     case pairingRequest = 0x10
     case pairingAccept = 0x11
+    case sessionOpened = 0x12
+}
+
+public struct SessionOpenRequest: Codable, Equatable, Sendable {
+    public let initialSize: TerminalSize
+    public init(initialSize: TerminalSize) { self.initialSize = initialSize }
+}
+
+public struct SessionOpened: Codable, Equatable, Sendable {
+    public let sessionID: UUID
+    public init(sessionID: UUID) { self.sessionID = sessionID }
+}
+
+public struct SessionError: Codable, Equatable, Sendable {
+    public enum Code: String, Codable, Sendable {
+        case authenticationFailed, invalidFrameOrder, shellCreationFailed, revoked, protocolError
+    }
+    public let code: Code
+    public let message: String
+    public init(code: Code, message: String) { self.code = code; self.message = message }
 }
 
 public struct TerminalSize: Codable, Equatable, Sendable {
@@ -26,6 +46,8 @@ public struct TerminalSize: Codable, Equatable, Sendable {
         self.columns = columns
         self.rows = rows
     }
+
+    public var isValid: Bool { columns > 0 && rows > 0 }
 }
 
 public struct ProtocolFrame: Equatable, Sendable {

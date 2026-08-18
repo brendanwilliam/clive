@@ -9,7 +9,7 @@
 
 ## Trust boundaries
 
-Bonjour and the LAN are untrusted. The QR code is an out-of-band authorization channel and must be treated as sensitive for its 5-minute lifetime. The iOS device protects its long-lived private key in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`; Secure Enclave storage is used where supported. The Mac stores pairing records with owner-only filesystem permissions in its application-support directory.
+Bonjour and the LAN are untrusted. The QR code is an out-of-band authorization channel and must be treated as sensitive for its 5-minute lifetime. The iOS device protects its long-lived private key in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`; Secure Enclave integration is deferred for this prototype. The Mac stores pairing records with owner-only filesystem permissions in its application-support directory.
 
 ## Controls
 

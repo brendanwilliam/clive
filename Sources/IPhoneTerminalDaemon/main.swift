@@ -28,17 +28,17 @@ struct IPhoneTerminalDaemon {
             print("Revoked \(arguments[1]). Active sessions for this device must be terminated by the running service.")
         case "pair":
             try requireInteractiveTerminal()
+            guard let endpoint = PrivateNetwork.eligibleAddresses().first else { throw CommandError.nonPrivateNetwork }
             let ticket = PairingTicket(
-                endpoint: "<local-ip-address>",
+                endpoint: endpoint,
                 port: 0,
                 expiresAt: .now.addingTimeInterval(5 * 60),
                 oneTimeSecret: UUID().uuidString.lowercased(),
-                pairingCertificateFingerprint: "<ephemeral-tls-fingerprint>"
+                daemonCertificateFingerprint: "<daemon-tls-fingerprint>"
             )
             let payload = try PairingPayload.encode(ticket)
             print("Pairing ticket (expires in five minutes):")
             print(try TerminalQRCode.render(payload: payload))
-            print("Payload: \(payload)")
             print("Run `iphone-terminald start` first to advertise a pairing endpoint. The exchange handler is added next.")
         case "start":
             let allowsNonPrivateNetwork = arguments.contains("--allow-non-private-network")
@@ -75,7 +75,7 @@ struct IPhoneTerminalDaemon {
     private static func isPrivateNetworkEnvironment() -> Bool {
         // A full implementation inspects active interface addresses. The explicit override
         // remains mandatory until that classifier is available.
-        ProcessInfo.processInfo.environment["IPHONE_TERMINAL_PRIVATE_NETWORK"] == "1"
+        !PrivateNetwork.eligibleAddresses().isEmpty
     }
 
     static let usage = """

@@ -22,6 +22,8 @@ final class PTYProcess: @unchecked Sendable {
     private let masterFD: Int32
     private let readSource: DispatchSourceRead
     private let output: @Sendable (Data) -> Void
+    private let stateLock = NSLock()
+    private var outputSuspended = false
 
     init(size: TerminalSize, output: @escaping @Sendable (Data) -> Void) throws {
         self.output = output
@@ -58,9 +60,21 @@ final class PTYProcess: @unchecked Sendable {
         _ = ioctl(masterFD, TIOCSWINSZ, &windowSize)
     }
 
+    func suspendOutput() {
+        stateLock.lock(); defer { stateLock.unlock() }
+        guard !outputSuspended else { return }
+        outputSuspended = true; readSource.suspend()
+    }
+    func resumeOutput() {
+        stateLock.lock(); defer { stateLock.unlock() }
+        guard outputSuspended else { return }
+        outputSuspended = false; readSource.resume()
+    }
+
     func terminate() {
         guard masterFD >= 0 else { return }
         _ = kill(-pid, SIGHUP)
+        resumeOutput()
         readSource.cancel()
     }
 

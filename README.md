@@ -10,18 +10,23 @@ The first release is deliberately **local-network only**: the iPhone and Mac mus
 - **macOS companion:** a user-started CLI service that exposes an interactive PTY-backed `zsh` session under the invoking macOS account.
 - **Pairing:** the Mac prints a short-lived QR code; scanning it creates a mutually authenticated device relationship.
 
-## Status
+## Prototype status
 
-The repository contains the shared Swift protocol package, a macOS CLI foundation, and an iOS 17+ SwiftUI target source tree. The foreground network listener, QR renderer, certificate issuer, and iOS target project configuration are the next delivery increment; the security and protocol documents remain the contract for those components.
+Implemented foundations include the bounded V1 protocol, ticket and trust stores, persistent macOS TLS identity, PTY session state machine with output backpressure, private-interface detection, QR scanning, Keychain paired-Mac storage, a pinned TLS iOS client, and a SwiftTerm bridge. Physical-device pairing and foreground daemon control-socket orchestration remain before this is safe to use as a terminal service.
 
 ## Development
 
 ```sh
 swift test
 swift run iphone-terminald status
+cd Apps/iPhoneTerminal && xcodegen generate
+xcodebuild -project iPhoneTerminal.xcodeproj -scheme iPhoneTerminal -sdk iphonesimulator test
+./scripts/build-pkg.sh
 ```
 
-`swift test` runs shared protocol and pairing tests. `iphone-terminald` currently provides local pairing-record status and revocation commands; it refuses non-private-network startup unless explicitly overridden. Open `Apps/iPhoneTerminal` in an iOS Xcode target after adding the local package and SwiftTerm dependency as described there.
+`swift test` runs shared protocol and pairing tests. Startup requires RFC1918 IPv4, IPv6 ULA/link-local, or loopback connectivity unless `--allow-non-private-network` is supplied. The packaging script creates an unsigned arm64 development PKG by default; set `DEVELOPER_ID_APPLICATION`, `DEVELOPER_ID_INSTALLER`, and optionally `NOTARY_PROFILE` for signing and notarization.
+
+The PKG installs only `/usr/local/bin/iphone-terminald`, with no launch agent or privileged helper. Remove that binary to uninstall; user state remains under `~/Library/Application Support/iphone-terminal` unless removed separately.
 
 ## Documentation
 

@@ -29,14 +29,16 @@ final class FramedConnection: @unchecked Sendable {
         connection.start(queue: queue)
     }
 
-    func send(_ frame: ProtocolFrame) {
+    func send(_ frame: ProtocolFrame, completion: (@Sendable (Bool) -> Void)? = nil) {
         do {
             let payload = try frame.encoded()
             connection.send(content: payload, completion: .contentProcessed { [weak self] error in
+                completion?(error == nil)
                 if error != nil { self?.connection.cancel() }
             })
         } catch {
             connection.cancel()
+            completion?(false)
         }
     }
 
