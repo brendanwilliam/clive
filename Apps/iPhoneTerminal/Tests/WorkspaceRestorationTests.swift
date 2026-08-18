@@ -30,6 +30,32 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertEqual(resolution, .startTerminal(macID: "mac-2"))
     }
 
+    func testTerminalListRestoresWithoutSessionDescriptors() {
+        let destination = RestorableDestination(screen: .terminalList, macID: "mac-1")
+
+        let resolution = WorkspaceLaunchResolver.resolve(
+            destination: destination,
+            selectedMacID: nil,
+            pairedMacIDs: ["mac-1"],
+            descriptorsByMac: [:]
+        )
+
+        XCTAssertEqual(resolution, .restoreTerminalList(macID: "mac-1"))
+    }
+
+    func testDestinationForRemovedMacFallsBackToLastSelectedPairedMac() {
+        let destination = RestorableDestination(screen: .terminalList, macID: "removed")
+
+        let resolution = WorkspaceLaunchResolver.resolve(
+            destination: destination,
+            selectedMacID: "mac-2",
+            pairedMacIDs: ["mac-1", "mac-2"],
+            descriptorsByMac: [:]
+        )
+
+        XCTAssertEqual(resolution, .startTerminal(macID: "mac-2"))
+    }
+
     func testRemovedLastSelectedMacUsesFirstPairedMacAsDefault() {
         let resolution = WorkspaceLaunchResolver.resolve(
             destination: nil,
@@ -54,6 +80,15 @@ final class WorkspaceRestorationTests: XCTestCase {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let json = #"{"version":2,"screen":"terminalList","macID":"mac-1","sessionID":null}"#
         try Data(json.utf8).write(to: root.appending(path: "last-screen.json"))
+
+        XCTAssertThrowsError(try RestorableDestinationStore(rootURL: root).load())
+    }
+
+    func testDestinationStoreRejectsMalformedData() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("not-json".utf8).write(to: root.appending(path: "last-screen.json"))
 
         XCTAssertThrowsError(try RestorableDestinationStore(rootURL: root).load())
     }
