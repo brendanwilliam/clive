@@ -13,7 +13,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
     func updateUIView(_ uiView: TerminalView, context: Context) { context.coordinator.session = session }
 
-    final class Coordinator: NSObject, TerminalViewDelegate {
+    final class Coordinator: NSObject, TerminalViewDelegate, @unchecked Sendable {
         var session: SessionClient?; weak var view: TerminalView?
         private var accessory: TerminalKeyboardAccessory?
         init(session: SessionClient?) { self.session = session }
@@ -34,7 +34,17 @@ struct TerminalSurfaceView: UIViewRepresentable {
             }
             accessory?.resetModifiers()
         }
-        func send(source: TerminalView, data: ArraySlice<UInt8>) { session?.sendInput(Data(data)) }
+        func send(source: TerminalView, data: ArraySlice<UInt8>) {
+            let input = Data(data)
+            MainActor.assumeIsolated {
+                if let accessory {
+                    guard let transformed = accessory.transformSoftwareInput(input) else { return }
+                    session?.sendInput(transformed)
+                } else {
+                    session?.sendInput(input)
+                }
+            }
+        }
         func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
             guard newCols > 0, newRows > 0, newCols <= Int(UInt16.max), newRows <= Int(UInt16.max) else { return }
             session?.resize(TerminalSize(columns: UInt16(newCols), rows: UInt16(newRows)))

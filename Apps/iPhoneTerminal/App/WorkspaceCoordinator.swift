@@ -14,7 +14,7 @@ struct SessionDescriptor: Codable, Identifiable, Equatable {
 }
 
 @MainActor @Observable final class WorkspaceSession: Identifiable {
-    let descriptor: SessionDescriptor
+    var descriptor: SessionDescriptor
     nonisolated let id: UUID
     let client = SessionClient()
     var state: SessionClient.State = .connecting
@@ -100,6 +100,18 @@ struct SessionDescriptor: Codable, Identifiable, Equatable {
     func close(_ session: WorkspaceSession) {
         session.close(); sessions.removeAll { $0.id == session.id }; if selectedSessionID == session.id { selectedSessionID = sessions.last?.id }
         saveCurrentDescriptors(); persist()
+    }
+
+    func rename(_ session: WorkspaceSession, to label: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        session.descriptor.label = trimmed
+        saveCurrentDescriptors(); persist()
+    }
+
+    /// Disconnects live PTYs while retaining the local workspace descriptors.
+    func disconnectCurrentMac() {
+        saveCurrentDescriptors(); persist(); closeLiveSessions()
     }
 
     func sceneDidBackground() { saveCurrentDescriptors(); persist(); closeLiveSessions(); state = .locked }

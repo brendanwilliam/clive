@@ -18,10 +18,10 @@ final class TerminalKeyboardAccessory: UIInputView {
         backgroundColor = .secondarySystemBackground
         let keys: [(title: String, action: String, accessibility: String)] = [
             ("⇥", "tab", "Tab"), ("⇧", "shift", "Shift"), ("⌃", "control", "Control"),
-            ("⌥", "option", "Option"), ("⌘", "command", "Command"), (".", ".", "Period"),
-            ("/", "/", "Slash"), ("@", "@", "At sign"), ("$", "$", "Dollar"),
+            ("⌥", "option", "Option"), ("⌘", "command", "Command"),
             ("←", "left", "Left arrow"), ("↓", "down", "Down arrow"), ("↑", "up", "Up arrow"),
-            ("→", "right", "Right arrow"), ("⌨", "keyboard", "Hide keyboard")
+            ("→", "right", "Right arrow"), (".", ".", "Period"), ("/", "/", "Slash"),
+            ("@", "@", "At sign"), ("$", "$", "Dollar"), ("⌨", "keyboard", "Hide keyboard")
         ]
         let scroll = UIScrollView(); scroll.showsHorizontalScrollIndicator = false; scroll.alwaysBounceHorizontal = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -43,6 +43,21 @@ final class TerminalKeyboardAccessory: UIInputView {
 
     func resetModifiers() { oneShot.removeAll(); locked.removeAll(); refreshModifierButtons() }
 
+    /// SwiftTerm sends software-keyboard input through its delegate. Apply selected
+    /// modifiers here too, so ⌃ then C and ⇧ then ⇥ work as terminal input.
+    func transformSoftwareInput(_ data: Data) -> Data? {
+        guard !oneShot.isEmpty || !locked.isEmpty else { return data }
+        guard data.count == 1, let byte = data.first else { consumeOneShot(); return data }
+        if active(.command) { command(String(decoding: [byte], as: UTF8.self)); consumeOneShot(); return nil }
+        var output = Data([byte])
+        if active(.shift), byte == 0x09 { output = Data("\u{1b}[Z".utf8) }
+        else if active(.shift), byte >= 0x61, byte <= 0x7a { output = Data([byte - 0x20]) }
+        if active(.control), output.count == 1, let value = output.first, value >= 0x40, value <= 0x7f { output = Data([value & 0x1f]) }
+        if active(.option) { output.insert(0x1b, at: 0) }
+        consumeOneShot()
+        return output
+    }
+
     @objc private func pressed(_ sender: UIButton) {
         guard let action = sender.accessibilityIdentifier else { return }
         if let modifier = modifier(named: action) { toggle(modifier, locked: false); return }
@@ -50,6 +65,7 @@ final class TerminalKeyboardAccessory: UIInputView {
         let keys = ["left": "\u{1b}[D", "down": "\u{1b}[B", "up": "\u{1b}[A", "right": "\u{1b}[C", "tab": "\t"]
         var value = keys[action] ?? action
         if active(.command) { command(value); consumeOneShot(); return }
+        if active(.shift), value == "\t" { value = "\u{1b}[Z" }
         if active(.shift), value.count == 1 { value = value.uppercased() }
         if active(.control), let scalar = value.unicodeScalars.first, scalar.value >= 0x40, scalar.value <= 0x7f { value = String(UnicodeScalar(scalar.value & 0x1f)!) }
         if active(.option) { value = "\u{1b}" + value }
