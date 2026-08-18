@@ -7,7 +7,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
-        context.coordinator.view = view; context.coordinator.installAccessory(on: view)
+        context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installEdgeControls(on: view)
         session?.onOutput = { [weak view] data in DispatchQueue.main.async { view?.feed(byteArray: ArraySlice(data)) } }
         return view
     }
@@ -18,13 +18,19 @@ struct TerminalSurfaceView: UIViewRepresentable {
         private var accessory: TerminalKeyboardAccessory?
         init(session: SessionClient?) { self.session = session }
         @MainActor func installAccessory(on view: TerminalView) {
-            let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.session?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) })
+            let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.session?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
             self.accessory = accessory
             view.inputAccessoryView = accessory
             // SwiftTerm installs a default accessory during its initialization. Reload the
             // responder so UIKit replaces that view even if the terminal is already focused.
             view.reloadInputViews()
             _ = view.becomeFirstResponder()
+        }
+        @MainActor func installEdgeControls(on view: TerminalView) {
+            let overlay = EdgeKeyOverlay { [weak self] sequence in self?.session?.sendInput(Data(sequence.utf8)) }
+            overlay.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(overlay)
+            NSLayoutConstraint.activate([overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor), overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor), overlay.topAnchor.constraint(equalTo: view.topAnchor), overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor)])
         }
         @MainActor private func performCommand(_ key: String) {
             switch key.lowercased() {
@@ -55,4 +61,24 @@ struct TerminalSurfaceView: UIViewRepresentable {
         func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {}
         func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
     }
+}
+
+/// Transparent edge targets preserve the terminal's centre for selection/tapping while
+/// making one-handed cursor navigation available around its perimeter.
+@MainActor private final class EdgeKeyOverlay: UIView {
+    init(send: @escaping (String) -> Void) {
+        super.init(frame: .zero)
+        let edges: [(String, String)] = [("top", "\u{1b}[A"), ("bottom", "\u{1b}[B"), ("left", "\u{1b}[D"), ("right", "\u{1b}[C")]
+        for (edge, sequence) in edges {
+            let button = UIButton(type: .custom); button.backgroundColor = .clear; button.accessibilityLabel = "Cursor \(edge)"
+            button.addAction(UIAction { _ in send(sequence) }, for: .touchUpInside); button.translatesAutoresizingMaskIntoConstraints = false; addSubview(button)
+            switch edge {
+            case "top": NSLayoutConstraint.activate([button.leadingAnchor.constraint(equalTo: leadingAnchor), button.trailingAnchor.constraint(equalTo: trailingAnchor), button.topAnchor.constraint(equalTo: topAnchor), button.heightAnchor.constraint(equalToConstant: 34)])
+            case "bottom": NSLayoutConstraint.activate([button.leadingAnchor.constraint(equalTo: leadingAnchor), button.trailingAnchor.constraint(equalTo: trailingAnchor), button.bottomAnchor.constraint(equalTo: bottomAnchor), button.heightAnchor.constraint(equalToConstant: 34)])
+            case "left": NSLayoutConstraint.activate([button.leadingAnchor.constraint(equalTo: leadingAnchor), button.topAnchor.constraint(equalTo: topAnchor, constant: 34), button.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -34), button.widthAnchor.constraint(equalToConstant: 34)])
+            default: NSLayoutConstraint.activate([button.trailingAnchor.constraint(equalTo: trailingAnchor), button.topAnchor.constraint(equalTo: topAnchor, constant: 34), button.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -34), button.widthAnchor.constraint(equalToConstant: 34)])
+            }
+        }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
