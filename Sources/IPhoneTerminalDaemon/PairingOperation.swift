@@ -14,7 +14,7 @@ final class PairingOperation: @unchecked Sendable {
     private let fingerprint: String
     private let onEnded: @Sendable () -> Void
 
-    init(identity: SecIdentity, identityStore: TLSIdentityStore, state: DaemonState, trustStore: TrustStore, endpoint: String, channel: ControlChannel, onPaired: @escaping @Sendable () async -> Void, onEnded: @escaping @Sendable () -> Void) throws {
+    init(identity: SecIdentity, identityStore: TLSIdentityStore, state: DaemonState, trustStore: TrustStore, endpoint: String, channel: ControlChannel, rendezvousCapability: RendezvousCapability? = nil, onPaired: @escaping @Sendable () async -> Void, onEnded: @escaping @Sendable () -> Void) throws {
         self.channel = channel
         self.endpoint = endpoint
         self.onEnded = onEnded
@@ -22,7 +22,7 @@ final class PairingOperation: @unchecked Sendable {
         let secretValue = UUID().uuidString.lowercased() + UUID().uuidString.lowercased()
         let placeholder = PairingTicket(endpoint: endpoint, port: 1, expiresAt: .now.addingTimeInterval(300), oneTimeSecret: secretValue, daemonCertificateFingerprint: fingerprint)
         let secret = PairingSecret(ticket: placeholder)
-        coordinator = PairingCoordinator(secret: secret, trustStore: trustStore, macID: state.macID, displayName: Host.current().localizedName ?? "Mac", serviceID: state.serviceID, macCertificate: try identityStore.certificateData(of: identity), approval: { request in
+        coordinator = PairingCoordinator(secret: secret, trustStore: trustStore, macID: state.macID, displayName: Host.current().localizedName ?? "Mac", serviceID: state.serviceID, macCertificate: try identityStore.certificateData(of: identity), rendezvousCapability: rendezvousCapability, approval: { request in
             let prompt = PairingPrompt(deviceID: request.deviceID, displayName: request.deviceName, certificateFingerprint: Fingerprint.sha256(of: request.certificate))
             do {
                 try channel.send(ControlResponse(kind: .pairingPrompt, success: true, pairingPrompt: prompt))
@@ -35,7 +35,7 @@ final class PairingOperation: @unchecked Sendable {
             let ticket = PairingTicket(endpoint: endpoint, port: port, expiresAt: placeholder.expiresAt, oneTimeSecret: secretValue, daemonCertificateFingerprint: fingerprint, remoteEndpoint: state.remoteEndpoint)
             // Recreate the ticket's externally visible port without changing the secret validation fields.
             try? channel.send(ControlResponse(kind: .pairingTicket, success: true, pairingTicket: ticket))
-        }, onConnection: { [weak self] connection, queue, _ in self?.accept(connection, queue: queue) })
+        }, onConnection: { [weak self] connection, queue, _, _, _ in self?.accept(connection, queue: queue) })
         listener?.start()
         DispatchQueue.global().asyncAfter(deadline: .now() + 300) { [weak self] in self?.finish(success: false, message: "Pairing ticket expired.") }
     }

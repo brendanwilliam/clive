@@ -23,16 +23,24 @@ public struct SessionOpenRequest: Codable, Equatable, Sendable {
     /// Stable across reconnects. It identifies a workspace shell, not a daemon PTY.
     public let clientSessionID: UUID
     public let initialSize: TerminalSize
-    public init(clientSessionID: UUID, initialSize: TerminalSize) {
+    public let rendezvousCapability: RendezvousCapability?
+    public let wanGateToken: Data?
+    public init(clientSessionID: UUID, initialSize: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil) {
         self.clientSessionID = clientSessionID
         self.initialSize = initialSize
+        self.rendezvousCapability = rendezvousCapability
+        self.wanGateToken = wanGateToken
     }
 }
 
 public struct SessionOpened: Codable, Equatable, Sendable {
     /// Ephemeral ID allocated by the daemon for this particular PTY.
     public let serverSessionID: UUID
-    public init(serverSessionID: UUID) { self.serverSessionID = serverSessionID }
+    public let rendezvousCapability: RendezvousCapability?
+    public init(serverSessionID: UUID, rendezvousCapability: RendezvousCapability? = nil) {
+        self.serverSessionID = serverSessionID
+        self.rendezvousCapability = rendezvousCapability
+    }
 }
 
 public struct SessionError: Codable, Equatable, Sendable {

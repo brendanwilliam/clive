@@ -8,7 +8,7 @@ final class PairingClient: @unchecked Sendable {
     enum Error: Swift.Error { case certificateChanged, invalidAcceptance, protocolViolation }
     private let queue = DispatchQueue(label: "com.iphoneterminal.pairing")
 
-    func pair(ticket: PairingTicket, identity: IPhoneIdentity) async throws -> PairedMac {
+    func pair(ticket: PairingTicket, identity: IPhoneIdentity, rendezvousCapability: RendezvousCapability? = nil) async throws -> PairedMac {
         try PairingTicketValidator.validate(ticket)
         let pin = PinResult()
         let options = NWProtocolTLS.Options()
@@ -23,7 +23,7 @@ final class PairingClient: @unchecked Sendable {
         let connection = NWConnection(host: NWEndpoint.Host(ticket.endpoint), port: port, using: NWParameters(tls: options, tcp: NWProtocolTCP.Options()))
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
-                let exchange = Exchange(connection: connection, ticket: ticket, identity: identity, pin: pin, continuation: continuation, queue: queue)
+                let exchange = Exchange(connection: connection, ticket: ticket, identity: identity, rendezvousCapability: rendezvousCapability, pin: pin, continuation: continuation, queue: queue)
                 exchange.start()
             }
         }, onCancel: { connection.cancel() })
@@ -33,10 +33,11 @@ final class PairingClient: @unchecked Sendable {
 
     private final class Exchange: @unchecked Sendable {
         let connection: NWConnection; let ticket: PairingTicket; let identity: IPhoneIdentity
+        let rendezvousCapability: RendezvousCapability?
         let continuation: CheckedContinuation<PairedMac, Swift.Error>; let queue: DispatchQueue; let pin: PinResult
         var decoder = FrameDecoder(); var completed = false
-        init(connection: NWConnection, ticket: PairingTicket, identity: IPhoneIdentity, pin: PinResult, continuation: CheckedContinuation<PairedMac, Swift.Error>, queue: DispatchQueue) {
-            self.connection = connection; self.ticket = ticket; self.identity = identity; self.pin = pin; self.continuation = continuation; self.queue = queue
+        init(connection: NWConnection, ticket: PairingTicket, identity: IPhoneIdentity, rendezvousCapability: RendezvousCapability?, pin: PinResult, continuation: CheckedContinuation<PairedMac, Swift.Error>, queue: DispatchQueue) {
+            self.connection = connection; self.ticket = ticket; self.identity = identity; self.rendezvousCapability = rendezvousCapability; self.pin = pin; self.continuation = continuation; self.queue = queue
         }
         func start() {
             // NWConnection retains its state handler. Keep the exchange alive through the TLS
@@ -52,7 +53,7 @@ final class PairingClient: @unchecked Sendable {
             connection.start(queue: queue)
         }
         func sendRequest() {
-            let request = PairingRequest(oneTimeSecret: ticket.oneTimeSecret, deviceID: identity.deviceID, deviceName: identity.displayName, certificate: identity.certificate)
+            let request = PairingRequest(oneTimeSecret: ticket.oneTimeSecret, deviceID: identity.deviceID, deviceName: identity.displayName, certificate: identity.certificate, rendezvousCapability: rendezvousCapability)
             guard let payload = try? ProtocolPayload.encode(request), let bytes = try? ProtocolFrame(kind: .pairingRequest, payload: payload).encoded() else { finish(.failure(Error.protocolViolation)); return }
             connection.send(content: bytes, completion: .contentProcessed { [weak self] error in if let error { self?.finish(.failure(error)) } })
         }
@@ -73,7 +74,7 @@ final class PairingClient: @unchecked Sendable {
             let acceptance = try ProtocolPayload.decode(PairingAcceptance.self, from: frame.payload)
             let fingerprint = Fingerprint.sha256(of: acceptance.certificate)
             guard fingerprint == ticket.daemonCertificateFingerprint.lowercased(), !acceptance.macID.isEmpty, !acceptance.serviceID.isEmpty else { throw Error.invalidAcceptance }
-            finish(.success(PairedMac(id: acceptance.macID, displayName: acceptance.displayName, serviceID: acceptance.serviceID, certificateFingerprint: fingerprint, createdAt: .now, remoteEndpoint: ticket.remoteEndpoint)))
+            finish(.success(PairedMac(id: acceptance.macID, displayName: acceptance.displayName, serviceID: acceptance.serviceID, certificateFingerprint: fingerprint, createdAt: .now, remoteEndpoint: ticket.remoteEndpoint, certificate: acceptance.certificate, rendezvousCapability: acceptance.rendezvousCapability)))
         }
         func finish(_ result: Result<PairedMac, Swift.Error>) {
             guard !completed else { return }

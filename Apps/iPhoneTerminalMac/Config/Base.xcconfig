@@ -1,0 +1,7 @@
+#include? "Local.xcconfig"
+IPHONE_TERMINAL_MAC_BUNDLE_ID = com.yourcompany.iphoneterminal.mac
+IPHONE_TERMINAL_ICLOUD_CONTAINER = iCloud.com.yourcompany.iphoneterminal
+PRODUCT_BUNDLE_IDENTIFIER = $(IPHONE_TERMINAL_MAC_BUNDLE_ID)
+PRODUCT_NAME = iPhone Terminal
+CODE_SIGN_STYLE = Automatic
+MACOSX_DEPLOYMENT_TARGET = 14.0

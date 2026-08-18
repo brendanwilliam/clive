@@ -5,14 +5,16 @@
 | Component | Responsibility |
 | --- | --- |
 | iOS app | Discovers paired Macs, unlocks the local identity with biometrics, establishes a secure session, and renders/inputs terminal data. |
-| macOS CLI (`iphone-terminald`) | Prints pairing QR codes, advertises the service, validates client certificates, owns a PTY and child `zsh`, and exposes status/revocation commands. |
+| macOS companion app | Signed menu bar owner of listeners, CloudKit rendezvous, pairing state, PTYs, and child `zsh` processes. |
+| macOS CLI (`iphone-terminald`) | Local control client for launch, pairing, status, cellular enablement, revocation, and shutdown. |
 | Local network | Carries Bonjour discovery and encrypted point-to-point terminal sessions. It never receives shell data in plaintext. |
+| CloudKit/APNs | Same-account private rendezvous and reachability hints; never a terminal transport or authorization source. |
 
 Both clients are native Swift applications. Shared protocol, cryptography, framing, and terminal-model code should live in a Swift package consumed by the iOS app and macOS CLI.
 
 ## Connection flow
 
-1. The CLI is started by the intended macOS user and advertises `_iphone-term._tcp` through Bonjour.
+1. The intended macOS user launches the signed menu bar companion, which advertises `_iphone-term._tcp` through Bonjour.
 2. The iOS app displays only discovered Macs that are already paired; unpaired devices are eligible only for the explicit pairing flow.
 3. A paired phone unlocks its private key through LocalAuthentication, resolves the Mac over Bonjour, and opens a TLS connection.
 4. Both sides verify the peer certificate against the pairing record before any application messages are processed.

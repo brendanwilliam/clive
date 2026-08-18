@@ -27,6 +27,14 @@ public actor TrustStore {
         try persist()
     }
 
+    public func upgrade(id: String, certificate: Data, rendezvousCapability: RendezvousCapability) throws -> Bool {
+        guard let index = devices.firstIndex(where: { $0.id == id }), Fingerprint.sha256(of: certificate) == devices[index].certificateFingerprint else { return false }
+        let current = devices[index]
+        devices[index] = PairedDevice(id: current.id, displayName: current.displayName, certificateFingerprint: current.certificateFingerprint, createdAt: current.createdAt, certificate: certificate, rendezvousCapability: rendezvousCapability)
+        try persist()
+        return true
+    }
+
     public func revoke(id: String) throws -> Bool {
         let oldCount = devices.count
         devices.removeAll { $0.id == id }

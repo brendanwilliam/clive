@@ -7,6 +7,9 @@ import Network
 final class SessionConnectionHandler: @unchecked Sendable {
     let identifier = UUID()
     private let deviceID: String
+    private let peerCertificate: Data?
+    private let requiresWANGate: Bool
+    private let localCapability: RendezvousCapability?
     private let registry: SessionRegistry
     private let queue: DispatchQueue
     private var framed: FramedConnection?
@@ -17,9 +20,13 @@ final class SessionConnectionHandler: @unchecked Sendable {
     private var closed = false
     private let onClosed: @Sendable (UUID) -> Void
     private let replaceExisting: @Sendable (String, UUID, SessionConnectionHandler) async -> Void
+    private let validateGate: @Sendable (String, Data?) async -> Bool
+    private let upgradePeer: @Sendable (String, Data, RendezvousCapability) async -> Void
 
-    init(deviceID: String, registry: SessionRegistry, queue: DispatchQueue, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }, replaceExisting: @escaping @Sendable (String, UUID, SessionConnectionHandler) async -> Void = { _, _, _ in }) {
+    init(deviceID: String, peerCertificate: Data? = nil, requiresWANGate: Bool = false, localCapability: RendezvousCapability? = nil, registry: SessionRegistry, queue: DispatchQueue, validateGate: @escaping @Sendable (String, Data?) async -> Bool = { _, _ in true }, upgradePeer: @escaping @Sendable (String, Data, RendezvousCapability) async -> Void = { _, _, _ in }, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }, replaceExisting: @escaping @Sendable (String, UUID, SessionConnectionHandler) async -> Void = { _, _, _ in }) {
         self.deviceID = deviceID; self.registry = registry; self.queue = queue
+        self.peerCertificate = peerCertificate; self.requiresWANGate = requiresWANGate; self.localCapability = localCapability
+        self.validateGate = validateGate; self.upgradePeer = upgradePeer
         self.onClosed = onClosed
         self.replaceExisting = replaceExisting
     }
@@ -52,6 +59,12 @@ final class SessionConnectionHandler: @unchecked Sendable {
             print("Session: opening shell.")
             opening = true
             Task {
+                let gateAllowed = requiresWANGate ? await validateGate(deviceID, request.wanGateToken) : true
+                guard gateAllowed else {
+                    queue.async { [weak self] in self?.fail(.authenticationFailed, "Cellular access is disabled or the rendezvous record expired") }
+                    return
+                }
+                if let certificate = peerCertificate, let capability = request.rendezvousCapability { await upgradePeer(deviceID, certificate, capability) }
                 await replaceExisting(deviceID, request.clientSessionID, self)
                 let session = await registry.open(deviceID: deviceID, clientSessionID: request.clientSessionID, size: request.initialSize)
                 queue.async { [weak self] in self?.finishOpening(session: session, size: request.initialSize) }
@@ -80,7 +93,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 guard let owner = self else { return }; owner.queue.async { [weak owner] in owner?.sendOutput(bytes) }
             }
             sessionID = session.id
-            let data = try ProtocolPayload.encode(SessionOpened(serverSessionID: session.id))
+            let data = try ProtocolPayload.encode(SessionOpened(serverSessionID: session.id, rendezvousCapability: localCapability))
             framed?.send(ProtocolFrame(kind: .sessionOpened, payload: data))
             print("Session: shell opened.")
         } catch {

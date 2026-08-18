@@ -18,6 +18,9 @@ struct IPhoneTerminalDaemon {
         guard let command = arguments.first else { throw CommandError.usage }
         switch command {
         case "start":
+            if arguments.count == 1, FileManager.default.fileExists(atPath: "/Applications/iPhone Terminal.app") {
+                try launchCompanionApp(); return
+            }
             let allowsNonPrivateNetwork = arguments.contains("--allow-non-private-network")
             let remote = try parseRemoteEndpoint(arguments)
             if arguments.contains("--clear-remote") {
@@ -36,6 +39,9 @@ struct IPhoneTerminalDaemon {
             guard arguments.count == 2 else { throw CommandError.usage }
             try runOneShot(.init(command: .revoke, deviceID: arguments[1]))
         case "stop": try runOneShot(.init(command: .stop))
+        case "cellular":
+            guard arguments.count == 2, let enabled = ["on": true, "off": false][arguments[1]] else { throw CommandError.usage }
+            try runOneShot(.init(command: .setCellularAccess, cellularEnabled: enabled))
         case "shell": try requireInteractiveTerminal(); try runLocalShell()
         case "help", "--help", "-h": print(usage)
         default: throw CommandError.usage
@@ -55,6 +61,13 @@ struct IPhoneTerminalDaemon {
         withExtendedLifetime((runtime, interrupt, terminate)) {}
     }
 
+    private static func launchCompanionApp() throws {
+        let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/open"); process.arguments = ["-a", "/Applications/iPhone Terminal.app"]
+        try process.run(); process.waitUntilExit()
+        guard process.terminationStatus == 0 else { throw CommandError.remote("The iPhone Terminal companion could not be launched.") }
+        print("Started the iPhone Terminal menu bar companion.")
+    }
+
     private static func runOneShot(_ request: ControlRequest) throws {
         let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
         try channel.send(request)
@@ -63,6 +76,9 @@ struct IPhoneTerminalDaemon {
         if let devices = response.devices {
             if devices.isEmpty { print("No paired devices.") }
             for device in devices { print("\(device.id)  \(device.displayName)  \(device.certificateFingerprint)  sessions=\(device.activeSessionCount)") }
+        }
+        if let cellular = response.cellularStatus {
+            print("cellular=\(cellular.enabled ? "on" : "off") state=\(cellular.state.rawValue)\(cellular.diagnostic.map { " diagnostic=\($0)" } ?? "")")
         } else if let message = response.message { print(message) }
     }
 
@@ -98,13 +114,14 @@ struct IPhoneTerminalDaemon {
     }
 
     static let usage = """
-    Usage: iphone-terminald <start|pair|status|revoke|stop> [options]
+    Usage: iphone-terminald <start|pair|status|revoke|stop|cellular> [options]
       start [--allow-non-private-network] [--remote-host <private-vpn-host-or-ip> --session-port <port>]
       start --clear-remote
       pair
       status
       revoke <device-id>
       stop
+      cellular <on|off>
       shell
     """
 

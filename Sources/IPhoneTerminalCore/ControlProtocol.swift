@@ -1,18 +1,22 @@
 import Foundation
 
 public enum ControlCommand: String, Codable, Sendable {
-    case pair, status, revoke, stop, approvePairing
+    case pair, status, revoke, stop, approvePairing, setCellularAccess
 }
 
 public struct ControlRequest: Codable, Equatable, Sendable {
     public let command: ControlCommand
     public let deviceID: String?
     public let approved: Bool?
+    public let cellularEnabled: Bool?
+    public let manualEndpoint: RemoteEndpoint?
 
-    public init(command: ControlCommand, deviceID: String? = nil, approved: Bool? = nil) {
+    public init(command: ControlCommand, deviceID: String? = nil, approved: Bool? = nil, cellularEnabled: Bool? = nil, manualEndpoint: RemoteEndpoint? = nil) {
         self.command = command
         self.deviceID = deviceID
         self.approved = approved
+        self.cellularEnabled = cellularEnabled
+        self.manualEndpoint = manualEndpoint
     }
 }
 
@@ -50,14 +54,28 @@ public struct ControlResponse: Codable, Equatable, Sendable {
     public let devices: [ControlDevice]?
     public let pairingTicket: PairingTicket?
     public let pairingPrompt: PairingPrompt?
+    public let cellularStatus: CellularAccessStatus?
 
-    public init(kind: Kind = .result, success: Bool, message: String? = nil, devices: [ControlDevice]? = nil, pairingTicket: PairingTicket? = nil, pairingPrompt: PairingPrompt? = nil) {
+    public init(kind: Kind = .result, success: Bool, message: String? = nil, devices: [ControlDevice]? = nil, pairingTicket: PairingTicket? = nil, pairingPrompt: PairingPrompt? = nil, cellularStatus: CellularAccessStatus? = nil) {
         self.kind = kind
         self.success = success
         self.message = message
         self.devices = devices
         self.pairingTicket = pairingTicket
         self.pairingPrompt = pairingPrompt
+        self.cellularStatus = cellularStatus
+    }
+}
+
+public enum CellularAccessState: String, Codable, Equatable, Sendable { case disabled, preparing, available, configurationRequired, blocked }
+
+public struct CellularAccessStatus: Codable, Equatable, Sendable {
+    public let enabled: Bool
+    public let state: CellularAccessState
+    public let diagnostic: String?
+    public let publishedUntil: Date?
+    public init(enabled: Bool, state: CellularAccessState, diagnostic: String? = nil, publishedUntil: Date? = nil) {
+        self.enabled = enabled; self.state = state; self.diagnostic = diagnostic; self.publishedUntil = publishedUntil
     }
 }
 

@@ -154,3 +154,56 @@ import Security
     let loaded = try TrustStore(url: url)
     #expect(await loaded.all().count == 1)
 }
+
+@Test func rendezvousEnvelopeRoundTripsAndRejectsReplayAndTampering() throws {
+    let sender = RendezvousKeyPair(); let recipient = RendezvousKeyPair()
+    let now = Date(timeIntervalSince1970: 1_700_000_000)
+    let payload = RendezvousAdvertisement(generation: UUID(), gateToken: Data(repeating: 7, count: 32), endpoints: [.init(host: "2001:db8::1", port: 22022, kind: .publicIPv6)])
+    let envelope = try RendezvousCrypto.seal(payload, senderID: "mac", recipientID: "phone", sequence: 4, issuedAt: now, expiresAt: now.addingTimeInterval(300), recipientAgreementKey: recipient.publicKeys.agreement, senderSigningKey: sender.signingPrivateKey)
+    let opened = try RendezvousCrypto.open(envelope, as: RendezvousAdvertisement.self, recipientID: "phone", recipientAgreementKey: recipient.agreementPrivateKey, senderSigningKey: sender.publicKeys.signing, minimumSequence: 3, now: now)
+    #expect(opened == payload)
+    #expect(throws: RendezvousError.replayed) {
+        try RendezvousCrypto.open(envelope, as: RendezvousAdvertisement.self, recipientID: "phone", recipientAgreementKey: recipient.agreementPrivateKey, senderSigningKey: sender.publicKeys.signing, minimumSequence: 4, now: now)
+    }
+    let tampered = RendezvousEnvelope(senderID: envelope.senderID, recipientID: envelope.recipientID, sequence: envelope.sequence, issuedAt: envelope.issuedAt, expiresAt: envelope.expiresAt, ephemeralPublicKey: envelope.ephemeralPublicKey, ciphertext: envelope.ciphertext + Data([0]), signature: envelope.signature)
+    #expect(throws: RendezvousError.invalidSignature) {
+        try RendezvousCrypto.open(tampered, as: RendezvousAdvertisement.self, recipientID: "phone", recipientAgreementKey: recipient.agreementPrivateKey, senderSigningKey: sender.publicKeys.signing, now: now)
+    }
+}
+
+@Test func rendezvousEnvelopeRejectsWrongRecipientAndExpiry() throws {
+    let sender = RendezvousKeyPair(); let recipient = RendezvousKeyPair()
+    let now = Date(timeIntervalSince1970: 1_700_000_000)
+    let envelope = try RendezvousCrypto.seal(RendezvousReachabilityHint(), senderID: "phone", recipientID: "mac", sequence: 1, issuedAt: now, expiresAt: now.addingTimeInterval(30), recipientAgreementKey: recipient.publicKeys.agreement, senderSigningKey: sender.signingPrivateKey)
+    #expect(throws: RendezvousError.wrongRecipient) {
+        try RendezvousCrypto.open(envelope, as: RendezvousReachabilityHint.self, recipientID: "other", recipientAgreementKey: recipient.agreementPrivateKey, senderSigningKey: sender.publicKeys.signing, now: now)
+    }
+    #expect(throws: RendezvousError.expired) {
+        try RendezvousCrypto.open(envelope, as: RendezvousReachabilityHint.self, recipientID: "mac", recipientAgreementKey: recipient.agreementPrivateKey, senderSigningKey: sender.publicKeys.signing, now: now.addingTimeInterval(31))
+    }
+}
+
+@Test func rendezvousRecordNamesAndAccountBindingsAreStableAndOpaque() {
+    #expect(RendezvousCrypto.recordName(macID: "mac", deviceID: "phone", purpose: "endpoint").count == 64)
+    #expect(RendezvousCrypto.recordName(macID: "mac", deviceID: "phone", purpose: "endpoint") != RendezvousCrypto.recordName(macID: "mac", deviceID: "phone", purpose: "hint"))
+    #expect(RendezvousCrypto.accountBinding(containerIdentifier: "iCloud.example", userRecordName: "user") == RendezvousCrypto.accountBinding(containerIdentifier: "iCloud.example", userRecordName: "user"))
+}
+
+@Test func wanGateExpiresAndInvalidatesBeforeCloudCleanup() {
+    let now = Date(timeIntervalSince1970: 1_700_000_000); let token = Data(repeating: 9, count: 32)
+    var gates = WANGateRegistry(); gates.issue(deviceID: "phone", token: token, expiresAt: now.addingTimeInterval(30))
+    #expect(gates.validate(deviceID: "phone", token: token, now: now))
+    #expect(!gates.validate(deviceID: "other", token: token, now: now))
+    #expect(!gates.validate(deviceID: "phone", token: token, now: now.addingTimeInterval(31)))
+    gates.invalidateAll()
+    #expect(!gates.validate(deviceID: "phone", token: token, now: now))
+}
+
+@Test func legacyPairingAndSessionRecordsDecodeWithoutRendezvousFields() throws {
+    let legacyMac = Data(#"{"id":"mac","displayName":"Mac","serviceID":"service","certificateFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","createdAt":0}"#.utf8)
+    let mac = try JSONDecoder().decode(PairedMac.self, from: legacyMac)
+    #expect(mac.rendezvousCapability == nil && mac.certificate == nil)
+    let legacyOpen = Data(#"{"clientSessionID":"00000000-0000-0000-0000-000000000001","initialSize":{"columns":80,"rows":24}}"#.utf8)
+    let request = try JSONDecoder().decode(SessionOpenRequest.self, from: legacyOpen)
+    #expect(request.rendezvousCapability == nil && request.wanGateToken == nil)
+}
