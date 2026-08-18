@@ -63,7 +63,7 @@ final class SecureListener: @unchecked Sendable {
         listener = try NWListener(using: NWParameters(tls: tls, tcp: NWProtocolTCP.Options()))
         if let serviceID {
             let txt = NetService.data(fromTXTRecord: ["id": Data(serviceID.utf8), "v": Data(String(1).utf8)])
-            listener.service = NWListener.Service(name: serviceID, type: "_iphone-terminal._tcp", txtRecord: txt)
+            listener.service = NWListener.Service(name: serviceID, type: "_iphone-term._tcp", txtRecord: txt)
         }
         listener.newConnectionHandler = { [weak self] connection in self?.prepare(connection) }
         listener.stateUpdateHandler = { [weak self] state in
@@ -80,12 +80,18 @@ final class SecureListener: @unchecked Sendable {
         guard peerTrust != nil else { onConnection(connection, queue, nil); return }
         connection.stateUpdateHandler = { [weak self, weak connection] state in
             guard let self, let connection else { return }
-            if case .ready = state {
+            switch state {
+            case .ready:
                 guard let metadata = connection.metadata(definition: NWProtocolTLS.definition) as? NWProtocolTLS.Metadata,
                       let deviceID = peerTrust?.consume(metadata: metadata.securityProtocolMetadata) else {
+                    print("Session: TLS completed without a trusted device mapping.")
                     connection.cancel(); return
                 }
+                print("Session: authenticated connection received.")
                 onConnection(connection, queue, deviceID)
+            case .failed(let error):
+                print("Session: TLS authentication failed: \(error.localizedDescription)")
+            default: break
             }
         }
         connection.start(queue: queue)

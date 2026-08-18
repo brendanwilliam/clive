@@ -34,7 +34,7 @@ final class PTYProcess: @unchecked Sendable {
         guard childPID >= 0 else { throw PTYProcessError.spawnFailed(errno) }
         if childPID == 0 {
             setenv("TERM", "xterm-256color", 1)
-            var arguments: [UnsafeMutablePointer<CChar>?] = [strdup("/bin/zsh"), strdup("zsh"), strdup("-l"), nil]
+            var arguments: [UnsafeMutablePointer<CChar>?] = [strdup("zsh"), strdup("-l"), nil]
             arguments.withUnsafeMutableBufferPointer { buffer in
                 _ = execv("/bin/zsh", buffer.baseAddress)
             }

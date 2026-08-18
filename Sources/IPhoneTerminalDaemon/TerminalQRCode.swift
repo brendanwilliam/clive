@@ -9,12 +9,12 @@ enum TerminalQRCodeError: LocalizedError {
 }
 
 enum TerminalQRCode {
-    /// Produces a high-contrast QR code using two terminal cells per module so phone cameras
-    /// can scan it directly from Terminal.app and standard monospace shells.
+    /// Packs two module rows into each terminal row. A terminal cell is roughly twice as tall
+    /// as it is wide, so the half-block characters keep modules square without doubling width.
     static func render(payload: String) throws -> String {
         guard let filter = CIFilter(name: "CIQRCodeGenerator") else { throw TerminalQRCodeError.generationFailed }
         filter.setValue(Data(payload.utf8), forKey: "inputMessage")
-        filter.setValue("M", forKey: "inputCorrectionLevel")
+        filter.setValue("L", forKey: "inputCorrectionLevel")
         guard let output = filter.outputImage else { throw TerminalQRCodeError.generationFailed }
         let extent = output.extent.integral
         let width = Int(extent.width)
@@ -33,18 +33,26 @@ enum TerminalQRCode {
             }
         }
 
-        let quietZone = 2
-        let blank = String(repeating: "  ", count: width + quietZone * 2)
-        var lines = Array(repeating: blank, count: quietZone)
-        for row in 0..<moduleHeight {
-            var line = String(repeating: "  ", count: quietZone)
+        let quietZone = 4
+        let totalWidth = width + quietZone * 2
+        let blank = String(repeating: " ", count: totalWidth)
+        var lines = Array(repeating: blank, count: quietZone / 2)
+        for row in stride(from: 0, to: moduleHeight, by: 2) {
+            var line = String(repeating: " ", count: quietZone)
             for column in 0..<width {
-                line += pixels[row * width + column] < 128 ? "██" : "  "
+                let upperIsDark = pixels[row * width + column] < 128
+                let lowerIsDark = row + 1 < moduleHeight && pixels[(row + 1) * width + column] < 128
+                switch (upperIsDark, lowerIsDark) {
+                case (true, true): line += "█"
+                case (true, false): line += "▀"
+                case (false, true): line += "▄"
+                case (false, false): line += " "
+                }
             }
-            line += String(repeating: "  ", count: quietZone)
+            line += String(repeating: " ", count: quietZone)
             lines.append(line)
         }
-        lines.append(contentsOf: Array(repeating: blank, count: quietZone))
+        lines.append(contentsOf: Array(repeating: blank, count: quietZone / 2))
         return lines.joined(separator: "\n")
     }
 }

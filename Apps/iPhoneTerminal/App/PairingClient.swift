@@ -39,8 +39,9 @@ final class PairingClient: @unchecked Sendable {
             self.connection = connection; self.ticket = ticket; self.identity = identity; self.pin = pin; self.continuation = continuation; self.queue = queue
         }
         func start() {
-            connection.stateUpdateHandler = { [weak self] state in
-                guard let self else { return }
+            // NWConnection retains its state handler. Keep the exchange alive through the TLS
+            // handshake and break the retain cycle in finish after the result is delivered.
+            connection.stateUpdateHandler = { state in
                 switch state {
                 case .ready: self.sendRequest(); self.receive()
                 case .failed(let error): self.finish(.failure(self.pin.mismatch ? Error.certificateChanged : error))
@@ -75,7 +76,11 @@ final class PairingClient: @unchecked Sendable {
             finish(.success(PairedMac(id: acceptance.macID, displayName: acceptance.displayName, serviceID: acceptance.serviceID, certificateFingerprint: fingerprint, createdAt: .now)))
         }
         func finish(_ result: Result<PairedMac, Swift.Error>) {
-            guard !completed else { return }; completed = true; connection.cancel(); continuation.resume(with: result)
+            guard !completed else { return }
+            completed = true
+            connection.stateUpdateHandler = nil
+            connection.cancel()
+            continuation.resume(with: result)
         }
     }
 }

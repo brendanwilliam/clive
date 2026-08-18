@@ -10,19 +10,26 @@ final class FramedConnection: @unchecked Sendable {
     private let queue: DispatchQueue
     private let onFrame: @Sendable (ProtocolFrame) -> Void
     private let onClosed: @Sendable () -> Void
+    private let onDiagnostic: @Sendable (String) -> Void
 
-    init(connection: NWConnection, queue: DispatchQueue, onFrame: @escaping @Sendable (ProtocolFrame) -> Void, onClosed: @escaping @Sendable () -> Void = {}) {
+    init(connection: NWConnection, queue: DispatchQueue, onFrame: @escaping @Sendable (ProtocolFrame) -> Void, onClosed: @escaping @Sendable () -> Void = {}, onDiagnostic: @escaping @Sendable (String) -> Void = { _ in }) {
         self.connection = connection
         self.queue = queue
         self.onFrame = onFrame
         self.onClosed = onClosed
+        self.onDiagnostic = onDiagnostic
     }
 
     func start(alreadyStarted: Bool = false) {
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
-            case .ready: self?.receiveNextChunk()
-            case .failed, .cancelled: self?.onClosed()
+            case .ready:
+                self?.onDiagnostic("TLS ready")
+                self?.receiveNextChunk()
+            case .failed(let error):
+                self?.onDiagnostic("TLS failed: \(error.localizedDescription)")
+                self?.onClosed()
+            case .cancelled: self?.onClosed()
             default: break
             }
         }

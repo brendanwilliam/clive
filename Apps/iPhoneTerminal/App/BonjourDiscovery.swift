@@ -8,7 +8,7 @@ final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
     private var services: [NetService] = []
     private var routes: [String: MacRoute] = [:]
 
-    func start() { browser.delegate = self; browser.searchForServices(ofType: "_iphone-terminal._tcp.", inDomain: "local.") }
+    func start() { browser.delegate = self; browser.searchForServices(ofType: "_iphone-term._tcp.", inDomain: "local.") }
     func stop() { browser.stop(); services.forEach { $0.stop() }; services.removeAll(); routes.removeAll(); onChange?([:]) }
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) { services.append(service); service.delegate = self; service.resolve(withTimeout: 5) }
     func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {

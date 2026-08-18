@@ -42,7 +42,11 @@ final class SessionConnectionHandler: @unchecked Sendable {
         if shell == nil {
             guard !opening, frame.kind == .sessionOpen,
                   let request = try? ProtocolPayload.decode(SessionOpenRequest.self, from: frame.payload),
-                  request.initialSize.isValid else { return fail(.invalidFrameOrder, "session.open must be the first frame") }
+                  request.initialSize.isValid else {
+                print("Session: invalid opening frame received.")
+                return fail(.invalidFrameOrder, "session.open must be the first frame")
+            }
+            print("Session: opening shell.")
             opening = true
             Task {
                 let session = await registry.open(deviceID: deviceID, size: request.initialSize)
@@ -51,7 +55,9 @@ final class SessionConnectionHandler: @unchecked Sendable {
             return
         }
         switch frame.kind {
-        case .terminalInput: do { try shell?.write(frame.payload) } catch { close() }
+        case .terminalInput:
+            do { try shell?.write(frame.payload) }
+            catch { print("Session: terminal input failed: \(error.localizedDescription)"); close() }
         case .terminalResize:
             guard let size = try? ProtocolPayload.decode(TerminalSize.self, from: frame.payload), size.isValid else {
                 return fail(.protocolError, "Invalid terminal size")
@@ -72,7 +78,9 @@ final class SessionConnectionHandler: @unchecked Sendable {
             sessionID = session.id
             let data = try ProtocolPayload.encode(SessionOpened(sessionID: session.id))
             framed?.send(ProtocolFrame(kind: .sessionOpened, payload: data))
+            print("Session: shell opened.")
         } catch {
+            print("Session: shell creation failed: \(error.localizedDescription)")
             Task { await registry.close(id: session.id) }
             fail(.shellCreationFailed, "Unable to create login shell")
         }

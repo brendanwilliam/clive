@@ -8,10 +8,12 @@ final class PairingConnectionHandler: @unchecked Sendable {
     private let coordinator: PairingCoordinator
     private var framedConnection: FramedConnection?
     private let onFinished: @Sendable (Bool) -> Void
+    private let onDiagnostic: @Sendable (String) -> Void
 
-    init(coordinator: PairingCoordinator, onFinished: @escaping @Sendable (Bool) -> Void = { _ in }) {
+    init(coordinator: PairingCoordinator, onFinished: @escaping @Sendable (Bool) -> Void = { _ in }, onDiagnostic: @escaping @Sendable (String) -> Void = { _ in }) {
         self.coordinator = coordinator
         self.onFinished = onFinished
+        self.onDiagnostic = onDiagnostic
     }
 
     func start(connection: NWConnection, queue: DispatchQueue) {
@@ -19,7 +21,7 @@ final class PairingConnectionHandler: @unchecked Sendable {
             self?.handle(frame)
         }, onClosed: { [weak self] in
             self?.framedConnection = nil
-        })
+        }, onDiagnostic: onDiagnostic)
         framedConnection = framed
         framed.start()
     }
@@ -27,9 +29,11 @@ final class PairingConnectionHandler: @unchecked Sendable {
     private func handle(_ frame: ProtocolFrame) {
         guard frame.kind == .pairingRequest,
               let request = try? ProtocolPayload.decode(PairingRequest.self, from: frame.payload) else {
+            onDiagnostic("invalid request received")
             framedConnection?.cancel()
             return
         }
+        onDiagnostic("request received; waiting for local approval")
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -38,6 +42,7 @@ final class PairingConnectionHandler: @unchecked Sendable {
                 framedConnection?.send(ProtocolFrame(kind: .pairingAccept, payload: data))
                 onFinished(true)
             } catch {
+                self.onDiagnostic("request rejected: \(error.localizedDescription)")
                 framedConnection?.cancel()
                 onFinished(false)
             }

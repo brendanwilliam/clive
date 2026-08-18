@@ -19,11 +19,8 @@ targets:
     settings:
       base:
         SWIFT_VERSION: 6.0
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_NSCameraUsageDescription: Scan a Mac pairing code.
-        INFOPLIST_KEY_NSFaceIDUsageDescription: Unlock access to your paired Mac terminals.
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Find paired Macs on the local network.
-        INFOPLIST_KEY_NSBonjourServices: _iphone-terminal._tcp
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Config/Info.plist
     dependencies:
       - package: IPhoneTerminalCore
         product: IPhoneTerminalCore

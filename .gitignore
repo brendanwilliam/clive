@@ -6,6 +6,7 @@ xcuserdata/
 
 # Swift Package Manager
 .build/
+.swiftpm/
 dist/
 
 # Secrets and local pairing state

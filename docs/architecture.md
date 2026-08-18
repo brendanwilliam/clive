@@ -12,7 +12,7 @@ Both clients are native Swift applications. Shared protocol, cryptography, frami
 
 ## Connection flow
 
-1. The CLI is started by the intended macOS user and advertises `_iphone-terminal._tcp` through Bonjour.
+1. The CLI is started by the intended macOS user and advertises `_iphone-term._tcp` through Bonjour.
 2. The iOS app displays only discovered Macs that are already paired; unpaired devices are eligible only for the explicit pairing flow.
 3. A paired phone unlocks its private key through LocalAuthentication, resolves the Mac over Bonjour, and opens a TLS connection.
 4. Both sides verify the peer certificate against the pairing record before any application messages are processed.

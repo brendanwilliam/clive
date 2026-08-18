@@ -2,7 +2,7 @@
 
 ## Discovery
 
-The Mac advertises `_iphone-terminal._tcp` with a non-secret service identifier, protocol version, and TLS port in Bonjour TXT records. Discovery is a convenience only; trust never comes from the service name, hostname, IP address, or Bonjour metadata.
+The Mac advertises `_iphone-term._tcp` with a non-secret service identifier, protocol version, and TLS port in Bonjour TXT records. Discovery is a convenience only; trust never comes from the service name, hostname, IP address, or Bonjour metadata.
 
 ## Pairing
 

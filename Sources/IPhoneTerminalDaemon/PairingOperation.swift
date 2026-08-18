@@ -43,7 +43,10 @@ final class PairingOperation: @unchecked Sendable {
     func cancel(message: String = "Pairing cancelled.") { finish(success: false, message: message) }
 
     private func accept(_ connection: NWConnection, queue: DispatchQueue) {
-        let handler = PairingConnectionHandler(coordinator: coordinator, onFinished: { [weak self] success in self?.pairingFinished(success) })
+        print("Pairing: connection received.")
+        let handler = PairingConnectionHandler(coordinator: coordinator, onFinished: { [weak self] success in self?.pairingFinished(success) }, onDiagnostic: { message in
+            print("Pairing: \(message).")
+        })
         lock.withLock { handlers.append(handler) }
         handler.start(connection: connection, queue: queue)
     }

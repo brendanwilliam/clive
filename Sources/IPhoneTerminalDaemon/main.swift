@@ -69,7 +69,9 @@ struct IPhoneTerminalDaemon {
             case .pairingTicket:
                 guard let ticket = response.pairingTicket else { throw ControlSocketError.malformedMessage }
                 print("Scan this pairing code within five minutes:")
+                print("Pairing endpoint: \(ticket.endpoint):\(ticket.port)")
                 print(try TerminalQRCode.render(payload: PairingPayload.encode(ticket)))
+                print("Waiting for the iPhone. After scanning, approve the device below.")
             case .pairingPrompt:
                 guard let prompt = response.pairingPrompt else { throw ControlSocketError.malformedMessage }
                 print("Pair \(prompt.displayName) (\(prompt.deviceID))?")
