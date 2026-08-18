@@ -1,0 +1,4 @@
+#include? "Local.xcconfig"
+IPHONE_TERMINAL_BUNDLE_ID = com.yourcompany.iphoneterminal
+PRODUCT_BUNDLE_IDENTIFIER = $(IPHONE_TERMINAL_BUNDLE_ID)
+CODE_SIGN_STYLE = Automatic

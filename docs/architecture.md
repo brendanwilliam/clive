@@ -12,7 +12,7 @@ Both clients are native Swift applications. Shared protocol, cryptography, frami
 
 ## Connection flow
 
-1. The CLI is started by the intended macOS user and advertises `_iphone-terminal._tcp` through Bonjour.
+1. The CLI is started by the intended macOS user and advertises `_iphone-term._tcp` through Bonjour.
 2. The iOS app displays only discovered Macs that are already paired; unpaired devices are eligible only for the explicit pairing flow.
 3. A paired phone unlocks its private key through LocalAuthentication, resolves the Mac over Bonjour, and opens a TLS connection.
 4. Both sides verify the peer certificate against the pairing record before any application messages are processed.
@@ -31,6 +31,8 @@ iphone-terminald stop
 ```
 
 `start` remains foreground by default so access is visible and ends when the process exits. `pair` presents a short-lived QR code only after an interactive local confirmation. `status` lists paired devices and active sessions without exposing terminal content. `revoke` immediately removes the device trust record and terminates its active sessions.
+
+The running process owns a mode-`0600` Unix control socket. All other commands use bounded Codable messages over that socket; they never edit live trust state independently.
 
 ## iOS UX boundaries
 

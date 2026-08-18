@@ -9,7 +9,7 @@
 
 ## Trust boundaries
 
-Bonjour and the LAN are untrusted. The QR code is an out-of-band authorization channel and must be treated as sensitive for its 5-minute lifetime. The iOS device protects its long-lived private key in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`; Secure Enclave storage is used where supported. The Mac stores pairing records with owner-only filesystem permissions in its application-support directory.
+Bonjour and the LAN are untrusted. The QR code is an out-of-band authorization channel and must be treated as sensitive for its 5-minute lifetime. The iOS device protects its P-256 key in the Data Protection Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`; Secure Enclave integration is deferred. macOS keeps the P-256 identity in an encrypted PKCS#12 file beside its random password, both owner-only, and stores pairing records with owner-only permissions.
 
 ## Controls
 
@@ -24,6 +24,8 @@ Bonjour and the LAN are untrusted. The QR code is an out-of-band authorization c
 ## Explicit limitations
 
 Physical access to an unlocked iPhone or Mac user session remains a risk. V1 has no account recovery and no relay; losing a phone requires revocation from the Mac. The service must warn before binding to non-private networks and must provide a configuration option to disable LAN advertising entirely.
+
+The macOS identity password and encrypted identity share the same user-scoped directory, so filesystem access as that macOS user can recover the identity. This prototype does not claim protection from compromise of the invoking user account.
 
 ## Validation requirements
 
