@@ -10,7 +10,7 @@ actor MacRendezvousController {
     private let state: DaemonState
     private let trustStore: TrustStore
     private let settingsURL: URL
-    private let cloud: CloudRendezvousStore
+    private let cloud: CloudRendezvousStore?
     private let keys: RendezvousKeyPair
     private var settings: Settings
     private var accountBinding: String?
@@ -25,13 +25,21 @@ actor MacRendezvousController {
         if let data = try? Data(contentsOf: settingsURL) { settings = (try? JSONDecoder().decode(Settings.self, from: data)) ?? Settings() }
         else { settings = Settings() }
         let container = ProcessInfo.processInfo.environment["IPHONE_TERMINAL_ICLOUD_CONTAINER"] ?? "iCloud.com.iphoneterminal"
-        cloud = CloudRendezvousStore(containerIdentifier: container)
+        cloud = Self.hasCloudKitEntitlement ? CloudRendezvousStore(containerIdentifier: container) : nil
         keys = try RendezvousKeyStore(service: "com.iphoneterminal.mac.rendezvous").loadOrCreate()
         currentStatus = CellularAccessStatus(enabled: settings.enabled, state: settings.enabled ? .preparing : .disabled)
     }
 
     func prepare(listenerPort: UInt16) async {
         self.listenerPort = listenerPort
+        guard let cloud else {
+            currentStatus = CellularAccessStatus(
+                enabled: settings.enabled,
+                state: settings.enabled ? .blocked : .disabled,
+                diagnostic: settings.enabled ? CloudRendezvousError.entitlementUnavailable.localizedDescription : nil
+            )
+            return
+        }
         do {
             accountBinding = try await cloud.prepare()
             if settings.enabled { await publishAll() }
@@ -48,12 +56,14 @@ actor MacRendezvousController {
     func status() -> CellularAccessStatus { currentStatus }
 
     func setEnabled(_ enabled: Bool, manualEndpoint: RemoteEndpoint?) async throws {
+        if enabled && cloud == nil { throw CloudRendezvousError.entitlementUnavailable }
         if !enabled { gates.invalidateAll() }
         settings.enabled = enabled
         if let manualEndpoint { settings.manualEndpoint = manualEndpoint }
         try persistSettings()
         if enabled { gates.invalidateAll() }
         if enabled {
+            guard let cloud else { return }
             currentStatus = CellularAccessStatus(enabled: true, state: .preparing)
             if accountBinding == nil { accountBinding = try await cloud.prepare() }
             await publishAll()
@@ -67,12 +77,13 @@ actor MacRendezvousController {
 
     func revoke(deviceID: String) async {
         gates.revoke(deviceID: deviceID)
+        guard let cloud else { return }
         let name = RendezvousCrypto.recordName(macID: state.macID, deviceID: deviceID, purpose: "endpoint")
         try? await cloud.delete(recordName: name)
     }
 
     func cloudDidChange() async {
-        guard settings.enabled else { return }
+        guard settings.enabled, let cloud else { return }
         var receivedValidHint = false
         for device in await trustStore.all() {
             guard let peer = device.rendezvousCapability else { continue }
@@ -96,7 +107,7 @@ actor MacRendezvousController {
     }
 
     private func publishAll() async {
-        guard settings.enabled, let listenerPort, let accountBinding else { return }
+        guard settings.enabled, let cloud, let listenerPort, let accountBinding else { return }
         var endpoints = PublicNetwork.publicIPv6Addresses().map { RendezvousEndpoint(host: $0, port: listenerPort, kind: .publicIPv6) }
         if let manual = settings.manualEndpoint { endpoints.append(.init(host: manual.host, port: manual.port, kind: .manualPublicEndpoint)) }
         guard !endpoints.isEmpty else {
@@ -124,6 +135,7 @@ actor MacRendezvousController {
     }
 
     private func deleteAllRecords() async {
+        guard let cloud else { return }
         for device in await trustStore.all() {
             let name = RendezvousCrypto.recordName(macID: state.macID, deviceID: device.id, purpose: "endpoint")
             try? await cloud.delete(recordName: name)
@@ -140,5 +152,12 @@ actor MacRendezvousController {
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return Data(UUID().uuidString.utf8) }
         return Data(bytes)
+    }
+
+    private static var hasCloudKitEntitlement: Bool {
+        guard let task = SecTaskCreateFromSelf(nil),
+              let services = SecTaskCopyValueForEntitlement(task, "com.apple.developer.icloud-services" as CFString, nil) as? [String]
+        else { return false }
+        return services.contains("CloudKit") || services.contains("CloudKit-Anonymous")
     }
 }
