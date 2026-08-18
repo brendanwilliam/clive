@@ -8,34 +8,47 @@ final class TerminalKeyboardAccessory: UIInputView {
     private var locked = Set<Modifier>()
     private let send: (Data) -> Void
     private let command: (String) -> Void
+    private var buttons: [UIButton] = []
 
     init(send: @escaping (Data) -> Void, command: @escaping (String) -> Void) {
         self.send = send; self.command = command
-        super.init(frame: .zero, inputViewStyle: .keyboard)
+        super.init(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48), inputViewStyle: .keyboard)
         allowsSelfSizing = true
+        autoresizingMask = [.flexibleWidth, .flexibleHeight]
         backgroundColor = .secondarySystemBackground
-        let keys = ["Tab", "Shift", "Control", "Option", "Command", ".", "/", "@", "$", "←", "↓", "↑", "→", "Touch Keyboard"]
-        let row = UIStackView(); row.axis = .horizontal; row.spacing = 5; row.distribution = .fillProportionally
+        let keys: [(title: String, action: String, accessibility: String)] = [
+            ("⇥", "tab", "Tab"), ("⇧", "shift", "Shift"), ("⌃", "control", "Control"),
+            ("⌥", "option", "Option"), ("⌘", "command", "Command"), (".", ".", "Period"),
+            ("/", "/", "Slash"), ("@", "@", "At sign"), ("$", "$", "Dollar"),
+            ("←", "left", "Left arrow"), ("↓", "down", "Down arrow"), ("↑", "up", "Up arrow"),
+            ("→", "right", "Right arrow"), ("⌨", "keyboard", "Hide keyboard")
+        ]
+        let scroll = UIScrollView(); scroll.showsHorizontalScrollIndicator = false; scroll.alwaysBounceHorizontal = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        let row = UIStackView(); row.axis = .horizontal; row.spacing = 7; row.distribution = .fill
         row.translatesAutoresizingMaskIntoConstraints = false
-        for title in keys {
-            let button = UIButton(type: .system); button.setTitle(title, for: .normal); button.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
-            button.accessibilityLabel = title; button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
-            if ["Shift", "Control", "Option", "Command"].contains(title) { button.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))) }
+        for key in keys {
+            let button = UIButton(type: .system); button.setTitle(key.title, for: .normal); button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+            button.accessibilityLabel = key.accessibility; button.accessibilityIdentifier = key.action
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
+            button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
+            if ["shift", "control", "option", "command"].contains(key.action) { button.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))) }
             row.addArrangedSubview(button)
+            buttons.append(button)
         }
-        addSubview(row)
-        NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6), row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6), row.topAnchor.constraint(equalTo: topAnchor, constant: 6), row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6), heightAnchor.constraint(greaterThanOrEqualToConstant: 42)])
+        addSubview(scroll); scroll.addSubview(row)
+        NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: leadingAnchor), scroll.trailingAnchor.constraint(equalTo: trailingAnchor), scroll.topAnchor.constraint(equalTo: topAnchor), scroll.bottomAnchor.constraint(equalTo: bottomAnchor), row.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 8), row.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -8), row.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 4), row.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -4), row.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor, constant: -8), heightAnchor.constraint(equalToConstant: 48)])
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func resetModifiers() { oneShot.removeAll(); locked.removeAll(); refreshModifierButtons() }
 
     @objc private func pressed(_ sender: UIButton) {
-        guard let title = sender.currentTitle else { return }
-        if let modifier = modifier(named: title) { toggle(modifier, locked: false); return }
-        if title == "Touch Keyboard" { resignFirstResponder(); return }
-        let arrows = ["←": "\u{1b}[D", "↓": "\u{1b}[B", "↑": "\u{1b}[A", "→": "\u{1b}[C", "Tab": "\t"]
-        var value = arrows[title] ?? title
+        guard let action = sender.accessibilityIdentifier else { return }
+        if let modifier = modifier(named: action) { toggle(modifier, locked: false); return }
+        if action == "keyboard" { resignFirstResponder(); return }
+        let keys = ["left": "\u{1b}[D", "down": "\u{1b}[B", "up": "\u{1b}[A", "right": "\u{1b}[C", "tab": "\t"]
+        var value = keys[action] ?? action
         if active(.command) { command(value); consumeOneShot(); return }
         if active(.shift), value.count == 1 { value = value.uppercased() }
         if active(.control), let scalar = value.unicodeScalars.first, scalar.value >= 0x40, scalar.value <= 0x7f { value = String(UnicodeScalar(scalar.value & 0x1f)!) }
@@ -43,10 +56,10 @@ final class TerminalKeyboardAccessory: UIInputView {
         send(Data(value.utf8)); consumeOneShot()
     }
     @objc private func longPressed(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began, let title = (gesture.view as? UIButton)?.currentTitle, let modifier = modifier(named: title) else { return }
+        guard gesture.state == .began, let action = (gesture.view as? UIButton)?.accessibilityIdentifier, let modifier = modifier(named: action) else { return }
         toggle(modifier, locked: true)
     }
-    private func modifier(named title: String) -> Modifier? { switch title { case "Shift": .shift; case "Control": .control; case "Option": .option; case "Command": .command; default: nil } }
+    private func modifier(named action: String) -> Modifier? { switch action { case "shift": .shift; case "control": .control; case "option": .option; case "command": .command; default: nil } }
     private func active(_ modifier: Modifier) -> Bool { oneShot.contains(modifier) || locked.contains(modifier) }
     private func toggle(_ modifier: Modifier, locked shouldLock: Bool) {
         if shouldLock { if locked.contains(modifier) { locked.remove(modifier) } else { locked.insert(modifier); oneShot.remove(modifier) } }
@@ -54,5 +67,5 @@ final class TerminalKeyboardAccessory: UIInputView {
         refreshModifierButtons()
     }
     private func consumeOneShot() { oneShot.removeAll(); refreshModifierButtons() }
-    private func refreshModifierButtons() { for case let button as UIButton in subviews.flatMap({ $0.subviews }) { if let modifier = modifier(named: button.currentTitle ?? "") { button.isSelected = active(modifier); button.tintColor = button.isSelected ? .systemBlue : .label } } }
+    private func refreshModifierButtons() { for button in buttons { if let action = button.accessibilityIdentifier, let modifier = modifier(named: action) { button.isSelected = active(modifier); button.tintColor = button.isSelected ? .systemBlue : .label } } }
 }

@@ -22,19 +22,43 @@ struct SessionDescriptor: Codable, Identifiable, Equatable {
     var lastActivityAt: Date?
     private var accumulator = TerminalPreviewAccumulator()
 
-    init(descriptor: SessionDescriptor, device: PairedMac, route: MacRoute, identity: IPhoneIdentity) {
+    private let routes: [MacRoute]
+    private let device: PairedMac
+    private let identity: IPhoneIdentity
+    private var routeIndex = 0
+
+    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity) {
         self.descriptor = descriptor
         self.id = descriptor.id
-        client.onState = { [weak self] value in DispatchQueue.main.async { self?.state = value } }
+        self.routes = routes
+        self.device = device
+        self.identity = identity
+        client.onState = { [weak self] value in DispatchQueue.main.async { self?.handleState(value) } }
         client.onActivityOutput = { [weak self] bytes in DispatchQueue.main.async {
             guard let self else { return }; self.accumulator.consume(bytes); self.preview = self.accumulator.preview; self.lastActivityAt = .now
         } }
-        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, size: TerminalSize(columns: 80, rows: 24))
+        connectCurrentRoute()
     }
 
     func noteInput() { lastActivityAt = .now }
     func clearTransientActivity() { accumulator.clear(); preview = nil; lastActivityAt = nil }
     func close() { clearTransientActivity(); client.close() }
+
+    private func handleState(_ value: SessionClient.State) {
+        state = value
+        guard case .networkError = value, routeIndex + 1 < routes.count else { return }
+        // Bonjour/LAN is always first. A failed attempt may fall back once to the
+        // pinned private-overlay endpoint; certificate validation is unchanged.
+        routeIndex += 1
+        clearTransientActivity()
+        state = .connecting
+        connectCurrentRoute()
+    }
+
+    private func connectCurrentRoute() {
+        let route = routes[routeIndex]
+        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, size: TerminalSize(columns: 80, rows: 24))
+    }
 }
 
 @MainActor @Observable final class WorkspaceCoordinator {
@@ -66,9 +90,10 @@ struct SessionDescriptor: Codable, Identifiable, Equatable {
     }
 
     func addShell() {
-        guard let mac = selectedMac, let route = route(for: mac), let identity else { return }
+        guard let mac = selectedMac, let identity else { return }
+        let routes = routes(for: mac); guard !routes.isEmpty else { return }
         let descriptor = SessionDescriptor(label: "Shell \(sessions.count + 1)")
-        let session = WorkspaceSession(descriptor: descriptor, device: mac, route: route, identity: identity)
+        let session = WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity)
         sessions.append(session); selectedSessionID = session.id; saveCurrentDescriptors(); persist()
     }
 
@@ -80,17 +105,22 @@ struct SessionDescriptor: Codable, Identifiable, Equatable {
     func sceneDidBackground() { saveCurrentDescriptors(); persist(); closeLiveSessions(); state = .locked }
 
     private func restoreSelectedMac() {
-        guard state == .active, let mac = selectedMac, let route = route(for: mac), let identity else { return }
+        guard state == .active, let mac = selectedMac, let identity else { return }
+        let routes = routes(for: mac); guard !routes.isEmpty else { return }
         let descriptors = snapshot.sessionsByMac[mac.id] ?? [SessionDescriptor(label: "Shell 1")]
-        sessions = descriptors.map { WorkspaceSession(descriptor: $0, device: mac, route: route, identity: identity) }
+        sessions = descriptors.map { WorkspaceSession(descriptor: $0, device: mac, routes: routes, identity: identity) }
         selectedSessionID = sessions.first?.id
         saveCurrentDescriptors(); persist()
     }
 
-    private func route(for mac: PairedMac) -> MacRoute? {
-        if let lan = macs.route(for: mac) { return lan }
-        if let remote = mac.remoteEndpoint { return MacRoute(host: remote.host, port: remote.port) }
-        return nil
+    private func routes(for mac: PairedMac) -> [MacRoute] {
+        var values: [MacRoute] = []
+        if let lan = macs.route(for: mac) { values.append(lan) }
+        if let remote = mac.remoteEndpoint {
+            let remoteRoute = MacRoute(host: remote.host, port: remote.port)
+            if !values.contains(remoteRoute) { values.append(remoteRoute) }
+        }
+        return values
     }
     private func closeLiveSessions() { sessions.forEach { $0.close() }; sessions.removeAll(); selectedSessionID = nil }
     private func saveCurrentDescriptors() { guard let id = selectedMacID else { return }; snapshot.sessionsByMac[id] = sessions.map(\.descriptor); snapshot.selectedMacID = id }

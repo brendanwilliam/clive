@@ -19,7 +19,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
         init(session: SessionClient?) { self.session = session }
         @MainActor func installAccessory(on view: TerminalView) {
             let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.session?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) })
-            self.accessory = accessory; view.inputAccessoryView = accessory
+            self.accessory = accessory
+            view.inputAccessoryView = accessory
+            // SwiftTerm installs a default accessory during its initialization. Reload the
+            // responder so UIKit replaces that view even if the terminal is already focused.
+            view.reloadInputViews()
+            _ = view.becomeFirstResponder()
         }
         @MainActor private func performCommand(_ key: String) {
             switch key.lowercased() {

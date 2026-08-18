@@ -29,8 +29,12 @@ final class DaemonRuntime: @unchecked Sendable {
         controlServer = try ControlSocketServer(url: paths.controlSocketURL) { [weak self] request, channel in
             await self?.handle(request, channel: channel)
         }
-        sessionListener = try SecureListener(identity: identity, serviceID: state.serviceID, peerTrust: peerTrust, onReady: { port in
-            print("iphone-terminald listening on port \(port).")
+        sessionListener = try SecureListener(identity: identity, port: state.remoteEndpoint?.port, serviceID: state.serviceID, peerTrust: peerTrust, onReady: { [remoteEndpoint = state.remoteEndpoint] port in
+            if let remoteEndpoint {
+                print("iphone-terminald listening on private VPN port \(port) for \(remoteEndpoint.host).")
+            } else {
+                print("iphone-terminald listening on port \(port).")
+            }
         }, onConnection: { [weak self] connection, queue, deviceID in
             guard let self, let deviceID else { connection.cancel(); return }
             self.openSession(connection: connection, queue: queue, deviceID: deviceID)

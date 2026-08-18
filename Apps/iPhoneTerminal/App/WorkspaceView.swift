@@ -17,16 +17,31 @@ struct WorkspaceView: View {
                 case .failed(let message): ContentUnavailableView("Connection failed", systemImage: "exclamationmark.triangle", description: Text(message))
                 }
             }
-            .navigationTitle(coordinator.selectedMac?.displayName ?? "iPhone Terminal")
+            .navigationTitle("")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("New shell", systemImage: "plus") { coordinator.addShell() }.disabled(coordinator.state != .active || coordinator.selectedMac == nil) }
-                ToolbarItem(placement: .principal) { Button { showingConnections = true } label: { Label(coordinator.selectedMac?.displayName ?? "Connections", systemImage: "laptopcomputer") }.buttonStyle(.plain) }
+                ToolbarItem(placement: .principal) { connectionTitle }
+                ToolbarItem(placement: .topBarTrailing) { Button("Connections", systemImage: "gearshape") { showingConnections = true } }
             }
         }
         .task { coordinator.start(); await coordinator.authorize(); if coordinator.selectedMac == nil { showingConnections = true } }
         .onChange(of: scenePhase) { _, phase in if phase != .active { coordinator.sceneDidBackground() } else if coordinator.state == .locked { Task { await coordinator.authorize() } } }
         .sheet(isPresented: $showingConnections) { connectionSwitcher }
         .sheet(isPresented: $showingScanner) { PairingScannerView(onTicket: { ticket in showingScanner = false; Task { await coordinator.macs.pair(ticket) } }, onError: { error in showingScanner = false; coordinator.macs.state = .failed(error.localizedDescription) }).ignoresSafeArea() }
+    }
+
+    private var connectionTitle: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "laptopcomputer")
+                .foregroundStyle(.green)
+            Text(coordinator.selectedMac?.displayName ?? "iPhone Terminal")
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+            Image(systemName: "link")
+                .font(.caption)
+                .foregroundStyle(.green)
+        }
+        .accessibilityLabel("Active connection to \(coordinator.selectedMac?.displayName ?? "iPhone Terminal")")
     }
 
     private var workspace: some View {
