@@ -32,6 +32,8 @@ iphone-terminald stop
 
 `start` remains foreground by default so access is visible and ends when the process exits. `pair` presents a short-lived QR code only after an interactive local confirmation. `status` lists paired devices and active sessions without exposing terminal content. `revoke` immediately removes the device trust record and terminates its active sessions.
 
+The running process owns a mode-`0600` Unix control socket. All other commands use bounded Codable messages over that socket; they never edit live trust state independently.
+
 ## iOS UX boundaries
 
 The app requires biometric authentication when opening a saved Mac or resuming after it becomes inactive. It must clearly distinguish a disconnected state, an unpaired Mac, a pairing-in-progress state, and an active shell. Terminal rendering follows standard VT behavior; clipboard and file-transfer capabilities are out of scope for V1.

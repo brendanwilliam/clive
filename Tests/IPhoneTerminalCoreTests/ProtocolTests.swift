@@ -1,6 +1,8 @@
 import Foundation
 import Testing
+import Security
 @testable import IPhoneTerminalCore
+@testable import IPhoneTerminalSecurity
 
 @Test func frameRoundTripAcrossPartialReads() throws {
     let frame = ProtocolFrame(kind: .terminalInput, payload: Data("echo hello\n".utf8))
@@ -105,4 +107,23 @@ import Testing
     #expect(!belowHigh); #expect(atHigh)
     let atLow = state.complete(5); let belowLow = state.complete(1)
     #expect(atLow); #expect(!belowLow)
+}
+
+@Test func controlMessagesAreBoundedAndNewlineDelimited() throws {
+    let request = ControlRequest(command: .revoke, deviceID: "phone-a")
+    let encoded = try ControlCodec.encode(request)
+    #expect(encoded.last == 0x0a)
+    #expect(try JSONDecoder().decode(ControlRequest.self, from: encoded.dropLast()) == request)
+}
+
+@Test func trustStorePersistsWithOwnerOnlyPermissions() async throws {
+    let directory = URL.temporaryDirectory.appending(path: "iphone-terminal-trust-\(UUID().uuidString)")
+    let url = directory.appending(path: "devices.json")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = try TrustStore(url: url)
+    try await store.upsert(PairedIPhone(id: "phone", displayName: "Phone", certificateFingerprint: String(repeating: "a", count: 64), createdAt: .now))
+    let permissions = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber
+    #expect(permissions?.intValue == 0o600)
+    let loaded = try TrustStore(url: url)
+    #expect(await loaded.all().count == 1)
 }

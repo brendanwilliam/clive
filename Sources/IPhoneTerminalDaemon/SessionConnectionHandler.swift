@@ -4,17 +4,21 @@ import Network
 
 /// Implements the V1 invariant that one authenticated TLS connection owns one shell.
 final class SessionConnectionHandler: @unchecked Sendable {
+    let identifier = UUID()
     private let deviceID: String
     private let registry: SessionRegistry
     private let queue: DispatchQueue
     private var framed: FramedConnection?
     private var shell: PTYProcess?
     private var sessionID: UUID?
+    private var opening = false
     private var flow = OutputBackpressure()
     private var closed = false
+    private let onClosed: @Sendable (UUID) -> Void
 
-    init(deviceID: String, registry: SessionRegistry, queue: DispatchQueue) {
+    init(deviceID: String, registry: SessionRegistry, queue: DispatchQueue, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }) {
         self.deviceID = deviceID; self.registry = registry; self.queue = queue
+        self.onClosed = onClosed
     }
 
     func start(_ connection: NWConnection) {
@@ -22,36 +26,28 @@ final class SessionConnectionHandler: @unchecked Sendable {
             self?.handle(frame)
         }, onClosed: { [weak self] in self?.close() })
         self.framed = framed
-        framed.start()
+        framed.start(alreadyStarted: true)
     }
 
     func close() {
         guard !closed else { return }; closed = true
         shell?.terminate(); shell = nil; framed?.cancel(); framed = nil
         if let sessionID { Task { await registry.close(id: sessionID) } }
+        onClosed(identifier)
     }
+
+    func revoke() { queue.async { [weak self] in self?.fail(.revoked, "This iPhone was revoked") } }
 
     private func handle(_ frame: ProtocolFrame) {
         if shell == nil {
-            guard frame.kind == .sessionOpen,
+            guard !opening, frame.kind == .sessionOpen,
                   let request = try? ProtocolPayload.decode(SessionOpenRequest.self, from: frame.payload),
                   request.initialSize.isValid else { return fail(.invalidFrameOrder, "session.open must be the first frame") }
-            do {
-                shell = try PTYProcess(size: request.initialSize) { [weak self] bytes in
-                    guard let owner = self else { return }
-                    owner.queue.async { [weak owner] in owner?.sendOutput(bytes) }
-                }
-                Task {
-                    let session = await registry.open(deviceID: deviceID, size: request.initialSize)
-                    queue.async { [weak self] in
-                        guard let self, !closed else { return }
-                        sessionID = session.id
-                        if let data = try? ProtocolPayload.encode(SessionOpened(sessionID: session.id)) {
-                            framed?.send(ProtocolFrame(kind: .sessionOpened, payload: data))
-                        }
-                    }
-                }
-            } catch { fail(.shellCreationFailed, "Unable to create login shell") }
+            opening = true
+            Task {
+                let session = await registry.open(deviceID: deviceID, size: request.initialSize)
+                queue.async { [weak self] in self?.finishOpening(session: session, size: request.initialSize) }
+            }
             return
         }
         switch frame.kind {
@@ -63,6 +59,22 @@ final class SessionConnectionHandler: @unchecked Sendable {
             shell?.resize(to: size)
         case .sessionClose: close()
         default: fail(.invalidFrameOrder, "Frame is not valid in an open session")
+        }
+    }
+
+    private func finishOpening(session: TerminalSession, size: TerminalSize) {
+        guard !closed else { Task { await registry.close(id: session.id) }; return }
+        do {
+            opening = false
+            shell = try PTYProcess(size: size) { [weak self] bytes in
+                guard let owner = self else { return }; owner.queue.async { [weak owner] in owner?.sendOutput(bytes) }
+            }
+            sessionID = session.id
+            let data = try ProtocolPayload.encode(SessionOpened(sessionID: session.id))
+            framed?.send(ProtocolFrame(kind: .sessionOpened, payload: data))
+        } catch {
+            Task { await registry.close(id: session.id) }
+            fail(.shellCreationFailed, "Unable to create login shell")
         }
     }
 

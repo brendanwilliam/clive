@@ -13,10 +13,13 @@ targets:
     platform: iOS
     deploymentTarget: "17.0"
     sources: [App]
+    configFiles:
+      Debug: Config/Base.xcconfig
+      Release: Config/Base.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.yourcompany.iphoneterminal
         SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSCameraUsageDescription: Scan a Mac pairing code.
         INFOPLIST_KEY_NSFaceIDUsageDescription: Unlock access to your paired Mac terminals.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: Find paired Macs on the local network.
@@ -24,5 +27,14 @@ targets:
     dependencies:
       - package: IPhoneTerminalCore
         product: IPhoneTerminalCore
+      - package: IPhoneTerminalCore
+        product: IPhoneTerminalSecurity
       - package: SwiftTerm
         product: SwiftTerm
+  iPhoneTerminalTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Tests]
+    dependencies:
+      - target: iPhoneTerminal

@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import IPhoneTerminalCore
 import SwiftUI
 
@@ -25,13 +25,15 @@ struct PairingScannerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: ScannerController, context: Context) {}
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
-    final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
+    @MainActor final class Coordinator: NSObject, @preconcurrency AVCaptureMetadataOutputObjectsDelegate {
         let parent: PairingScannerView; var consumed = false
         init(parent: PairingScannerView) { self.parent = parent }
         func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
             guard !consumed, let code = metadataObjects.compactMap({ ($0 as? AVMetadataMachineReadableCodeObject)?.stringValue }).first else { return }
-            do { let ticket = try PairingPayload.decode(code); try PairingTicketValidator.validate(ticket); consumed = true; parent.onTicket(ticket) }
-            catch { parent.onError(error) }
+            do {
+                let ticket = try PairingPayload.decode(code); try PairingTicketValidator.validate(ticket); consumed = true
+                parent.onTicket(ticket)
+            } catch { parent.onError(error) }
         }
     }
 }
@@ -46,7 +48,8 @@ final class ScannerController: UIViewController {
         guard session.canAddOutput(output) else { return }; session.addOutput(output)
         output.setMetadataObjectsDelegate(delegate, queue: .main); output.metadataObjectTypes = [.qr]
         let layer = AVCaptureVideoPreviewLayer(session: session); layer.videoGravity = .resizeAspectFill; layer.frame = view.bounds
-        view.layer.addSublayer(layer); DispatchQueue.global(qos: .userInitiated).async { self.session.startRunning() }
+        view.layer.addSublayer(layer); let captureSession = session
+        DispatchQueue.global(qos: .userInitiated).async { captureSession.startRunning() }
     }
     override func viewDidDisappear(_ animated: Bool) { super.viewDidDisappear(animated); session.stopRunning() }
 }

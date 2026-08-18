@@ -17,6 +17,10 @@ public actor TrustStore {
 
     public func device(id: String) -> PairedDevice? { devices.first { $0.id == id } }
 
+    public func device(certificateFingerprint: String) -> PairedDevice? {
+        devices.first { $0.certificateFingerprint == certificateFingerprint.lowercased() }
+    }
+
     public func upsert(_ device: PairedDevice) throws {
         devices.removeAll { $0.id == device.id }
         devices.append(device)

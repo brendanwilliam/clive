@@ -14,7 +14,7 @@ enum PrivateNetwork {
             let length: socklen_t = address.pointee.sa_family == UInt8(AF_INET) ? socklen_t(MemoryLayout<sockaddr_in>.size) : socklen_t(MemoryLayout<sockaddr_in6>.size)
             guard address.pointee.sa_family == UInt8(AF_INET) || address.pointee.sa_family == UInt8(AF_INET6),
                   getnameinfo(address, length, &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else { continue }
-            let value = String(cString: host)
+            let value = String(decoding: host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
             if isPrivate(value) { result.append(value.components(separatedBy: "%")[0]) }
         }
         return Array(Set(result)).sorted()

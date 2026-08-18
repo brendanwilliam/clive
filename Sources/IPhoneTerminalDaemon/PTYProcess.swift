@@ -24,6 +24,7 @@ final class PTYProcess: @unchecked Sendable {
     private let output: @Sendable (Data) -> Void
     private let stateLock = NSLock()
     private var outputSuspended = false
+    private var terminated = false
 
     init(size: TerminalSize, output: @escaping @Sendable (Data) -> Void) throws {
         self.output = output
@@ -49,10 +50,13 @@ final class PTYProcess: @unchecked Sendable {
     }
 
     func write(_ bytes: Data) throws {
-        let result = bytes.withUnsafeBytes { buffer in
-            Darwin.write(masterFD, buffer.baseAddress, buffer.count)
+        var offset = 0
+        while offset < bytes.count {
+            let result = bytes.withUnsafeBytes { buffer in Darwin.write(masterFD, buffer.baseAddress!.advanced(by: offset), bytes.count - offset) }
+            if result > 0 { offset += result; continue }
+            if result < 0 && errno == EINTR { continue }
+            guard result >= 0 else { throw PTYProcessError.writeFailed(errno) }
         }
-        guard result >= 0 else { throw PTYProcessError.writeFailed(errno) }
     }
 
     func resize(to size: TerminalSize) {
@@ -72,10 +76,13 @@ final class PTYProcess: @unchecked Sendable {
     }
 
     func terminate() {
-        guard masterFD >= 0 else { return }
+        let shouldTerminate = stateLock.withLock { () -> Bool in guard !terminated else { return false }; terminated = true; return true }
+        guard shouldTerminate else { return }
         _ = kill(-pid, SIGHUP)
         resumeOutput()
         readSource.cancel()
+        let child = pid
+        DispatchQueue.global(qos: .utility).async { var status: Int32 = 0; while waitpid(child, &status, 0) < 0 && errno == EINTR {} }
     }
 
     deinit { terminate() }

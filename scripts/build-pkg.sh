@@ -7,6 +7,7 @@ trap 'rm -rf "${STAGE_DIR}"' EXIT
 swift build --package-path "${ROOT_DIR}" -c release --arch arm64
 mkdir -p "${STAGE_DIR}/usr/local/bin" "${OUTPUT_DIR}"
 cp "${ROOT_DIR}/.build/arm64-apple-macosx/release/iphone-terminald" "${STAGE_DIR}/usr/local/bin/iphone-terminald"
+[[ $(lipo -archs "${STAGE_DIR}/usr/local/bin/iphone-terminald") == arm64 ]]
 if [[ -n ${DEVELOPER_ID_APPLICATION:-} ]]; then
     codesign --force --options runtime --timestamp --sign "${DEVELOPER_ID_APPLICATION}" "${STAGE_DIR}/usr/local/bin/iphone-terminald"
 fi
@@ -22,4 +23,6 @@ if [[ -n ${DEVELOPER_ID_INSTALLER:-} ]]; then
 else
     cp "${UNSIGNED_PKG}" "${OUTPUT_DIR}/iphone-terminal.pkg"
 fi
+pkgutil --check-signature "${OUTPUT_DIR}/iphone-terminal.pkg" >/dev/null 2>&1 || [[ -z ${DEVELOPER_ID_INSTALLER:-} ]]
+pkgutil --payload-files "${OUTPUT_DIR}/iphone-terminal.pkg" | grep -qx './usr/local/bin/iphone-terminald'
 echo "Created ${OUTPUT_DIR}/iphone-terminal.pkg"

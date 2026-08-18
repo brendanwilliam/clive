@@ -18,7 +18,7 @@ final class FramedConnection: @unchecked Sendable {
         self.onClosed = onClosed
     }
 
-    func start() {
+    func start(alreadyStarted: Bool = false) {
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
             case .ready: self?.receiveNextChunk()
@@ -26,7 +26,7 @@ final class FramedConnection: @unchecked Sendable {
             default: break
             }
         }
-        connection.start(queue: queue)
+        if alreadyStarted { receiveNextChunk() } else { connection.start(queue: queue) }
     }
 
     func send(_ frame: ProtocolFrame, completion: (@Sendable (Bool) -> Void)? = nil) {

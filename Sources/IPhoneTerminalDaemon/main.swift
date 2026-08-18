@@ -15,83 +15,91 @@ struct IPhoneTerminalDaemon {
     }
 
     private static func run(arguments: [String]) async throws {
-        let store = try TrustStore(url: pairingStoreURL())
         guard let command = arguments.first else { throw CommandError.usage }
         switch command {
-        case "status":
-            let devices = await store.all()
-            if devices.isEmpty { print("No paired devices.") }
-            for device in devices { print("\(device.id)  \(device.displayName)  \(device.certificateFingerprint)") }
-        case "revoke":
-            guard arguments.count == 2 else { throw CommandError.usage }
-            guard try await store.revoke(id: arguments[1]) else { throw CommandError.unknownDevice(arguments[1]) }
-            print("Revoked \(arguments[1]). Active sessions for this device must be terminated by the running service.")
-        case "pair":
-            try requireInteractiveTerminal()
-            guard let endpoint = PrivateNetwork.eligibleAddresses().first else { throw CommandError.nonPrivateNetwork }
-            let ticket = PairingTicket(
-                endpoint: endpoint,
-                port: 0,
-                expiresAt: .now.addingTimeInterval(5 * 60),
-                oneTimeSecret: UUID().uuidString.lowercased(),
-                daemonCertificateFingerprint: "<daemon-tls-fingerprint>"
-            )
-            let payload = try PairingPayload.encode(ticket)
-            print("Pairing ticket (expires in five minutes):")
-            print(try TerminalQRCode.render(payload: payload))
-            print("Run `iphone-terminald start` first to advertise a pairing endpoint. The exchange handler is added next.")
         case "start":
             let allowsNonPrivateNetwork = arguments.contains("--allow-non-private-network")
-            guard allowsNonPrivateNetwork || isPrivateNetworkEnvironment() else {
-                throw CommandError.nonPrivateNetwork
-            }
-            let identityStore = TLSIdentityStore()
-            let identity = try identityStore.loadOrCreate()
-            let listener = try SecureListener(identity: identity)
-            listener.start()
-            print("Listening with TLS 1.3 on port \(listener.port.map(String.init) ?? "pending") (certificate \(try identityStore.fingerprint(of: identity))).")
-            dispatchMain()
-        case "shell":
+            guard allowsNonPrivateNetwork || !PrivateNetwork.eligibleAddresses().isEmpty else { throw CommandError.nonPrivateNetwork }
+            try await runDaemon()
+        case "pair":
             try requireInteractiveTerminal()
-            try runLocalShell()
-        case "stop":
-            print("No foreground iphone-terminald service is running in this process.")
-        case "help", "--help", "-h":
-            print(usage)
-        default:
-            throw CommandError.usage
+            try runPairingClient()
+        case "status": try runOneShot(.init(command: .status))
+        case "revoke":
+            guard arguments.count == 2 else { throw CommandError.usage }
+            try runOneShot(.init(command: .revoke, deviceID: arguments[1]))
+        case "stop": try runOneShot(.init(command: .stop))
+        case "shell": try requireInteractiveTerminal(); try runLocalShell()
+        case "help", "--help", "-h": print(usage)
+        default: throw CommandError.usage
         }
     }
 
-    private static func pairingStoreURL() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appending(path: "iphone-terminal/Pairings/devices.json")
+    private static func runDaemon() async throws {
+        let waiter = ShutdownWaiter()
+        let runtime = try DaemonRuntime(paths: .live) { waiter.signal() }
+        signal(SIGINT, SIG_IGN); signal(SIGTERM, SIG_IGN)
+        let interrupt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        let terminate = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        interrupt.setEventHandler { runtime.stop() }; terminate.setEventHandler { runtime.stop() }
+        interrupt.resume(); terminate.resume()
+        await runtime.start()
+        await waiter.wait()
+        withExtendedLifetime((runtime, interrupt, terminate)) {}
+    }
+
+    private static func runOneShot(_ request: ControlRequest) throws {
+        let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
+        try channel.send(request)
+        let response = try channel.readResponse()
+        guard response.success else { throw CommandError.remote(response.message ?? "Command failed.") }
+        if let devices = response.devices {
+            if devices.isEmpty { print("No paired devices.") }
+            for device in devices { print("\(device.id)  \(device.displayName)  \(device.certificateFingerprint)  sessions=\(device.activeSessionCount)") }
+        } else if let message = response.message { print(message) }
+    }
+
+    private static func runPairingClient() throws {
+        let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
+        try channel.send(ControlRequest(command: .pair))
+        while true {
+            let response = try channel.readResponse()
+            guard response.success else { throw CommandError.remote(response.message ?? "Pairing failed.") }
+            switch response.kind {
+            case .pairingTicket:
+                guard let ticket = response.pairingTicket else { throw ControlSocketError.malformedMessage }
+                print("Scan this pairing code within five minutes:")
+                print(try TerminalQRCode.render(payload: PairingPayload.encode(ticket)))
+            case .pairingPrompt:
+                guard let prompt = response.pairingPrompt else { throw ControlSocketError.malformedMessage }
+                print("Pair \(prompt.displayName) (\(prompt.deviceID))?")
+                print("Certificate: \(prompt.certificateFingerprint)")
+                print("Approve [y/N]: ", terminator: "")
+                let approved = readLine()?.lowercased() == "y"
+                try channel.send(ControlRequest(command: .approvePairing, approved: approved))
+            case .result:
+                if let message = response.message { print(message) }
+                return
+            }
+        }
     }
 
     private static func requireInteractiveTerminal() throws {
         guard isatty(STDIN_FILENO) != 0 else { throw CommandError.requiresInteractiveTerminal }
     }
 
-    private static func isPrivateNetworkEnvironment() -> Bool {
-        // A full implementation inspects active interface addresses. The explicit override
-        // remains mandatory until that classifier is available.
-        !PrivateNetwork.eligibleAddresses().isEmpty
-    }
-
     static let usage = """
     Usage: iphone-terminald <start|pair|status|revoke|stop> [options]
       start [--allow-non-private-network]
-      shell                 Start a local PTY-backed login shell for transport diagnostics.
       pair
       status
       revoke <device-id>
       stop
+      shell
     """
 
     private static func runLocalShell() throws {
-        let shell = try PTYProcess(size: TerminalSize(columns: 80, rows: 24)) { data in
-            FileHandle.standardOutput.write(data)
-        }
+        let shell = try PTYProcess(size: TerminalSize(columns: 80, rows: 24)) { FileHandle.standardOutput.write($0) }
         let input = DispatchSource.makeReadSource(fileDescriptor: STDIN_FILENO, queue: .global(qos: .userInitiated))
         input.setEventHandler {
             var bytes = [UInt8](repeating: 0, count: 4096)
@@ -99,28 +107,29 @@ struct IPhoneTerminalDaemon {
             if count > 0 { try? shell.write(Data(bytes.prefix(Int(count)))) }
             else { shell.terminate(); input.cancel(); Foundation.exit(0) }
         }
-        input.resume()
-        dispatchMain()
+        input.resume(); dispatchMain()
     }
 }
 
-Task {
-    await IPhoneTerminalDaemon.main()
+private final class ShutdownWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var signaled = false
+    func wait() async { await withCheckedContinuation { value in lock.withLock { if signaled { value.resume() } else { continuation = value } } } }
+    func signal() { let value = lock.withLock { () -> CheckedContinuation<Void, Never>? in signaled = true; defer { continuation = nil }; return continuation }; value?.resume() }
 }
+
+Task { await IPhoneTerminalDaemon.main() }
 dispatchMain()
 
 private enum CommandError: LocalizedError {
-    case usage
-    case unknownDevice(String)
-    case requiresInteractiveTerminal
-    case nonPrivateNetwork
-
+    case usage, requiresInteractiveTerminal, nonPrivateNetwork, remote(String)
     var errorDescription: String? {
         switch self {
         case .usage: IPhoneTerminalDaemon.usage
-        case .unknownDevice(let id): "No paired device with ID \(id)."
         case .requiresInteractiveTerminal: "Pairing requires an interactive local terminal."
-        case .nonPrivateNetwork: "Refusing to advertise on a non-private network. Use --allow-non-private-network to opt in for this launch."
+        case .nonPrivateNetwork: "Refusing to advertise without an eligible private interface. Use --allow-non-private-network to override."
+        case .remote(let message): message
         }
     }
 }

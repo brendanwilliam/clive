@@ -7,9 +7,11 @@ import Network
 final class PairingConnectionHandler: @unchecked Sendable {
     private let coordinator: PairingCoordinator
     private var framedConnection: FramedConnection?
+    private let onFinished: @Sendable (Bool) -> Void
 
-    init(coordinator: PairingCoordinator) {
+    init(coordinator: PairingCoordinator, onFinished: @escaping @Sendable (Bool) -> Void = { _ in }) {
         self.coordinator = coordinator
+        self.onFinished = onFinished
     }
 
     func start(connection: NWConnection, queue: DispatchQueue) {
@@ -34,8 +36,10 @@ final class PairingConnectionHandler: @unchecked Sendable {
                 let acceptance = try await coordinator.accept(request)
                 let data = try ProtocolPayload.encode(acceptance)
                 framedConnection?.send(ProtocolFrame(kind: .pairingAccept, payload: data))
+                onFinished(true)
             } catch {
                 framedConnection?.cancel()
+                onFinished(false)
             }
         }
     }

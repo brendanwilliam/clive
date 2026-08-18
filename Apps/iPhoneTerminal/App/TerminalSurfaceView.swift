@@ -7,7 +7,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
-        context.coordinator.view = view; session?.onOutput = { [weak view] data in view?.feed(byteArray: ArraySlice(data)) }
+        context.coordinator.view = view; session?.onOutput = { [weak view] data in DispatchQueue.main.async { view?.feed(byteArray: ArraySlice(data)) } }
         return view
     }
     func updateUIView(_ uiView: TerminalView, context: Context) { context.coordinator.session = session }
@@ -23,5 +23,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         func setTerminalTitle(source: TerminalView, title: String) {}
         func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
         func scrolled(source: TerminalView, position: Double) {}
+        func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {}
+        func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
     }
 }

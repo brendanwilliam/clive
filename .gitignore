@@ -6,9 +6,12 @@ xcuserdata/
 
 # Swift Package Manager
 .build/
+dist/
 
 # Secrets and local pairing state
 *.p12
 *.mobileprovision
 Secrets/
 Pairings/
+Apps/iPhoneTerminal/Config/Local.xcconfig
+Apps/iPhoneTerminal/iPhoneTerminal.xcodeproj/

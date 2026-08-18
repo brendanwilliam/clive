@@ -33,6 +33,8 @@ public actor SessionRegistry {
         sessions.values.filter { $0.deviceID == deviceID }
     }
 
+    public func all() -> [TerminalSession] { Array(sessions.values) }
+
     @discardableResult
     public func closeAll(forDeviceID deviceID: String) -> [TerminalSession] {
         let removed = sessions(forDeviceID: deviceID)

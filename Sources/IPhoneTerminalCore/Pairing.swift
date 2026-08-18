@@ -100,8 +100,10 @@ public actor PairingCoordinator {
     private let displayName: String
     private let serviceID: String
     private let approval: @Sendable (PairingRequest) async -> Bool
+    private let didPair: @Sendable () async -> Void
+    private var requestInProgress = false
 
-    public init(secret: PairingSecret, trustStore: TrustStore, macID: String, displayName: String, serviceID: String, macCertificate: Data, approval: @escaping @Sendable (PairingRequest) async -> Bool) {
+    public init(secret: PairingSecret, trustStore: TrustStore, macID: String, displayName: String, serviceID: String, macCertificate: Data, approval: @escaping @Sendable (PairingRequest) async -> Bool, didPair: @escaping @Sendable () async -> Void = {}) {
         self.secret = secret
         self.trustStore = trustStore
         self.macID = macID
@@ -109,14 +111,19 @@ public actor PairingCoordinator {
         self.displayName = displayName
         self.serviceID = serviceID
         self.approval = approval
+        self.didPair = didPair
     }
 
     public func accept(_ request: PairingRequest, now: Date = .now) async throws -> PairingAcceptance {
+        guard !requestInProgress else { throw PairingError.consumed }
+        requestInProgress = true
+        defer { requestInProgress = false }
         try await secret.validate(request: request, now: now)
         guard await approval(request) else { throw PairingError.rejected }
         let device = PairedDevice(id: request.deviceID, displayName: request.deviceName, certificateFingerprint: Fingerprint.sha256(of: request.certificate), createdAt: now)
         try await trustStore.upsert(device)
         try await secret.consume(secret: request.oneTimeSecret, now: now)
+        await didPair()
         return PairingAcceptance(macID: macID, displayName: displayName, serviceID: serviceID, certificate: macCertificate)
     }
 }
