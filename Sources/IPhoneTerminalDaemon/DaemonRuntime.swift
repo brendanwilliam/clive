@@ -15,6 +15,7 @@ final class DaemonRuntime: @unchecked Sendable {
     private var controlServer: ControlSocketServer?
     private var pairing: PairingOperation?
     private var handlers: [UUID: (deviceID: String, handler: SessionConnectionHandler)] = [:]
+    private var handlersByWorkspaceSession: [String: UUID] = [:]
     private var trustedDeviceIDs: Set<String> = []
     private var stopped = false
     private let onStopped: @Sendable () -> Void
@@ -28,8 +29,12 @@ final class DaemonRuntime: @unchecked Sendable {
         controlServer = try ControlSocketServer(url: paths.controlSocketURL) { [weak self] request, channel in
             await self?.handle(request, channel: channel)
         }
-        sessionListener = try SecureListener(identity: identity, serviceID: state.serviceID, peerTrust: peerTrust, onReady: { port in
-            print("iphone-terminald listening on port \(port).")
+        sessionListener = try SecureListener(identity: identity, port: state.remoteEndpoint?.port, serviceID: state.serviceID, peerTrust: peerTrust, onReady: { [remoteEndpoint = state.remoteEndpoint] port in
+            if let remoteEndpoint {
+                print("iphone-terminald listening on private VPN port \(port) for \(remoteEndpoint.host).")
+            } else {
+                print("iphone-terminald listening on port \(port).")
+            }
         }, onConnection: { [weak self] connection, queue, deviceID in
             guard let self, let deviceID else { connection.cancel(); return }
             self.openSession(connection: connection, queue: queue, deviceID: deviceID)
@@ -85,9 +90,23 @@ final class DaemonRuntime: @unchecked Sendable {
     }
 
     private func openSession(connection: NWConnection, queue: DispatchQueue, deviceID: String) {
-        let handler = SessionConnectionHandler(deviceID: deviceID, registry: registry, queue: queue) { [weak self] id in
-            _ = self?.lock.withLock { self?.handlers.removeValue(forKey: id) }
-        }
+        let handler = SessionConnectionHandler(deviceID: deviceID, registry: registry, queue: queue, onClosed: { [weak self] id in
+            _ = self?.lock.withLock {
+                self?.handlers.removeValue(forKey: id)
+                self?.handlersByWorkspaceSession = self?.handlersByWorkspaceSession.filter { $0.value != id } ?? [:]
+            }
+        }, replaceExisting: { [weak self] deviceID, clientSessionID, replacement in
+            guard let self else { return }
+            let key = "\(deviceID):\(clientSessionID.uuidString.lowercased())"
+            let previous = self.lock.withLock { () -> SessionConnectionHandler? in
+                let oldID = self.handlersByWorkspaceSession[key]
+                self.handlersByWorkspaceSession[key] = replacement.identifier
+                return oldID.flatMap { self.handlers[$0]?.handler }
+            }
+            // close sends SIGHUP to the process group and reaps it; replacement never leaves
+            // two handlers registered for the same phone/workspace session key.
+            if previous?.identifier != replacement.identifier { previous?.close() }
+        })
         let accepted = lock.withLock { () -> Bool in
             guard trustedDeviceIDs.contains(deviceID), !stopped else { return false }
             handlers[handler.identifier] = (deviceID, handler); return true

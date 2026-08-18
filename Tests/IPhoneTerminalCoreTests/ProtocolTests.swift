@@ -12,6 +12,33 @@ import Security
     #expect(try decoder.append(Data(encoded.dropFirst(5))) == [frame])
 }
 
+@Test func versionOneFramesAreRejectedByVersionTwoDecoder() throws {
+    var bytes = Data(); bytes.appendUInt32(3); bytes.appendUInt16(1); bytes.append(FrameKind.sessionClose.rawValue)
+    var decoder = FrameDecoder()
+    #expect(throws: ProtocolError.unsupportedVersion(1)) { try decoder.append(bytes) }
+}
+
+@Test func workspaceSessionIDReplacesOnlyMatchingPhoneSession() async {
+    let registry = SessionRegistry()
+    let stableID = UUID()
+    _ = await registry.open(deviceID: "phone-a", clientSessionID: stableID, size: TerminalSize(columns: 80, rows: 24))
+    _ = await registry.open(deviceID: "phone-a", clientSessionID: stableID, size: TerminalSize(columns: 120, rows: 40))
+    _ = await registry.open(deviceID: "phone-b", clientSessionID: stableID, size: TerminalSize(columns: 80, rows: 24))
+    #expect(await registry.sessions(forDeviceID: "phone-a").count == 1)
+    #expect(await registry.all().count == 2)
+}
+
+@Test func previewSanitizesSplitControlSequencesAndBoundsOutput() {
+    var preview = TerminalPreviewAccumulator(maximumLength: 8)
+    preview.consume(Data("hello\u{1b}[31".utf8))
+    preview.consume(Data("m world\rnext\u{8}!\n".utf8))
+    #expect(preview.preview == "nex!")
+    preview.consume(Data("123456789".utf8))
+    #expect(preview.preview == "12345678")
+    preview.clear()
+    #expect(preview.preview == nil)
+}
+
 @Test func oversizedFrameIsRejectedBeforeBuffering() {
     var data = Data()
     data.appendUInt32(100)
@@ -34,9 +61,9 @@ import Security
 
 @Test func revocationClosesEveryDeviceSession() async {
     let registry = SessionRegistry()
-    _ = await registry.open(deviceID: "phone-a", size: TerminalSize(columns: 80, rows: 24))
-    _ = await registry.open(deviceID: "phone-a", size: TerminalSize(columns: 120, rows: 40))
-    _ = await registry.open(deviceID: "phone-b", size: TerminalSize(columns: 80, rows: 24))
+    _ = await registry.open(deviceID: "phone-a", clientSessionID: UUID(), size: TerminalSize(columns: 80, rows: 24))
+    _ = await registry.open(deviceID: "phone-a", clientSessionID: UUID(), size: TerminalSize(columns: 120, rows: 40))
+    _ = await registry.open(deviceID: "phone-b", clientSessionID: UUID(), size: TerminalSize(columns: 80, rows: 24))
     #expect(await registry.closeAll(forDeviceID: "phone-a").count == 2)
     #expect(await registry.sessions(forDeviceID: "phone-a").isEmpty)
     #expect(await registry.sessions(forDeviceID: "phone-b").count == 1)
@@ -93,7 +120,7 @@ import Security
 }
 
 @Test func unknownAndMalformedFramesAreRejected() {
-    var unknown = Data(); unknown.appendUInt32(3); unknown.appendUInt16(1); unknown.append(0xff)
+    var unknown = Data(); unknown.appendUInt32(3); unknown.appendUInt16(ProtocolFrame.version); unknown.append(0xff)
     var decoder = FrameDecoder()
     #expect(throws: ProtocolError.unknownMandatoryFrame(0xff)) { try decoder.append(unknown) }
     var malformed = Data(); malformed.appendUInt32(2)

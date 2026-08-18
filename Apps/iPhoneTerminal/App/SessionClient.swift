@@ -7,6 +7,7 @@ import Security
 final class SessionClient: @unchecked Sendable {
     enum ClientError: Error { case certificateChanged, protocolViolation, unavailableIdentity }
     var onOutput: ((Data) -> Void)?
+    var onActivityOutput: ((Data) -> Void)?
     var onState: ((State) -> Void)?
     enum State: Equatable {
         case connecting, active(UUID), disconnected, revoked, certificateChanged, protocolError, networkError(String)
@@ -19,7 +20,7 @@ final class SessionClient: @unchecked Sendable {
     private var terminalStateReported = false
     private var pendingResize: TerminalSize?
 
-    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, size: TerminalSize) {
+    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, size: TerminalSize) {
         opened = false
         terminalStateReported = false
         pendingResize = nil
@@ -38,7 +39,7 @@ final class SessionClient: @unchecked Sendable {
         connection.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             switch state {
-            case .ready: self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(initialSize: size))) ?? Data())); self.receive()
+            case .ready: self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(clientSessionID: clientSessionID, initialSize: size))) ?? Data())); self.receive()
             case .failed(let error):
                 self.terminalStateReported = true
                 self.onState?(self.certificateMismatch ? .certificateChanged : .networkError(error.localizedDescription))
@@ -74,9 +75,9 @@ final class SessionClient: @unchecked Sendable {
             let reply = try ProtocolPayload.decode(SessionOpened.self, from: frame.payload)
             opened = true
             if let pendingResize { self.pendingResize = nil; sendResize(pendingResize) }
-            onState?(.active(reply.sessionID)); return
+            onState?(.active(reply.serverSessionID)); return
         }
-        switch frame.kind { case .terminalOutput: onOutput?(frame.payload); case .sessionClose: connection?.cancel(); case .sessionError: try handleError(frame); default: throw ClientError.protocolViolation }
+        switch frame.kind { case .terminalOutput: onActivityOutput?(frame.payload); onOutput?(frame.payload); case .sessionClose: connection?.cancel(); case .sessionError: try handleError(frame); default: throw ClientError.protocolViolation }
     }
     private func handleError(_ frame: ProtocolFrame) throws {
         let error = try ProtocolPayload.decode(SessionError.self, from: frame.payload)

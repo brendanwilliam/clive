@@ -6,7 +6,7 @@ import SwiftUI
     let id = UUID(); let client = SessionClient(); var state: SessionClient.State = .connecting
     init(device: PairedMac, route: MacRoute, identity: IPhoneIdentity) {
         client.onState = { [weak self] state in DispatchQueue.main.async { self?.state = state } }
-        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, size: TerminalSize(columns: 80, rows: 24))
+        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: id, size: TerminalSize(columns: 80, rows: 24))
     }
     func close() { client.close() }
 }

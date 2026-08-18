@@ -4,11 +4,13 @@ public struct TerminalSession: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let deviceID: String
     public let size: TerminalSize
+    public let clientSessionID: UUID
 
-    public init(id: UUID = UUID(), deviceID: String, size: TerminalSize) {
+    public init(id: UUID = UUID(), deviceID: String, clientSessionID: UUID = UUID(), size: TerminalSize) {
         self.id = id
         self.deviceID = deviceID
         self.size = size
+        self.clientSessionID = clientSessionID
     }
 }
 
@@ -19,8 +21,10 @@ public actor SessionRegistry {
 
     public init() {}
 
-    public func open(deviceID: String, size: TerminalSize) -> TerminalSession {
-        let session = TerminalSession(deviceID: deviceID, size: size)
+    public func open(deviceID: String, clientSessionID: UUID, size: TerminalSize) -> TerminalSession {
+        // A duplicate key is a replacement, never a second persistent shell.
+        sessions = sessions.filter { !($0.value.deviceID == deviceID && $0.value.clientSessionID == clientSessionID) }
+        let session = TerminalSession(deviceID: deviceID, clientSessionID: clientSessionID, size: size)
         sessions[session.id] = session
         return session
     }

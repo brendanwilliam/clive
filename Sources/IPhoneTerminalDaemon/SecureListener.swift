@@ -1,6 +1,7 @@
 import CryptoKit
 import Dispatch
 import Foundation
+import IPhoneTerminalCore
 import Network
 import Security
 
@@ -45,7 +46,7 @@ final class SecureListener: @unchecked Sendable {
     private let onConnection: ConnectionHandler
     private let onReady: @Sendable (UInt16) -> Void
 
-    init(identity: SecIdentity, serviceID: String? = nil, peerTrust: PeerTrustCache? = nil, onReady: @escaping @Sendable (UInt16) -> Void = { _ in }, onConnection: @escaping ConnectionHandler) throws {
+    init(identity: SecIdentity, port: UInt16? = nil, serviceID: String? = nil, peerTrust: PeerTrustCache? = nil, onReady: @escaping @Sendable (UInt16) -> Void = { _ in }, onConnection: @escaping ConnectionHandler) throws {
         self.peerTrust = peerTrust
         self.onConnection = onConnection
         self.onReady = onReady
@@ -60,9 +61,15 @@ final class SecureListener: @unchecked Sendable {
                 complete(peerTrust.verify(metadata: metadata, trust: trust))
             }, queue)
         }
-        listener = try NWListener(using: NWParameters(tls: tls, tcp: NWProtocolTCP.Options()))
+        let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
+        if let port {
+            guard let endpointPort = NWEndpoint.Port(rawValue: port) else { throw SecureListenerError.unableToBind }
+            listener = try NWListener(using: parameters, on: endpointPort)
+        } else {
+            listener = try NWListener(using: parameters)
+        }
         if let serviceID {
-            let txt = NetService.data(fromTXTRecord: ["id": Data(serviceID.utf8), "v": Data(String(1).utf8)])
+            let txt = NetService.data(fromTXTRecord: ["id": Data(serviceID.utf8), "v": Data(String(ProtocolFrame.version).utf8)])
             listener.service = NWListener.Service(name: serviceID, type: "_iphone-term._tcp", txtRecord: txt)
         }
         listener.newConnectionHandler = { [weak self] connection in self?.prepare(connection) }

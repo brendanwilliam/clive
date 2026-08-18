@@ -29,7 +29,7 @@ final class PairedMacsModel {
     }
     private func update(_ routes: [String: MacRoute]) {
         self.routes = routes
-        devices = records.filter { routes[$0.serviceID] != nil }.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        devices = records.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
     private func pairingMessage(_ error: Error) -> String {
         switch error {

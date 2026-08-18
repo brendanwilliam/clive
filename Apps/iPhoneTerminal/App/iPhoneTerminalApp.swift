@@ -2,11 +2,11 @@ import SwiftUI
 
 @main
 struct iPhoneTerminalApp: App {
-    @State private var model = PairedMacsModel()
+    @State private var coordinator = WorkspaceCoordinator()
 
     var body: some Scene {
         WindowGroup {
-            PairedMacListView(model: model)
+            WorkspaceView(coordinator: coordinator)
         }
     }
 }

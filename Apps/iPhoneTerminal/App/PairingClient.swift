@@ -73,7 +73,7 @@ final class PairingClient: @unchecked Sendable {
             let acceptance = try ProtocolPayload.decode(PairingAcceptance.self, from: frame.payload)
             let fingerprint = Fingerprint.sha256(of: acceptance.certificate)
             guard fingerprint == ticket.daemonCertificateFingerprint.lowercased(), !acceptance.macID.isEmpty, !acceptance.serviceID.isEmpty else { throw Error.invalidAcceptance }
-            finish(.success(PairedMac(id: acceptance.macID, displayName: acceptance.displayName, serviceID: acceptance.serviceID, certificateFingerprint: fingerprint, createdAt: .now)))
+            finish(.success(PairedMac(id: acceptance.macID, displayName: acceptance.displayName, serviceID: acceptance.serviceID, certificateFingerprint: fingerprint, createdAt: .now, remoteEndpoint: ticket.remoteEndpoint)))
         }
         func finish(_ result: Result<PairedMac, Swift.Error>) {
             guard !completed else { return }

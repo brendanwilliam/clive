@@ -9,15 +9,24 @@ public struct PairingTicket: Codable, Equatable, Sendable {
     public let oneTimeSecret: String
     /// SHA-256 fingerprint of the persistent daemon identity used for pairing and sessions.
     public let daemonCertificateFingerprint: String
+    public let remoteEndpoint: RemoteEndpoint?
 
-    public init(endpoint: String, port: UInt16, expiresAt: Date, oneTimeSecret: String, daemonCertificateFingerprint: String, protocolVersion: UInt16 = ProtocolFrame.version) {
+    public init(endpoint: String, port: UInt16, expiresAt: Date, oneTimeSecret: String, daemonCertificateFingerprint: String, remoteEndpoint: RemoteEndpoint? = nil, protocolVersion: UInt16 = ProtocolFrame.version) {
         self.endpoint = endpoint
         self.port = port
         self.protocolVersion = protocolVersion
         self.expiresAt = expiresAt
         self.oneTimeSecret = oneTimeSecret
         self.daemonCertificateFingerprint = daemonCertificateFingerprint
+        self.remoteEndpoint = remoteEndpoint
     }
+}
+
+/// Routing metadata supplied by the Mac owner. TLS certificate pinning remains the authority.
+public struct RemoteEndpoint: Codable, Equatable, Sendable {
+    public let host: String
+    public let port: UInt16
+    public init(host: String, port: UInt16) { self.host = host; self.port = port }
 }
 
 public struct PairingRequest: Codable, Equatable, Sendable {
@@ -192,10 +201,12 @@ public struct PairedMac: Codable, Equatable, Identifiable, Sendable {
     public let serviceID: String
     public let certificateFingerprint: String
     public let createdAt: Date
+    public let remoteEndpoint: RemoteEndpoint?
 
-    public init(id: String, displayName: String, serviceID: String, certificateFingerprint: String, createdAt: Date) {
+    public init(id: String, displayName: String, serviceID: String, certificateFingerprint: String, createdAt: Date, remoteEndpoint: RemoteEndpoint? = nil) {
         self.id = id; self.displayName = displayName; self.serviceID = serviceID
         self.certificateFingerprint = certificateFingerprint; self.createdAt = createdAt
+        self.remoteEndpoint = remoteEndpoint
     }
 }
 
