@@ -80,10 +80,18 @@ struct AppPreferencesStore {
         value.shortcuts.append(CLIShortcut(name: "New shortcut", command: ""))
     }
 
-    func saveShortcut(command: String) {
+    @discardableResult
+    func saveShortcut(name: String, command: String) -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !command.isEmpty else { return }
-        value.shortcuts.append(CLIShortcut(name: command, command: command))
+        guard !name.isEmpty, !command.isEmpty else { return false }
+        let duplicate = value.shortcuts.contains {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).localizedCaseInsensitiveCompare(name) == .orderedSame ||
+            $0.command.trimmingCharacters(in: .whitespacesAndNewlines) == command
+        }
+        guard !duplicate else { return false }
+        value.shortcuts.append(CLIShortcut(name: name, command: command))
+        return true
     }
 
     func deleteShortcuts(at offsets: IndexSet) {
