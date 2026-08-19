@@ -12,7 +12,7 @@ cleanup() {
 trap cleanup EXIT
 
 swift build --package-path "${ROOT_DIR}"
-IPHONE_TERMINAL_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" start --allow-non-private-network >"${TEST_STATE}/daemon.log" 2>&1 &
+CLIVE_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" start --allow-non-private-network >"${TEST_STATE}/daemon.log" 2>&1 &
 DAEMON_PID=$!
 for _ in {1..400}; do
     [[ -S ${TEST_STATE}/control.sock ]] && break
@@ -24,9 +24,9 @@ if [[ ! -S ${TEST_STATE}/control.sock ]]; then
 fi
 PERMISSIONS=$(stat -f %Lp "${TEST_STATE}/control.sock")
 [[ ${PERMISSIONS} == 600 ]]
-STATUS=$(IPHONE_TERMINAL_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" status)
+STATUS=$(CLIVE_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" status)
 [[ ${STATUS} == "No paired devices."* ]]
-IPHONE_TERMINAL_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" stop
+CLIVE_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" stop
 wait ${DAEMON_PID}
 DAEMON_PID=""
 [[ ! -e ${TEST_STATE}/control.sock ]]

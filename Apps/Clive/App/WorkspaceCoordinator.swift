@@ -1,0 +1,345 @@
+import Foundation
+import CliveCore
+import Observation
+
+struct WorkspaceSnapshot: Codable {
+    var selectedMacID: String?
+    var sessionsByMac: [String: [SessionDescriptor]]
+}
+
+struct SessionDescriptor: Codable, Identifiable, Equatable {
+    let id: UUID
+    var label: String
+    init(id: UUID = UUID(), label: String) { self.id = id; self.label = label }
+}
+
+struct RestorableDestination: Codable, Equatable {
+    static let currentVersion = 1
+
+    enum Screen: String, Codable { case terminal, terminalList }
+
+    let version: Int
+    let screen: Screen
+    let macID: String
+    let sessionID: UUID?
+
+    init(screen: Screen, macID: String, sessionID: UUID? = nil) {
+        self.version = Self.currentVersion
+        self.screen = screen
+        self.macID = macID
+        self.sessionID = sessionID
+    }
+
+    var isSupported: Bool {
+        version == Self.currentVersion && (screen != .terminal || sessionID != nil)
+    }
+}
+
+enum WorkspaceLaunchResolution: Equatable {
+    case restoreTerminal(macID: String, sessionID: UUID)
+    case restoreTerminalList(macID: String)
+    case startTerminal(macID: String)
+    case connectionSetup
+}
+
+enum WorkspaceLaunchResolver {
+    static func resolve(
+        destination: RestorableDestination?,
+        selectedMacID: String?,
+        pairedMacIDs: [String],
+        descriptorsByMac: [String: [SessionDescriptor]]
+    ) -> WorkspaceLaunchResolution {
+        if let destination, destination.isSupported, pairedMacIDs.contains(destination.macID) {
+            switch destination.screen {
+            case .terminal:
+                if let sessionID = destination.sessionID,
+                   descriptorsByMac[destination.macID]?.contains(where: { $0.id == sessionID }) == true {
+                    return .restoreTerminal(macID: destination.macID, sessionID: sessionID)
+                }
+            case .terminalList:
+                return .restoreTerminalList(macID: destination.macID)
+            }
+        }
+        if let selectedMacID, pairedMacIDs.contains(selectedMacID) { return .startTerminal(macID: selectedMacID) }
+        if let defaultMacID = pairedMacIDs.first { return .startTerminal(macID: defaultMacID) }
+        return .connectionSetup
+    }
+}
+
+@MainActor @Observable final class WorkspaceSession: Identifiable {
+    var descriptor: SessionDescriptor
+    nonisolated let id: UUID
+    let client = SessionClient()
+    var state: SessionClient.State = .connecting
+    var preview: String?
+    var lastActivityAt: Date?
+    private var accumulator = TerminalPreviewAccumulator()
+
+    private let routes: [MacRoute]
+    private let device: PairedMac
+    private let identity: IPhoneIdentity
+    private var routeIndex = 0
+    private let localRendezvousCapability: RendezvousCapability?
+    private let onUpgrade: (Data, RendezvousCapability) -> Void
+    private(set) var activeRouteKind: MacRouteKind?
+
+    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, localRendezvousCapability: RendezvousCapability?, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
+        self.descriptor = descriptor
+        self.id = descriptor.id
+        self.routes = routes
+        self.device = device
+        self.identity = identity
+        self.localRendezvousCapability = localRendezvousCapability; self.onUpgrade = onUpgrade
+        client.onState = { [weak self] value in DispatchQueue.main.async { self?.handleState(value) } }
+        client.onActivityOutput = { [weak self] bytes in DispatchQueue.main.async {
+            guard let self else { return }; self.accumulator.consume(bytes); self.preview = self.accumulator.preview; self.lastActivityAt = .now
+        } }
+        client.onRendezvousUpgrade = { certificate, capability in DispatchQueue.main.async { onUpgrade(certificate, capability) } }
+        connectCurrentRoute()
+    }
+
+    func noteInput() { lastActivityAt = .now }
+    func clearTransientActivity() { accumulator.clear(); preview = nil; lastActivityAt = nil }
+    func close() { clearTransientActivity(); client.close() }
+
+    private func handleState(_ value: SessionClient.State) {
+        state = value
+        if case .active = value { activeRouteKind = routes[routeIndex].kind }
+        guard case .networkError = value, routeIndex + 1 < routes.count else { return }
+        routeIndex += 1
+        clearTransientActivity()
+        state = .connecting
+        connectCurrentRoute()
+    }
+
+    private func connectCurrentRoute() {
+        let route = routes[routeIndex]
+        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken)
+    }
+}
+
+@MainActor @Observable final class WorkspaceCoordinator {
+    enum State: Equatable { case locked, authenticating, active, authenticationCancelled, failed(String) }
+    enum PresentedScreen: Equatable { case terminalList, settings }
+    enum Recovery: Equatable { case unavailableMac(String), noPairedMac }
+
+    let macs = PairedMacsModel()
+    var state: State = .locked
+    var selectedMacID: String?
+    var sessions: [WorkspaceSession] = []
+    var selectedSessionID: UUID?
+    var presentedScreen: PresentedScreen?
+    var recovery: Recovery?
+
+    private var snapshot = WorkspaceSnapshot(selectedMacID: nil, sessionsByMac: [:])
+    private var restorableDestination: RestorableDestination?
+    private var identity: IPhoneIdentity?
+    private var suppressDestinationUpdates = false
+
+    func start() {
+        macs.start()
+        snapshot = (try? WorkspaceStore().load()) ?? snapshot
+        restorableDestination = try? RestorableDestinationStore().load()
+        selectedMacID = snapshot.selectedMacID
+    }
+
+    func stop() { closeLiveSessions(); macs.stop() }
+    var selectedMac: PairedMac? { macs.devices.first { $0.id == selectedMacID } }
+
+    func authorize() async {
+        state = .authenticating
+        do {
+            try await LocalAuthenticator.authorizeConnection()
+            identity = try IPhoneIdentityProvider().loadOrCreate()
+            state = .active
+            resolveExternalLaunch()
+        } catch { state = .authenticationCancelled }
+    }
+
+    func handleExternalLaunch() {
+        guard state == .active else { return }
+        resolveExternalLaunch()
+    }
+
+    func selectMac(_ mac: PairedMac) {
+        guard mac.id != selectedMacID else { presentedScreen = nil; return }
+        saveCurrentDescriptors(); closeLiveSessions(); selectedMacID = mac.id; snapshot.selectedMacID = mac.id; recovery = nil; persist()
+        startFreshTerminal(on: mac)
+    }
+
+    func selectSession(_ id: UUID?) {
+        selectedSessionID = id
+        guard !suppressDestinationUpdates, let id, let macID = selectedMacID else { return }
+        recordDestination(RestorableDestination(screen: .terminal, macID: macID, sessionID: id))
+    }
+
+    func showTerminalList() {
+        presentedScreen = .terminalList
+        if let macID = selectedMacID { recordDestination(RestorableDestination(screen: .terminalList, macID: macID)) }
+    }
+
+    func showSettings() { presentedScreen = .settings }
+
+    func dismissPresentedScreen() {
+        presentedScreen = nil
+        if let id = selectedSessionID, let macID = selectedMacID {
+            recordDestination(RestorableDestination(screen: .terminal, macID: macID, sessionID: id))
+        }
+    }
+
+    func addShell() {
+        guard let mac = selectedMac, let identity else { return }
+        let routes = routes(for: mac)
+        guard !routes.isEmpty else { recovery = .unavailableMac(mac.displayName); return }
+        recovery = nil
+        let descriptor = SessionDescriptor(label: "Shell \(sessions.count + 1)")
+        let session = makeSession(descriptor: descriptor, mac: mac, routes: routes, identity: identity)
+        sessions.append(session); selectSession(session.id); saveCurrentDescriptors(); persist()
+    }
+
+    func close(_ session: WorkspaceSession) {
+        session.close(); sessions.removeAll { $0.id == session.id }
+        if selectedSessionID == session.id { selectSession(sessions.last?.id) }
+        saveCurrentDescriptors(); persist()
+        if sessions.isEmpty { clearDestination() }
+    }
+
+    func rename(_ session: WorkspaceSession, to label: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        session.descriptor.label = trimmed
+        saveCurrentDescriptors(); persist()
+    }
+
+    func disconnectCurrentMac() {
+        saveCurrentDescriptors(); persist(); closeLiveSessions(); clearDestination()
+    }
+
+    func retryConnection() {
+        guard state == .active, let mac = selectedMac else { showSettings(); return }
+        Task { await macs.refreshRendezvous(); startFreshTerminal(on: mac) }
+    }
+
+    func sceneDidBackground() { saveCurrentDescriptors(); persist(); closeLiveSessions(); state = .locked }
+
+    private func resolveExternalLaunch() {
+        let resolution = WorkspaceLaunchResolver.resolve(
+            destination: restorableDestination,
+            selectedMacID: snapshot.selectedMacID,
+            pairedMacIDs: macs.devices.map(\.id),
+            descriptorsByMac: snapshot.sessionsByMac
+        )
+        switch resolution {
+        case .restoreTerminal(let macID, let sessionID):
+            activateMac(macID, selectedSessionID: sessionID, showList: false)
+        case .restoreTerminalList(let macID):
+            activateMac(macID, selectedSessionID: nil, showList: true)
+        case .startTerminal(let macID):
+            guard let mac = macs.devices.first(where: { $0.id == macID }) else { return }
+            selectedMacID = mac.id; snapshot.selectedMacID = mac.id
+            startFreshTerminal(on: mac)
+        case .connectionSetup:
+            closeLiveSessions(); recovery = .noPairedMac; presentedScreen = .settings
+        }
+    }
+
+    private func activateMac(_ macID: String, selectedSessionID: UUID?, showList: Bool) {
+        guard let mac = macs.devices.first(where: { $0.id == macID }), let identity else { return }
+        let routes = routes(for: mac)
+        selectedMacID = macID; snapshot.selectedMacID = macID
+        guard !routes.isEmpty else {
+            closeLiveSessions(); recovery = .unavailableMac(mac.displayName); presentedScreen = showList ? .terminalList : nil
+            return
+        }
+        suppressDestinationUpdates = true
+        closeLiveSessions()
+        sessions = (snapshot.sessionsByMac[macID] ?? []).map { makeSession(descriptor: $0, mac: mac, routes: routes, identity: identity) }
+        self.selectedSessionID = selectedSessionID ?? sessions.first?.id
+        presentedScreen = showList ? .terminalList : nil
+        recovery = nil
+        suppressDestinationUpdates = false
+        saveCurrentDescriptors(); persist()
+    }
+
+    private func startFreshTerminal(on mac: PairedMac) {
+        guard let identity else { return }
+        let routes = routes(for: mac)
+        selectedMacID = mac.id; snapshot.selectedMacID = mac.id; presentedScreen = nil
+        guard !routes.isEmpty else {
+            closeLiveSessions(); recovery = .unavailableMac(mac.displayName); persist(); return
+        }
+        closeLiveSessions()
+        let descriptor = SessionDescriptor(label: "Shell 1")
+        let session = makeSession(descriptor: descriptor, mac: mac, routes: routes, identity: identity)
+        sessions = [session]
+        snapshot.sessionsByMac[mac.id] = [descriptor]
+        recovery = nil
+        selectSession(session.id); persist()
+    }
+
+    private func routes(for mac: PairedMac) -> [MacRoute] {
+        var values: [MacRoute] = []
+        if let lan = macs.route(for: mac) { values.append(lan) }
+        if let remote = mac.remoteEndpoint {
+            let remoteRoute = MacRoute(host: remote.host, port: remote.port, kind: .privateVPN)
+            if !values.contains(remoteRoute) { values.append(remoteRoute) }
+        }
+        for route in macs.cellularRoutes(for: mac) where !values.contains(route) { values.append(route) }
+        return values
+    }
+
+    private func makeSession(descriptor: SessionDescriptor, mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity) -> WorkspaceSession {
+        WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, localRendezvousCapability: macs.localRendezvousCapability) { [weak self] certificate, capability in
+            self?.macs.upgrade(macID: mac.id, certificate: certificate, capability: capability)
+        }
+    }
+
+    private func recordDestination(_ destination: RestorableDestination) {
+        restorableDestination = destination
+        try? RestorableDestinationStore().save(destination)
+    }
+
+    private func clearDestination() {
+        restorableDestination = nil
+        try? RestorableDestinationStore().remove()
+    }
+
+    private func closeLiveSessions() { sessions.forEach { $0.close() }; sessions.removeAll(); selectedSessionID = nil }
+    private func saveCurrentDescriptors() { guard let id = selectedMacID else { return }; snapshot.sessionsByMac[id] = sessions.map(\.descriptor); snapshot.selectedMacID = id }
+    private func persist() { try? WorkspaceStore().save(snapshot) }
+}
+
+struct WorkspaceStore {
+    private let rootURL: URL
+
+    init(rootURL: URL? = nil) {
+        self.rootURL = rootURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "Clive")
+    }
+
+    private var url: URL { rootURL.appending(path: "workspace.json") }
+    func load() throws -> WorkspaceSnapshot { try JSONDecoder().decode(WorkspaceSnapshot.self, from: Data(contentsOf: url)) }
+    func save(_ snapshot: WorkspaceSnapshot) throws {
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        try JSONEncoder().encode(snapshot).write(to: url, options: [.atomic, .completeFileProtection])
+    }
+}
+
+struct RestorableDestinationStore {
+    private let rootURL: URL
+
+    init(rootURL: URL? = nil) {
+        self.rootURL = rootURL ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "Clive")
+    }
+
+    private var url: URL { rootURL.appending(path: "last-screen.json") }
+    func load() throws -> RestorableDestination {
+        let destination = try JSONDecoder().decode(RestorableDestination.self, from: Data(contentsOf: url))
+        guard destination.isSupported else { throw CocoaError(.fileReadCorruptFile) }
+        return destination
+    }
+    func save(_ destination: RestorableDestination) throws {
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        try JSONEncoder().encode(destination).write(to: url, options: [.atomic, .completeFileProtection])
+    }
+    func remove() throws { if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) } }
+}

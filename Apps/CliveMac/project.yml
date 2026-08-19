@@ -1,0 +1,31 @@
+name: CliveMac
+options:
+  minimumXcodeGenVersion: 2.38.0
+packages:
+  Clive:
+    path: ../..
+targets:
+  CliveMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - App
+      - path: ../../Sources/CliveDaemon
+        excludes: [main.swift]
+    configFiles:
+      Debug: Config/Base.xcconfig
+      Release: Config/Base.xcconfig
+    settings:
+      base:
+        SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Config/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/CliveMac.entitlements
+    dependencies:
+      - package: Clive
+        product: CliveCore
+      - package: Clive
+        product: CliveSecurity
+      - package: Clive
+        product: CliveCloud

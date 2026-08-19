@@ -1,0 +1,415 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0A8E269A6A73014FC087BEB9 /* TLSIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B313E66C117656DA2DE5B09D /* TLSIdentityStore.swift */; };
+		25E343CD42025A9D8DA65D94 /* DaemonRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18C99C57EC206EF177F4DE12 /* DaemonRuntime.swift */; };
+		396053332283B492826B2578 /* CliveCore in Frameworks */ = {isa = PBXBuildFile; productRef = AD86DDA4593CF8E09639B401 /* CliveCore */; };
+		3D8CB484C0770FF989E95D96 /* PrivateNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14F1B5D289F1CD03443BC423 /* PrivateNetwork.swift */; };
+		4A273BACE52B344372D1034A /* SessionConnectionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6026A212B5A49BF048A5E5 /* SessionConnectionHandler.swift */; };
+		4E5F9C9AB681A234079A8C35 /* CliveMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A7AD6C352410458758EE1AF /* CliveMacApp.swift */; };
+		4F84257196156BE658731677 /* CliveSecurity in Frameworks */ = {isa = PBXBuildFile; productRef = B1153053DBF0B84B6A1D49C5 /* CliveSecurity */; };
+		67D9B44850939B2C59EE7B02 /* SecureListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF16C5B4A36564967CA5517D /* SecureListener.swift */; };
+		84EEAD680BD19AF77AA8ECAF /* PairingConnectionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434F967B0B54B09488D75A9C /* PairingConnectionHandler.swift */; };
+		8E26991359DB52DB77AFE64A /* CliveCloud in Frameworks */ = {isa = PBXBuildFile; productRef = E67F524AA99F4A80D5B0B222 /* CliveCloud */; };
+		90B23B8F03EF9F9E66FE85C0 /* PTYProcess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E6F5B7F4A44D0E02F2491F1 /* PTYProcess.swift */; };
+		9DB72E1B480F413CEFFBF65E /* PairingOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19ED034604541733F7FF5C01 /* PairingOperation.swift */; };
+		C49E611C76C66ADAE8C84883 /* PublicNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EC5A92E9B1309DCB3F1727 /* PublicNetwork.swift */; };
+		CC6ACC977429AFF51D4D9366 /* ControlSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC61968818CDFE0304BCFB76 /* ControlSocket.swift */; };
+		DEF5F0AAEF779C20773C871B /* MacRendezvousController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20E73BE94064626B198C223E /* MacRendezvousController.swift */; };
+		EFB5475078CB4723D49CD3DB /* FramedConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B618CF0723E2AD9630F1BB42 /* FramedConnection.swift */; };
+		F24ABE5C0A8DD27DF5266CD0 /* TerminalQRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA07D1DAE49FAD94729A772 /* TerminalQRCode.swift */; };
+		F8791436967BE4B27DAE775F /* DaemonState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F07FA8A8BC51A16A770C37C /* DaemonState.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0A7AD6C352410458758EE1AF /* CliveMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CliveMacApp.swift; sourceTree = "<group>"; };
+		14F1B5D289F1CD03443BC423 /* PrivateNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateNetwork.swift; sourceTree = "<group>"; };
+		18C99C57EC206EF177F4DE12 /* DaemonRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonRuntime.swift; sourceTree = "<group>"; };
+		19ED034604541733F7FF5C01 /* PairingOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingOperation.swift; sourceTree = "<group>"; };
+		1D6026A212B5A49BF048A5E5 /* SessionConnectionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionConnectionHandler.swift; sourceTree = "<group>"; };
+		20E73BE94064626B198C223E /* MacRendezvousController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRendezvousController.swift; sourceTree = "<group>"; };
+		3E6F5B7F4A44D0E02F2491F1 /* PTYProcess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTYProcess.swift; sourceTree = "<group>"; };
+		434F967B0B54B09488D75A9C /* PairingConnectionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingConnectionHandler.swift; sourceTree = "<group>"; };
+		5F07FA8A8BC51A16A770C37C /* DaemonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonState.swift; sourceTree = "<group>"; };
+		75EC5A92E9B1309DCB3F1727 /* PublicNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicNetwork.swift; sourceTree = "<group>"; };
+		9CA07D1DAE49FAD94729A772 /* TerminalQRCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalQRCode.swift; sourceTree = "<group>"; };
+		AF16C5B4A36564967CA5517D /* SecureListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureListener.swift; sourceTree = "<group>"; };
+		B313E66C117656DA2DE5B09D /* TLSIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSIdentityStore.swift; sourceTree = "<group>"; };
+		B618CF0723E2AD9630F1BB42 /* FramedConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FramedConnection.swift; sourceTree = "<group>"; };
+		BC61968818CDFE0304BCFB76 /* ControlSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlSocket.swift; sourceTree = "<group>"; };
+		CC93F9B2C8199282202288F3 /* clive */ = {isa = PBXFileReference; lastKnownFileType = folder; name = clive; path = ../..; sourceTree = SOURCE_ROOT; };
+		D3C8834CD01AC2306A198613 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		F987F1C3EB05DB0E240CD7BD /* CliveMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CliveMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1CEC10D92657B9BFB29BDD1A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				396053332283B492826B2578 /* CliveCore in Frameworks */,
+				4F84257196156BE658731677 /* CliveSecurity in Frameworks */,
+				8E26991359DB52DB77AFE64A /* CliveCloud in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1B8AE428182B2A2E323C94D8 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				CC93F9B2C8199282202288F3 /* clive */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		37EFA4B049EE0351B1D53B27 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				D3C8834CD01AC2306A198613 /* Base.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		6F32B6758F85F289BDE0CD6F /* App */ = {
+			isa = PBXGroup;
+			children = (
+				0A7AD6C352410458758EE1AF /* CliveMacApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		AC94A3FBBD222D73C6F84D79 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F987F1C3EB05DB0E240CD7BD /* CliveMac.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D44A5A323B5AF01A4161FC4A = {
+			isa = PBXGroup;
+			children = (
+				6F32B6758F85F289BDE0CD6F /* App */,
+				EABE69C40559F43AC3D10E96 /* CliveDaemon */,
+				37EFA4B049EE0351B1D53B27 /* Config */,
+				1B8AE428182B2A2E323C94D8 /* Packages */,
+				AC94A3FBBD222D73C6F84D79 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EABE69C40559F43AC3D10E96 /* CliveDaemon */ = {
+			isa = PBXGroup;
+			children = (
+				BC61968818CDFE0304BCFB76 /* ControlSocket.swift */,
+				18C99C57EC206EF177F4DE12 /* DaemonRuntime.swift */,
+				5F07FA8A8BC51A16A770C37C /* DaemonState.swift */,
+				B618CF0723E2AD9630F1BB42 /* FramedConnection.swift */,
+				20E73BE94064626B198C223E /* MacRendezvousController.swift */,
+				434F967B0B54B09488D75A9C /* PairingConnectionHandler.swift */,
+				19ED034604541733F7FF5C01 /* PairingOperation.swift */,
+				14F1B5D289F1CD03443BC423 /* PrivateNetwork.swift */,
+				3E6F5B7F4A44D0E02F2491F1 /* PTYProcess.swift */,
+				75EC5A92E9B1309DCB3F1727 /* PublicNetwork.swift */,
+				AF16C5B4A36564967CA5517D /* SecureListener.swift */,
+				1D6026A212B5A49BF048A5E5 /* SessionConnectionHandler.swift */,
+				9CA07D1DAE49FAD94729A772 /* TerminalQRCode.swift */,
+				B313E66C117656DA2DE5B09D /* TLSIdentityStore.swift */,
+			);
+			name = CliveDaemon;
+			path = ../../Sources/CliveDaemon;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		85B10414F6EB61CAC4CC1A20 /* CliveMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 503D7033C72F80634F920653 /* Build configuration list for PBXNativeTarget "CliveMac" */;
+			buildPhases = (
+				C864A6C4E2CAD2A3A639C7CB /* Sources */,
+				1CEC10D92657B9BFB29BDD1A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CliveMac;
+			packageProductDependencies = (
+				AD86DDA4593CF8E09639B401 /* CliveCore */,
+				B1153053DBF0B84B6A1D49C5 /* CliveSecurity */,
+				E67F524AA99F4A80D5B0B222 /* CliveCloud */,
+			);
+			productName = CliveMac;
+			productReference = F987F1C3EB05DB0E240CD7BD /* CliveMac.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		10BD099BAD010D5085C5F072 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					85B10414F6EB61CAC4CC1A20 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 2B5BAC039F06929A030CBDD6 /* Build configuration list for PBXProject "CliveMac" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = D44A5A323B5AF01A4161FC4A;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				1571212F796A2D02C94B49A2 /* XCLocalSwiftPackageReference "../.." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = AC94A3FBBD222D73C6F84D79 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				85B10414F6EB61CAC4CC1A20 /* CliveMac */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C864A6C4E2CAD2A3A639C7CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4E5F9C9AB681A234079A8C35 /* CliveMacApp.swift in Sources */,
+				CC6ACC977429AFF51D4D9366 /* ControlSocket.swift in Sources */,
+				25E343CD42025A9D8DA65D94 /* DaemonRuntime.swift in Sources */,
+				F8791436967BE4B27DAE775F /* DaemonState.swift in Sources */,
+				EFB5475078CB4723D49CD3DB /* FramedConnection.swift in Sources */,
+				DEF5F0AAEF779C20773C871B /* MacRendezvousController.swift in Sources */,
+				90B23B8F03EF9F9E66FE85C0 /* PTYProcess.swift in Sources */,
+				84EEAD680BD19AF77AA8ECAF /* PairingConnectionHandler.swift in Sources */,
+				9DB72E1B480F413CEFFBF65E /* PairingOperation.swift in Sources */,
+				3D8CB484C0770FF989E95D96 /* PrivateNetwork.swift in Sources */,
+				C49E611C76C66ADAE8C84883 /* PublicNetwork.swift in Sources */,
+				67D9B44850939B2C59EE7B02 /* SecureListener.swift in Sources */,
+				4A273BACE52B344372D1034A /* SessionConnectionHandler.swift in Sources */,
+				0A8E269A6A73014FC087BEB9 /* TLSIdentityStore.swift in Sources */,
+				F24ABE5C0A8DD27DF5266CD0 /* TerminalQRCode.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		52E4DB2A1C755957C65C4557 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = D3C8834CD01AC2306A198613 /* Base.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/CliveMac.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A642F30D03CFD2921C31F53E /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = D3C8834CD01AC2306A198613 /* Base.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Config/CliveMac.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		CA32F7F2ACBABB3F776089C8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		DA0F48FC35259A5C948DAFFB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2B5BAC039F06929A030CBDD6 /* Build configuration list for PBXProject "CliveMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DA0F48FC35259A5C948DAFFB /* Debug */,
+				CA32F7F2ACBABB3F776089C8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		503D7033C72F80634F920653 /* Build configuration list for PBXNativeTarget "CliveMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				52E4DB2A1C755957C65C4557 /* Debug */,
+				A642F30D03CFD2921C31F53E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		1571212F796A2D02C94B49A2 /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AD86DDA4593CF8E09639B401 /* CliveCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CliveCore;
+		};
+		B1153053DBF0B84B6A1D49C5 /* CliveSecurity */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CliveSecurity;
+		};
+		E67F524AA99F4A80D5B0B222 /* CliveCloud */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CliveCloud;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 10BD099BAD010D5085C5F072 /* Project object */;
+}
