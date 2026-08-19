@@ -93,19 +93,20 @@ struct WorkspaceView: View {
     private var terminalButton: some View {
         Button { coordinator.showTerminalList() } label: {
             Image(systemName: "terminal")
+                .font(.system(size: 18, weight: .medium))
                 .frame(width: 44, height: 44)
         }
         .overlay(alignment: .topTrailing) {
             Text("\(coordinator.sessions.count)")
                 .font(.caption2.bold().monospacedDigit())
                 .foregroundStyle(.white)
-                .padding(.horizontal, 5)
-                .frame(minWidth: 18, minHeight: 18)
-                .background(.blue, in: .capsule)
+                .frame(width: 20, height: 20)
+                .background(Color.blue, in: .circle)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
         .contentShape(.circle)
+        .buttonBorderShape(.circle)
         .accessibilityLabel("Terminals")
         .accessibilityValue("\(coordinator.sessions.count) open")
     }
