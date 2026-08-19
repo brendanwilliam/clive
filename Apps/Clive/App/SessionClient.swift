@@ -25,7 +25,7 @@ final class SessionClient: @unchecked Sendable {
     private var wanGateToken: Data?
     private var timeout: DispatchWorkItem?
 
-    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, size: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil) {
+    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, size: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil) {
         opened = false
         terminalStateReported = false
         pendingResize = nil
@@ -48,7 +48,7 @@ final class SessionClient: @unchecked Sendable {
             switch state {
             case .ready:
                 self.timeout?.cancel()
-                self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(clientSessionID: clientSessionID, initialSize: size, rendezvousCapability: self.rendezvousCapability, wanGateToken: self.wanGateToken))) ?? Data())); self.receive()
+                self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(clientSessionID: clientSessionID, initialSize: size, rendezvousCapability: self.rendezvousCapability, wanGateToken: self.wanGateToken, workingDirectory: workingDirectory))) ?? Data())); self.receive()
             case .failed(let error):
                 self.timeout?.cancel()
                 self.terminalStateReported = true

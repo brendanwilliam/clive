@@ -21,6 +21,7 @@ WAN, CloudKit records, APNs hints, endpoint metadata, and Apple Account membersh
 - Certificate pinning binds each saved Mac and iPhone to the pairing established over the QR flow.
 - The macOS service is foreground and user-scoped; it never runs as root and never elevates privileges.
 - Device revocation deletes the trust record and ends active connections immediately.
+- An authenticated iPhone may revoke only its own pairing. The Mac persists that removal and invalidates rendezvous access before acknowledging it; an offline or unacknowledged request leaves the iPhone's local pairing intact.
 - Logs contain lifecycle metadata only—timestamps, opaque device IDs, and failure codes—not shell commands, output, QR payloads, secrets, or private keys.
 
 ## Explicit limitations

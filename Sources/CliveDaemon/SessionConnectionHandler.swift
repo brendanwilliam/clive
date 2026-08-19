@@ -22,11 +22,13 @@ final class SessionConnectionHandler: @unchecked Sendable {
     private let replaceExisting: @Sendable (String, UUID, SessionConnectionHandler) async -> Void
     private let validateGate: @Sendable (String, Data?) async -> Bool
     private let upgradePeer: @Sendable (String, Data, RendezvousCapability) async -> Void
+    private let revokePeer: @Sendable (String, UUID) async -> Bool
 
-    init(deviceID: String, peerCertificate: Data? = nil, requiresWANGate: Bool = false, localCapability: RendezvousCapability? = nil, registry: SessionRegistry, queue: DispatchQueue, validateGate: @escaping @Sendable (String, Data?) async -> Bool = { _, _ in true }, upgradePeer: @escaping @Sendable (String, Data, RendezvousCapability) async -> Void = { _, _, _ in }, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }, replaceExisting: @escaping @Sendable (String, UUID, SessionConnectionHandler) async -> Void = { _, _, _ in }) {
+    init(deviceID: String, peerCertificate: Data? = nil, requiresWANGate: Bool = false, localCapability: RendezvousCapability? = nil, registry: SessionRegistry, queue: DispatchQueue, validateGate: @escaping @Sendable (String, Data?) async -> Bool = { _, _ in true }, upgradePeer: @escaping @Sendable (String, Data, RendezvousCapability) async -> Void = { _, _, _ in }, revokePeer: @escaping @Sendable (String, UUID) async -> Bool = { _, _ in false }, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }, replaceExisting: @escaping @Sendable (String, UUID, SessionConnectionHandler) async -> Void = { _, _, _ in }) {
         self.deviceID = deviceID; self.registry = registry; self.queue = queue
         self.peerCertificate = peerCertificate; self.requiresWANGate = requiresWANGate; self.localCapability = localCapability
         self.validateGate = validateGate; self.upgradePeer = upgradePeer
+        self.revokePeer = revokePeer
         self.onClosed = onClosed
         self.replaceExisting = replaceExisting
     }
@@ -50,6 +52,14 @@ final class SessionConnectionHandler: @unchecked Sendable {
 
     private func handle(_ frame: ProtocolFrame) {
         if shell == nil {
+            if !opening, frame.kind == .pairingRevoke, frame.payload.isEmpty {
+                opening = true
+                Task {
+                    let revoked = await revokePeer(deviceID, identifier)
+                    queue.async { [weak self] in self?.finishRevocation(succeeded: revoked) }
+                }
+                return
+            }
             guard !opening, frame.kind == .sessionOpen,
                   let request = try? ProtocolPayload.decode(SessionOpenRequest.self, from: frame.payload),
                   request.initialSize.isValid else {
@@ -67,7 +77,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 if let certificate = peerCertificate, let capability = request.rendezvousCapability { await upgradePeer(deviceID, certificate, capability) }
                 await replaceExisting(deviceID, request.clientSessionID, self)
                 let session = await registry.open(deviceID: deviceID, clientSessionID: request.clientSessionID, size: request.initialSize)
-                queue.async { [weak self] in self?.finishOpening(session: session, size: request.initialSize) }
+                queue.async { [weak self] in self?.finishOpening(session: session, size: request.initialSize, workingDirectory: request.workingDirectory) }
             }
             return
         }
@@ -85,11 +95,16 @@ final class SessionConnectionHandler: @unchecked Sendable {
         }
     }
 
-    private func finishOpening(session: TerminalSession, size: TerminalSize) {
+    private func finishRevocation(succeeded: Bool) {
+        guard succeeded else { return fail(.protocolError, "Unable to revoke this iPhone") }
+        framed?.send(ProtocolFrame(kind: .pairingRevoked)) { [weak self] _ in self?.close() }
+    }
+
+    private func finishOpening(session: TerminalSession, size: TerminalSize, workingDirectory: String?) {
         guard !closed else { Task { await registry.close(id: session.id) }; return }
         do {
             opening = false
-            shell = try PTYProcess(size: size) { [weak self] bytes in
+            shell = try PTYProcess(size: size, workingDirectory: workingDirectory) { [weak self] bytes in
                 guard let owner = self else { return }; owner.queue.async { [weak owner] in owner?.sendOutput(bytes) }
             }
             sessionID = session.id
