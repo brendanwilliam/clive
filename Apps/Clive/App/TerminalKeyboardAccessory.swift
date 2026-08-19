@@ -17,6 +17,7 @@ final class TerminalKeyboardAccessory: UIInputView {
     private var lastCommand: String?
     private weak var scrollView: UIScrollView?
     private weak var keyRow: UIStackView?
+    private weak var keyboardBridge: UIView?
     private var palette: UIView?
     private var heightConstraint: NSLayoutConstraint?
 
@@ -34,9 +35,12 @@ final class TerminalKeyboardAccessory: UIInputView {
         scroll.translatesAutoresizingMaskIntoConstraints = false
         let row = UIStackView(); row.axis = .horizontal; row.spacing = 7; row.distribution = .fill
         row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(scroll); scroll.addSubview(row)
-        let height = heightAnchor.constraint(equalToConstant: 48); heightConstraint = height
-        NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: leadingAnchor), scroll.trailingAnchor.constraint(equalTo: trailingAnchor), scroll.topAnchor.constraint(equalTo: topAnchor), scroll.bottomAnchor.constraint(equalTo: bottomAnchor), row.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 8), row.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -8), row.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 4), row.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -4), row.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor, constant: -8), height])
+        let bridge = UIView(); bridge.backgroundColor = .secondarySystemBackground; bridge.translatesAutoresizingMaskIntoConstraints = false
+        bridge.accessibilityIdentifier = "keyboardBridge"
+        addSubview(scroll); scroll.addSubview(row); addSubview(bridge)
+        let height = heightAnchor.constraint(equalToConstant: 58); heightConstraint = height
+        NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: leadingAnchor), scroll.trailingAnchor.constraint(equalTo: trailingAnchor), scroll.topAnchor.constraint(equalTo: topAnchor), scroll.bottomAnchor.constraint(equalTo: bridge.topAnchor), bridge.leadingAnchor.constraint(equalTo: leadingAnchor), bridge.trailingAnchor.constraint(equalTo: trailingAnchor), bridge.bottomAnchor.constraint(equalTo: bottomAnchor), bridge.heightAnchor.constraint(equalToConstant: 10), row.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 8), row.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -8), row.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 4), row.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -4), row.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor, constant: -8), height])
+        keyboardBridge = bridge
         scrollView = scroll; keyRow = row; rebuildRow()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -73,6 +77,7 @@ final class TerminalKeyboardAccessory: UIInputView {
     @objc private func pressed(_ sender: UIButton) {
         guard let action = sender.accessibilityIdentifier else { return }
         if action == "keyboard" { togglePalette(); return }
+        if action == "closeAdditionalKeys" { togglePalette(); return }
         if action.hasPrefix("special:") || action.hasPrefix("custom:") {
             let value = String(action.dropFirst(action.hasPrefix("special:") ? 8 : 7))
             send(Data(value.utf8)); consumeOneShot(); return
@@ -120,7 +125,7 @@ final class TerminalKeyboardAccessory: UIInputView {
             !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !$0.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        let button = UIButton(type: .system)
+        let button = TerminalKeyButton(type: .system)
         button.setImage(UIImage(systemName: "text.badge.plus"), for: .normal)
         button.accessibilityLabel = "CLI shortcuts"
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
@@ -142,25 +147,37 @@ final class TerminalKeyboardAccessory: UIInputView {
         return button
     }
     private func makeButton(title: String, action: String, label: String) -> UIButton {
-        let button = UIButton(type: .system); button.setTitle(title, for: .normal); button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        let button = TerminalKeyButton(type: .system); button.setTitle(title, for: .normal); button.titleLabel?.font = .preferredFont(forTextStyle: .body)
         button.accessibilityLabel = label; button.accessibilityIdentifier = action; button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
         button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
         if ["shift", "control", "option", "command"].contains(action) { button.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))) }
         buttons.append(button); return button
     }
     private func togglePalette() {
-        if palette != nil { palette?.removeFromSuperview(); palette = nil; heightConstraint?.constant = 48; invalidateIntrinsicContentSize(); onLayoutChanged(); return }
+        if palette != nil { palette?.removeFromSuperview(); palette = nil; heightConstraint?.constant = 58; invalidateIntrinsicContentSize(); onLayoutChanged(); return }
         let values = ["~", "`", "|", "\\", "{", "}", "[", "]", "(", ")", "<", ">", "=", "*", "#", "^", "_", "-", ";", ":"]
         let panel = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial)); panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.accessibilityIdentifier = "additionalKeysPalette"
+        let content = UIStackView(); content.axis = .vertical; content.spacing = 4; content.translatesAutoresizingMaskIntoConstraints = false
+        let header = UIStackView(); header.axis = .horizontal; header.alignment = .center
+        let title = UILabel(); title.text = "Additional keys"; title.font = .preferredFont(forTextStyle: .caption1); title.textColor = .secondaryLabel
+        let close = UIButton(type: .system); close.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        close.accessibilityLabel = "Close additional keys"; close.accessibilityIdentifier = "closeAdditionalKeys"
+        close.widthAnchor.constraint(equalToConstant: 36).isActive = true
+        close.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        close.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
+        header.addArrangedSubview(title); header.addArrangedSubview(close)
         let grid = UIStackView(); grid.axis = .vertical; grid.spacing = 4; grid.distribution = .fillEqually; grid.translatesAutoresizingMaskIntoConstraints = false
         for chunk in values.chunked(into: 5) {
             let line = UIStackView(); line.axis = .horizontal; line.spacing = 4; line.distribution = .fillEqually
             for value in chunk { let button = makeButton(title: value, action: "special:\(value)", label: "Special key \(value)"); button.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(specialKeyHeld(_:)))); line.addArrangedSubview(button) }
             grid.addArrangedSubview(line)
         }
-        panel.contentView.addSubview(grid); addSubview(panel)
-        NSLayoutConstraint.activate([panel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6), panel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6), panel.topAnchor.constraint(equalTo: topAnchor, constant: 4), panel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4), grid.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 8), grid.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -8), grid.topAnchor.constraint(equalTo: panel.contentView.topAnchor, constant: 8), grid.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -8)])
-        palette = panel; heightConstraint?.constant = 188; invalidateIntrinsicContentSize(); onLayoutChanged()
+        content.addArrangedSubview(header); content.addArrangedSubview(grid)
+        panel.contentView.addSubview(content); addSubview(panel)
+        let panelBottom = keyboardBridge?.topAnchor ?? bottomAnchor
+        NSLayoutConstraint.activate([panel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6), panel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6), panel.topAnchor.constraint(equalTo: topAnchor, constant: 4), panel.bottomAnchor.constraint(equalTo: panelBottom), content.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 8), content.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -8), content.topAnchor.constraint(equalTo: panel.contentView.topAnchor, constant: 6), content.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -8)])
+        palette = panel; heightConstraint?.constant = 226; invalidateIntrinsicContentSize(); onLayoutChanged()
     }
     private func modifier(named action: String) -> Modifier? { switch action { case "shift": .shift; case "control": .control; case "option": .option; case "command": .command; default: nil } }
     private func active(_ modifier: Modifier) -> Bool { oneShot.contains(modifier) || locked.contains(modifier) }
@@ -171,6 +188,47 @@ final class TerminalKeyboardAccessory: UIInputView {
     }
     private func consumeOneShot() { oneShot.removeAll(); refreshModifierButtons() }
     private func refreshModifierButtons() { for button in buttons { if let action = button.accessibilityIdentifier, let modifier = modifier(named: action) { button.isSelected = active(modifier); button.tintColor = button.isSelected ? .systemBlue : .label } } }
+}
+
+private final class TerminalKeyButton: UIButton {
+    override var isHighlighted: Bool {
+        didSet { updateKeyAppearance(animated: true) }
+    }
+
+    override var isSelected: Bool {
+        didSet { updateKeyAppearance(animated: false) }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        configureKeyAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureKeyAppearance()
+    }
+
+    private func configureKeyAppearance() {
+        layer.cornerRadius = 7
+        layer.cornerCurve = .continuous
+        clipsToBounds = true
+        updateKeyAppearance(animated: false)
+    }
+
+    private func updateKeyAppearance(animated: Bool) {
+        let changes = {
+            self.backgroundColor = self.isHighlighted
+                ? .systemFill
+                : (self.isSelected ? UIColor.systemBlue.withAlphaComponent(0.22) : .tertiarySystemFill)
+            self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.94, y: 0.94) : .identity
+        }
+        if animated {
+            UIView.animate(withDuration: 0.08, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: changes)
+        } else {
+            changes()
+        }
+    }
 }
 
 private extension Array {
