@@ -11,6 +11,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.defaultDirectoryPath, "")
         XCTAssertTrue(preferences.shortcuts.isEmpty)
         XCTAssertTrue(preferences.connectionIndicators.isEmpty)
+        XCTAssertTrue(preferences.connectionIndicatorColors.isEmpty)
     }
 
     func testStoreRoundTripsOrderedShortcuts() throws {
@@ -23,7 +24,9 @@ final class AppPreferencesTests: XCTestCase {
             shortcuts: [
                 CLIShortcut(name: "Status", command: "git status --short"),
                 CLIShortcut(name: "Tests", command: "swift test")
-            ]
+            ],
+            connectionIndicators: ["mac-1": "🧑‍💻"],
+            connectionIndicatorColors: ["mac-1": "#3366CCFF"]
         )
 
         try store.save(preferences)
@@ -39,6 +42,7 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.allowsCellularConnections)
         XCTAssertEqual(preferences.defaultDirectoryPath, "~/Code")
         XCTAssertTrue(preferences.connectionIndicators.isEmpty)
+        XCTAssertTrue(preferences.connectionIndicatorColors.isEmpty)
     }
 
     @MainActor
@@ -59,5 +63,17 @@ final class AppPreferencesTests: XCTestCase {
         model.setIndicator("🧑‍💻", for: mac)
 
         XCTAssertEqual(model.indicator(for: mac), "🧑‍💻")
+    }
+
+    @MainActor
+    func testSavingLastCommandAddsShortcut() {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = AppPreferencesModel(store: AppPreferencesStore(rootURL: root))
+
+        model.saveShortcut(command: "  git status --short  ")
+
+        XCTAssertEqual(model.value.shortcuts.map(\.name), ["git status --short"])
+        XCTAssertEqual(model.value.shortcuts.map(\.command), ["git status --short"])
     }
 }

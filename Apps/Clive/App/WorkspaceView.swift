@@ -92,17 +92,16 @@ struct WorkspaceView: View {
 
     private var terminalButton: some View {
         Button { coordinator.showTerminalList() } label: {
-            Image(systemName: "terminal")
-                .frame(width: 32, height: 32)
-                .overlay(alignment: .topTrailing) {
-                    Text("\(coordinator.sessions.count)")
-                        .font(.caption2.bold().monospacedDigit())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .frame(minWidth: 18, minHeight: 18)
-                        .background(.blue, in: .capsule)
-                        .offset(x: 8, y: -7)
-                }
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "terminal").frame(width: 38, height: 38)
+                Text("\(coordinator.sessions.count)")
+                    .font(.caption2.bold().monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .frame(minWidth: 18, minHeight: 18)
+                    .background(.blue, in: .capsule)
+            }
+            .frame(width: 44, height: 44)
         }
         .accessibilityLabel("Terminals")
         .accessibilityValue("\(coordinator.sessions.count) open")
@@ -112,7 +111,7 @@ struct WorkspaceView: View {
         Button { coordinator.showConnections() } label: {
             Group {
                 if let mac = coordinator.selectedMac {
-                    ConnectionIndicatorView(value: coordinator.preferences.indicator(for: mac), size: 36)
+                    ConnectionIndicatorView(value: coordinator.preferences.indicator(for: mac), color: coordinator.preferences.indicatorColor(for: mac), size: 36)
                 } else {
                     Image(systemName: "person.2.fill")
                         .frame(width: 36, height: 36)
@@ -120,6 +119,8 @@ struct WorkspaceView: View {
                 }
             }
         }
+        .buttonStyle(.plain)
+        .contentShape(.circle)
         .accessibilityLabel("Connections")
         .accessibilityValue(coordinator.selectedMac?.displayName ?? "No connection")
     }
@@ -133,7 +134,11 @@ struct WorkspaceView: View {
                 TabView(selection: Binding(get: { coordinator.selectedSessionID }, set: { coordinator.selectSession($0) })) {
                     ForEach(coordinator.sessions) { session in
                         ZStack {
-                            TerminalSurfaceView(session: session.client, shortcuts: coordinator.preferences.value.shortcuts)
+                            TerminalSurfaceView(
+                                session: session.client,
+                                shortcuts: coordinator.preferences.value.shortcuts,
+                                saveShortcut: coordinator.preferences.saveShortcut(command:)
+                            )
                             sessionOverlay(session)
                         }
                         .tag(Optional(session.id))
@@ -150,22 +155,40 @@ struct WorkspaceView: View {
                 coordinator.addShell()
                 coordinator.dismissPresentedScreen()
             } label: {
-                Label("New terminal", systemImage: "terminal.fill").font(.headline)
+                Label("New terminal", systemImage: "plus").font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20).padding(.vertical, 18)
             }
             .disabled(coordinator.selectedMac == nil || coordinator.state != .active)
             Divider()
-            ScrollView {
-                LazyVStack(spacing: 6) {
-                    ForEach(coordinator.sessions) { session in terminalRow(session) }
+            List {
+                Section {
+                    ForEach(coordinator.sessions) { session in
+                        terminalRow(session)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Close", systemImage: "trash", role: .destructive) { deleteTarget = session }
+                                Button("Rename", systemImage: "pencil") {
+                                    renameText = session.descriptor.label
+                                    renameTarget = session
+                                }
+                                .tint(.blue)
+                            }
+                    }
+                } header: {
+                    Label("Active Terminals", systemImage: "terminal")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
                 }
-                .padding(12)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             if let current = coordinator.selectedMac {
                 Divider()
                 HStack(spacing: 12) {
-                    ConnectionIndicatorView(value: coordinator.preferences.indicator(for: current), size: 38)
+                    ConnectionIndicatorView(value: coordinator.preferences.indicator(for: current), color: coordinator.preferences.indicatorColor(for: current), size: 38)
                     Text(current.displayName)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(2)
@@ -181,7 +204,7 @@ struct WorkspaceView: View {
         }
         .safeAreaPadding(.top, 6)
         .safeAreaPadding(.bottom, 4)
-        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea())
     }
 
     private func terminalRow(_ session: WorkspaceSession) -> some View {
@@ -193,12 +216,6 @@ struct WorkspaceView: View {
             .contentShape(.rect)
             .onTapGesture { coordinator.selectSession(session.id); coordinator.dismissPresentedScreen() }
             Spacer(minLength: 4)
-            Button("Rename \(session.descriptor.label)", systemImage: "pencil") {
-                renameText = session.descriptor.label; renameTarget = session
-            }
-            .labelStyle(.iconOnly)
-            Button("Close \(session.descriptor.label)", systemImage: "trash", role: .destructive) { deleteTarget = session }
-                .labelStyle(.iconOnly).tint(.red)
         }
         .padding(12)
         .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08), in: .rect(cornerRadius: 12))
@@ -210,7 +227,7 @@ struct WorkspaceView: View {
                 if let current = coordinator.selectedMac {
                     Text("CURRENT CONNECTION").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.bottom, 6)
                     HStack {
-                        ConnectionIndicatorView(value: coordinator.preferences.indicator(for: current), size: 36)
+                        ConnectionIndicatorView(value: coordinator.preferences.indicator(for: current), color: coordinator.preferences.indicatorColor(for: current), size: 36)
                         VStack(alignment: .leading) { Text(current.displayName).fontWeight(.semibold); Text(routeStatus(current)).font(.caption).foregroundStyle(.secondary) }
                         Spacer()
                         Button("Settings", systemImage: "gearshape") { coordinator.showSettings() }.labelStyle(.iconOnly)
@@ -225,7 +242,7 @@ struct WorkspaceView: View {
                     ForEach(available) { mac in
                         Button { coordinator.selectMac(mac) } label: {
                             HStack {
-                                ConnectionIndicatorView(value: coordinator.preferences.indicator(for: mac), size: 32)
+                                ConnectionIndicatorView(value: coordinator.preferences.indicator(for: mac), color: coordinator.preferences.indicatorColor(for: mac), size: 32)
                                 Text(mac.displayName)
                                 Spacer()
                                 Text(routeStatus(mac)).font(.caption).foregroundStyle(.secondary)
@@ -335,13 +352,17 @@ private struct SettingsView: View {
                 if let connection {
                     Section {
                         HStack(spacing: 14) {
-                            ConnectionIndicatorView(value: preferences.indicator(for: connection), size: 48)
+                            ConnectionIndicatorView(value: preferences.indicator(for: connection), color: preferences.indicatorColor(for: connection), size: 48)
                             TextField("Initials or emoji", text: Binding(
                                 get: { preferences.value.connectionIndicators[connection.id] ?? "" },
                                 set: { preferences.setIndicator($0, for: connection) }
                             ))
                             .textInputAutocapitalization(.characters)
                         }
+                        ColorPicker("Background color", selection: Binding(
+                            get: { preferences.indicatorColor(for: connection) },
+                            set: { preferences.setIndicatorColor($0, for: connection) }
+                        ), supportsOpacity: false)
                     } header: {
                         Text("Connection indicator")
                     } footer: {
@@ -403,6 +424,7 @@ private struct SettingsView: View {
 
 private struct ConnectionIndicatorView: View {
     let value: String
+    let color: Color
     let size: CGFloat
 
     var body: some View {
@@ -412,7 +434,7 @@ private struct ConnectionIndicatorView: View {
             .minimumScaleFactor(0.55)
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(Color.accentColor.gradient, in: .circle)
+            .background(color.gradient, in: .circle)
             .accessibilityHidden(true)
     }
 }

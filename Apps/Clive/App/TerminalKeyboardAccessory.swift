@@ -9,18 +9,22 @@ final class TerminalKeyboardAccessory: UIInputView {
     private let send: (Data) -> Void
     private let command: (String) -> Void
     private let onLayoutChanged: () -> Void
+    private let saveLastCommand: (String) -> Void
     private var buttons: [UIButton] = []
     private var customKeys: [String] = UserDefaults.standard.stringArray(forKey: "com.clive.keyboard.custom-keys") ?? []
     private var shortcuts: [CLIShortcut]
     private let showsShortcutMenu: Bool
+    private var lastCommand: String?
     private weak var scrollView: UIScrollView?
     private weak var keyRow: UIStackView?
     private var palette: UIView?
     private var heightConstraint: NSLayoutConstraint?
 
-    init(shortcuts: [CLIShortcut], showsShortcutMenu: Bool = true, send: @escaping (Data) -> Void, command: @escaping (String) -> Void, onLayoutChanged: @escaping () -> Void = {}) {
+    init(shortcuts: [CLIShortcut], showsShortcutMenu: Bool = true, lastCommand: String? = nil, saveLastCommand: @escaping (String) -> Void = { _ in }, send: @escaping (Data) -> Void, command: @escaping (String) -> Void, onLayoutChanged: @escaping () -> Void = {}) {
         self.shortcuts = shortcuts
         self.showsShortcutMenu = showsShortcutMenu
+        self.lastCommand = lastCommand
+        self.saveLastCommand = saveLastCommand
         self.send = send; self.command = command; self.onLayoutChanged = onLayoutChanged
         super.init(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48), inputViewStyle: .keyboard)
         allowsSelfSizing = true
@@ -40,6 +44,12 @@ final class TerminalKeyboardAccessory: UIInputView {
     func updateShortcuts(_ shortcuts: [CLIShortcut]) {
         guard shortcuts != self.shortcuts else { return }
         self.shortcuts = shortcuts
+        rebuildRow()
+    }
+
+    func updateLastCommand(_ command: String?) {
+        guard command != lastCommand else { return }
+        lastCommand = command
         rebuildRow()
     }
 
@@ -93,11 +103,11 @@ final class TerminalKeyboardAccessory: UIInputView {
         guard let row = keyRow else { return }
         row.arrangedSubviews.forEach { row.removeArrangedSubview($0); $0.removeFromSuperview() }
         buttons.removeAll()
+        if showsShortcutMenu { row.addArrangedSubview(makeShortcutButton()) }
         let keys: [(String, String, String)] = [
             ("⇥", "tab", "Tab"), ("⇧", "shift", "Shift"), ("⌃", "control", "Control"), ("⌥", "option", "Option"), ("⌘", "command", "Command")
         ]
         for (title, action, label) in keys { row.addArrangedSubview(makeButton(title: title, action: action, label: label)) }
-        if showsShortcutMenu { row.addArrangedSubview(makeShortcutButton()) }
         let remainingKeys = customKeys.map { ($0, "custom:\($0)", "Custom key \($0)") } + [
             ("←", "left", "Left arrow"), ("↓", "down", "Down arrow"), ("↑", "up", "Up arrow"), ("→", "right", "Right arrow"),
             (".", ".", "Period"), ("/", "/", "Slash"), ("@", "@", "At sign"), ("$", "$", "Dollar"), ("⌨", "keyboard", "Special keys")
@@ -115,13 +125,20 @@ final class TerminalKeyboardAccessory: UIInputView {
         button.accessibilityLabel = "CLI shortcuts"
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
         button.showsMenuAsPrimaryAction = true
-        button.menu = UIMenu(title: "CLI Shortcuts", options: .displayInline, children: available.map { shortcut in
+        var actions: [UIMenuElement] = []
+        let save = UIAction(title: "Save last command", image: UIImage(systemName: "square.and.arrow.down")) { [weak self] _ in
+            guard let self, let lastCommand = self.lastCommand else { return }
+            self.saveLastCommand(lastCommand)
+        }
+        save.attributes = lastCommand == nil ? .disabled : []
+        actions.append(save)
+        if !available.isEmpty { actions.append(UIMenu(options: .displayInline, children: available.map { shortcut in
             UIAction(title: shortcut.name) { [weak self] _ in
                 self?.send(Data((shortcut.command + "\r").utf8))
                 self?.consumeOneShot()
             }
-        })
-        button.isEnabled = !available.isEmpty
+        })) }
+        button.menu = UIMenu(title: "CLI Shortcuts", children: actions)
         return button
     }
     private func makeButton(title: String, action: String, label: String) -> UIButton {
