@@ -39,7 +39,6 @@ struct WorkspaceView: View {
         }
         .sheet(isPresented: terminalListBinding) { home }
         .sheet(isPresented: settingsBinding) { settings }
-        .sheet(isPresented: $showingScanner) { PairingScannerView(onTicket: { ticket in showingScanner = false; Task { await coordinator.macs.pair(ticket) } }, onError: { error in showingScanner = false; coordinator.macs.state = .failed(error.localizedDescription) }).ignoresSafeArea() }
     }
 
     private var connectionTitle: some View {
@@ -106,6 +105,19 @@ struct WorkspaceView: View {
             }
             .navigationTitle("Settings")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { coordinator.dismissPresentedScreen() } } }
+        }
+        .fullScreenCover(isPresented: $showingScanner) {
+            PairingScannerView(
+                onTicket: { ticket in
+                    showingScanner = false
+                    Task { await coordinator.macs.pair(ticket) }
+                },
+                onError: { error in
+                    showingScanner = false
+                    coordinator.macs.state = .failed(error.localizedDescription)
+                }
+            )
+            .ignoresSafeArea()
         }
     }
 
