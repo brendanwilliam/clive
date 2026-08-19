@@ -101,6 +101,12 @@ struct WorkspaceView: View {
             List {
                 Section("Paired Macs") { ForEach(coordinator.macs.devices) { mac in Button { coordinator.selectMac(mac) } label: { HStack { Text(mac.displayName); Spacer(); Text(routeStatus(mac)).foregroundStyle(.secondary); if mac.id == coordinator.selectedMacID { Image(systemName: "checkmark") } } } } }
                 Section { Button("Add Connection", systemImage: "qrcode.viewfinder") { showingScanner = true }; Button("Refresh cellular routes", systemImage: "arrow.clockwise") { Task { await coordinator.macs.refreshRendezvous() } } } footer: { Text("Nearby connections are preferred. Cellular uses encrypted, short-lived direct-WAN metadata from the same Apple Account; terminal traffic never passes through iCloud.") }
+                if case .pairing = coordinator.macs.state {
+                    Section { ProgressView("Waiting for approval on Mac…") }
+                }
+                if case .failed(let message) = coordinator.macs.state {
+                    Section { Text(message).foregroundStyle(.red) }
+                }
                 if coordinator.selectedMac != nil { Section { Button("Disconnect", systemImage: "network.slash", role: .destructive) { coordinator.disconnectCurrentMac(); coordinator.dismissPresentedScreen() } } }
             }
             .navigationTitle("Settings")
