@@ -10,7 +10,7 @@ public enum CloudRendezvousError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .accountUnavailable: "Sign in to iCloud with the same Apple Account on both devices."
-        case .entitlementUnavailable: "Cellular access requires the signed iPhone Terminal Mac app with its CloudKit entitlement."
+        case .entitlementUnavailable: "Cellular access requires the signed Clive Mac app with its CloudKit entitlement."
         case .malformedRecord: "The encrypted rendezvous record is malformed."
         }
     }

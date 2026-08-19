@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "iPhoneTerminal",
+    name: "Clive",
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "IPhoneTerminalCore", targets: ["IPhoneTerminalCore"]),
         .library(name: "IPhoneTerminalSecurity", targets: ["IPhoneTerminalSecurity"]),
         .library(name: "IPhoneTerminalCloud", targets: ["IPhoneTerminalCloud"]),
-        .executable(name: "iphone-terminald", targets: ["IPhoneTerminalDaemon"]),
+        .executable(name: "clive", targets: ["IPhoneTerminalDaemon"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-certificates.git", exact: "1.19.4"),

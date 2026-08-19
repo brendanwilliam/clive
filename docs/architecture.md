@@ -6,7 +6,7 @@
 | --- | --- |
 | iOS app | Discovers paired Macs, unlocks the local identity with biometrics, establishes a secure session, and renders/inputs terminal data. |
 | macOS companion app | Signed menu bar owner of listeners, CloudKit rendezvous, pairing state, PTYs, and child `zsh` processes. |
-| macOS CLI (`iphone-terminald`) | Local control client for launch, pairing, status, cellular enablement, revocation, and shutdown. |
+| macOS CLI (`clive`) | Local control client for launch, pairing, status, cellular enablement, revocation, and shutdown. |
 | Local network | Carries Bonjour discovery and encrypted point-to-point terminal sessions. It never receives shell data in plaintext. |
 | CloudKit/APNs | Same-account private rendezvous and reachability hints; never a terminal transport or authorization source. |
 
@@ -25,11 +25,11 @@ Both clients are native Swift applications. Shared protocol, cryptography, frami
 Initial commands:
 
 ```text
-iphone-terminald start
-iphone-terminald pair
-iphone-terminald status
-iphone-terminald revoke <device-id>
-iphone-terminald stop
+clive start
+clive pair
+clive status
+clive revoke <device-id>
+clive stop
 ```
 
 `start` remains foreground by default so access is visible and ends when the process exits. `pair` presents a short-lived QR code only after an interactive local confirmation. `status` lists paired devices and active sessions without exposing terminal content. `revoke` immediately removes the device trust record and terminates its active sessions.

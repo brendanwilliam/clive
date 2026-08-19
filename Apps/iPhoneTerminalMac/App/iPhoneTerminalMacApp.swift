@@ -26,7 +26,7 @@ final class CompanionModel: ObservableObject {
             }
             Task { await value.start(); try? await Task.sleep(for: .milliseconds(250)); await refresh() }
         } catch {
-            errorMessage = "The companion could not start. Stop any foreground iphone-terminald process and try again. \(error.localizedDescription)"
+            errorMessage = "The companion could not start. Stop any foreground clive process and try again. \(error.localizedDescription)"
         }
     }
 
@@ -59,11 +59,18 @@ final class CompanionModel: ObservableObject {
 @main
 struct IPhoneTerminalMacApp: App {
     @NSApplicationDelegateAdaptor(CompanionAppDelegate.self) private var appDelegate
-    @StateObject private var model = CompanionModel()
+    @StateObject private var model: CompanionModel
+
+    init() {
+        let model = CompanionModel()
+        _model = StateObject(wrappedValue: model)
+        Task { @MainActor in model.start() }
+    }
 
     var body: some Scene {
         MenuBarExtra {
             Group {
+                Text("Clive — CLI for iOS").font(.headline)
                 Toggle("Allow connection over cellular", isOn: Binding(get: { model.status.enabled }, set: { model.setCellular($0) }))
                 Text(stateLabel).foregroundStyle(.secondary)
                 if let message = model.status.diagnostic ?? model.errorMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
@@ -73,14 +80,17 @@ struct IPhoneTerminalMacApp: App {
                 Divider()
                 Button("Refresh") { Task { await model.refresh() } }
                 Button("Pair from Terminal…") {
-                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString("iphone-terminald pair", forType: .string)
-                    model.errorMessage = "Copied ‘iphone-terminald pair’. Run it in Terminal to approve the new iPhone."
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clive pair", forType: .string)
+                    model.errorMessage = "Copied ‘clive pair’. Run it in Terminal to approve the new iPhone."
                 }
-                Button("Quit iPhone Terminal") { model.stop(); NSApplication.shared.terminate(nil) }
+                Button("Copy Status Command") {
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clive status", forType: .string)
+                    model.errorMessage = "Copied ‘clive status’. Run it in Terminal for connection and recovery details."
+                }
+                Button("Quit Clive") { model.stop(); NSApplication.shared.terminate(nil) }
             }
-            .task { model.start() }
         } label: {
-            Label("iPhone Terminal", systemImage: model.status.enabled ? "network.badge.shield.half.filled" : "terminal")
+            Label("Clive", systemImage: model.status.enabled ? "network.badge.shield.half.filled" : "terminal")
         }
         .commandsRemoved()
         Settings { EmptyView() }

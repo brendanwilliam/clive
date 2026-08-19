@@ -24,7 +24,10 @@ actor MacRendezvousController {
         settingsURL = baseURL.appending(path: "cellular.json")
         if let data = try? Data(contentsOf: settingsURL) { settings = (try? JSONDecoder().decode(Settings.self, from: data)) ?? Settings() }
         else { settings = Settings() }
-        let container = ProcessInfo.processInfo.environment["IPHONE_TERMINAL_ICLOUD_CONTAINER"] ?? "iCloud.com.iphoneterminal"
+        let bundledContainer = Bundle.main.object(forInfoDictionaryKey: "IPhoneTerminalCloudContainer") as? String
+        let container = ProcessInfo.processInfo.environment["IPHONE_TERMINAL_ICLOUD_CONTAINER"]
+            ?? bundledContainer
+            ?? "iCloud.com.iphoneterminal"
         cloud = Self.hasCloudKitEntitlement ? CloudRendezvousStore(containerIdentifier: container) : nil
         keys = try RendezvousKeyStore(service: "com.iphoneterminal.mac.rendezvous").loadOrCreate()
         currentStatus = CellularAccessStatus(enabled: settings.enabled, state: settings.enabled ? .preparing : .disabled)

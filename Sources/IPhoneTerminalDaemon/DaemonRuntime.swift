@@ -33,9 +33,9 @@ final class DaemonRuntime: @unchecked Sendable {
         }
         sessionListener = try SecureListener(identity: identity, port: state.remoteEndpoint?.port, serviceID: state.serviceID, peerTrust: peerTrust, onReady: { [remoteEndpoint = state.remoteEndpoint, rendezvous] port in
             if let remoteEndpoint {
-                print("iphone-terminald listening on private VPN port \(port) for \(remoteEndpoint.host).")
+                print("clive listening on private VPN port \(port) for \(remoteEndpoint.host).")
             } else {
-                print("iphone-terminald listening on port \(port).")
+                print("clive listening on port \(port).")
             }
             Task { await rendezvous.prepare(listenerPort: port) }
         }, onConnection: { [weak self] connection, queue, deviceID, certificate, requiresWANGate in
