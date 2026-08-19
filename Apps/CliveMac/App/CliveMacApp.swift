@@ -1,5 +1,6 @@
 import AppKit
 import CliveCore
+import CoreImage
 import SwiftUI
 
 extension Notification.Name { static let macCloudRendezvousChanged = Notification.Name("MacCloudRendezvousChanged") }
@@ -13,6 +14,11 @@ final class CompanionModel: ObservableObject {
     @Published var status = CellularAccessStatus(enabled: false, state: .disabled)
     @Published var devices: [ControlDevice] = []
     @Published var errorMessage: String?
+    @Published var pairingTicket: PairingTicket?
+    @Published var pairingPrompt: PairingPrompt?
+    @Published var pairingMessage: String?
+    @Published var isPairing = false
+    private var pairingChannel: ControlChannel?
     private var runtime: DaemonRuntime?
     private var observer: NSObjectProtocol?
 
@@ -50,6 +56,49 @@ final class CompanionModel: ObservableObject {
 
     func stop() { runtime?.stop(); runtime = nil }
 
+    func beginPairing() {
+        guard !isPairing else { return }
+        isPairing = true; pairingTicket = nil; pairingPrompt = nil; pairingMessage = nil
+        Task.detached { [weak self] in
+            do {
+                let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
+                try channel.send(.init(command: .pair))
+                await MainActor.run { self?.pairingChannel = channel }
+                while true {
+                    let response = try channel.readResponse()
+                    await MainActor.run {
+                        guard let self else { return }
+                        switch response.kind {
+                        case .pairingTicket: self.pairingTicket = response.pairingTicket
+                        case .pairingPrompt: self.pairingPrompt = response.pairingPrompt
+                        case .result:
+                            self.pairingMessage = response.message
+                            self.isPairing = false; self.pairingChannel = nil
+                            Task { await self.refresh() }
+                        }
+                    }
+                    if response.kind == .result { return }
+                }
+            } catch {
+                await MainActor.run { self?.pairingMessage = error.localizedDescription; self?.isPairing = false; self?.pairingChannel = nil }
+            }
+        }
+    }
+
+    func approvePairing(_ approved: Bool) {
+        do { try pairingChannel?.send(.init(command: .approvePairing, approved: approved)); pairingPrompt = nil }
+        catch { pairingMessage = error.localizedDescription; isPairing = false }
+    }
+
+    func cancelPairing() {
+        guard isPairing else { return }
+        Task.detached { [weak self] in
+            do { let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL); try channel.send(.init(command: .cancelPairing)); _ = try channel.readResponse() }
+            catch { await MainActor.run { self?.pairingMessage = error.localizedDescription } }
+        }
+        pairingTicket = nil; pairingPrompt = nil
+    }
+
     private func request(_ value: ControlRequest) throws -> ControlResponse {
         let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
         try channel.send(value); return try channel.readResponse()
@@ -79,6 +128,7 @@ struct CliveMacApp: App {
                 else { ForEach(model.devices, id: \.id) { device in Text("\(device.displayName) — \(device.activeSessionCount) sessions") } }
                 Divider()
                 Button("Refresh") { Task { await model.refresh() } }
+                PairMenuButton(model: model)
                 Button("Pair from Terminal…") {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clive pair", forType: .string)
                     model.errorMessage = "Copied ‘clive pair’. Run it in Terminal to approve the new iPhone."
@@ -93,6 +143,10 @@ struct CliveMacApp: App {
             Label("Clive", systemImage: model.status.enabled ? "network.badge.shield.half.filled" : "terminal")
         }
         .commandsRemoved()
+        WindowGroup("Pair iPhone", id: "pair-iphone") {
+            PairingWindow(model: model)
+                .frame(minWidth: 390, minHeight: 500)
+        }
         Settings { EmptyView() }
     }
 
@@ -104,5 +158,58 @@ struct CliveMacApp: App {
         case .configurationRequired: "Cellular configuration required"
         case .blocked: "Cellular access is blocked"
         }
+    }
+}
+
+private struct PairMenuButton: View {
+    @ObservedObject var model: CompanionModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Pair iPhone") {
+            model.beginPairing()
+            openWindow(id: "pair-iphone")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+}
+
+private struct PairingWindow: View {
+    @ObservedObject var model: CompanionModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Pair iPhone").font(.title2.bold())
+            if let ticket = model.pairingTicket, let image = qrImage(for: ticket) {
+                Image(nsImage: image).interpolation(.none).resizable().scaledToFit().frame(width: 280, height: 280)
+                Text("Scan this code in Clive for iPhone. It expires \(ticket.expiresAt, style: .relative).")
+                    .multilineTextAlignment(.center).foregroundStyle(.secondary)
+            } else if model.isPairing { ProgressView("Creating secure pairing code…") }
+            if let prompt = model.pairingPrompt {
+                Divider(); Text("Pair \(prompt.displayName)?").font(.headline)
+                Text("Certificate fingerprint\n\(prompt.certificateFingerprint)").font(.caption.monospaced()).textSelection(.enabled).multilineTextAlignment(.center)
+                HStack { Button("Reject") { model.approvePairing(false) }; Button("Approve") { model.approvePairing(true) }.keyboardShortcut(.defaultAction) }
+            }
+            if let message = model.pairingMessage { Text(message).foregroundStyle(.secondary) }
+            Spacer()
+            Button("Cancel") { model.cancelPairing(); dismiss() }
+        }
+        .padding(24)
+        .onChange(of: model.isPairing) { pairing in
+            if !pairing, model.pairingMessage != nil { dismiss() }
+        }
+        .onDisappear { model.cancelPairing() }
+    }
+
+    private func qrImage(for ticket: PairingTicket) -> NSImage? {
+        guard let payload = try? PairingPayload.encode(ticket), let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(payload.utf8), forKey: "inputMessage"); filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: .init(scaleX: 8, y: 8))
+        let representation = NSCIImageRep(ciImage: scaled)
+        let image = NSImage(size: representation.size)
+        image.addRepresentation(representation)
+        return image
     }
 }

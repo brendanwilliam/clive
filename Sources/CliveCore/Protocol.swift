@@ -125,11 +125,19 @@ public extension Data {
         append(contentsOf: [UInt8(value >> 24), UInt8((value >> 16) & 0xff), UInt8((value >> 8) & 0xff), UInt8(value & 0xff)])
     }
 
+    mutating func appendUInt64(_ value: UInt64) {
+        append(contentsOf: (0..<8).reversed().map { UInt8((value >> UInt64($0 * 8)) & 0xff) })
+    }
+
     func uint16(at offset: Int) -> UInt16 {
         (UInt16(self[offset]) << 8) | UInt16(self[offset + 1])
     }
 
     func uint32(at offset: Int) -> UInt32 {
         (UInt32(self[offset]) << 24) | (UInt32(self[offset + 1]) << 16) | (UInt32(self[offset + 2]) << 8) | UInt32(self[offset + 3])
+    }
+
+    func uint64(at offset: Int) -> UInt64 {
+        (0..<8).reduce(0) { ($0 << 8) | UInt64(self[offset + $1]) }
     }
 }

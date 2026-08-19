@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ControlCommand: String, Codable, Sendable {
-    case pair, status, revoke, stop, approvePairing, setCellularAccess
+    case pair, status, revoke, stop, approvePairing, cancelPairing, setCellularAccess
 }
 
 public struct ControlRequest: Codable, Equatable, Sendable {
