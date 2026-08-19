@@ -135,8 +135,13 @@ actor MacRendezvousController {
                 gates.issue(deviceID: device.id, token: token, expiresAt: expiry); published += 1
             } catch { /* Other paired devices remain independently usable. */ }
         }
-        if published > 0 { currentStatus = CellularAccessStatus(enabled: true, state: .available, publishedUntil: expiry) }
-        else { currentStatus = CellularAccessStatus(enabled: true, state: .configurationRequired, diagnostic: "A paired iPhone must connect locally once to verify its iCloud account and upgrade rendezvous keys.") }
+        if published > 0 {
+            currentStatus = CellularAccessStatus(enabled: true, state: .available, publishedUntil: expiry)
+        } else if state.remoteEndpoint != nil {
+            currentStatus = CellularAccessStatus(enabled: true, state: .available)
+        } else {
+            currentStatus = CellularAccessStatus(enabled: true, state: .configurationRequired, diagnostic: "A paired iPhone must connect locally once to verify its iCloud account and upgrade rendezvous keys.")
+        }
     }
 
     private func deleteAllRecords() async {
