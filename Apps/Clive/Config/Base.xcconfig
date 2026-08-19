@@ -1,0 +1,6 @@
+CLIVE_BUNDLE_ID = com.yourcompany.clive
+PRODUCT_BUNDLE_IDENTIFIER = $(CLIVE_BUNDLE_ID)
+PRODUCT_NAME = Clive - CLI for iOS
+CLIVE_ICLOUD_CONTAINER = iCloud.$(CLIVE_BUNDLE_ID)
+CODE_SIGN_STYLE = Automatic
+#include? "Local.xcconfig"

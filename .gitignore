@@ -14,6 +14,6 @@ dist/
 *.mobileprovision
 Secrets/
 Pairings/
-Apps/iPhoneTerminal/Config/Local.xcconfig
-Apps/iPhoneTerminalMac/Config/Local.xcconfig
-Apps/iPhoneTerminal/iPhoneTerminal.xcodeproj/
+Apps/Clive/Config/Local.xcconfig
+Apps/CliveMac/Config/Local.xcconfig
+Apps/Clive/Clive.xcodeproj/

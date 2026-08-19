@@ -1,0 +1,60 @@
+name: Clive
+options:
+  minimumXcodeGenVersion: 2.38.0
+packages:
+  CliveCore:
+    path: ../..
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm.git
+    exactVersion: 1.15.0
+targets:
+  Clive:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [App]
+    configFiles:
+      Debug: Config/Base.xcconfig
+      Release: Config/Base.xcconfig
+    settings:
+      base:
+        SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Config/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/Clive.entitlements
+    dependencies:
+      - package: CliveCore
+        product: CliveCore
+      - package: CliveCore
+        product: CliveSecurity
+      - package: CliveCore
+        product: CliveCloud
+      - package: SwiftTerm
+        product: SwiftTerm
+      - target: CliveResumeWidget
+        embed: true
+  CliveResumeWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Widgets]
+    configFiles:
+      Debug: Config/Base.xcconfig
+      Release: Config/Base.xcconfig
+    settings:
+      base:
+        PRODUCT_NAME: CliveResumeWidget
+        PRODUCT_BUNDLE_IDENTIFIER: $(CLIVE_BUNDLE_ID).widget
+        SWIFT_VERSION: 6.0
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Widgets/Info.plist
+  CliveTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Tests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Clive

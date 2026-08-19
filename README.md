@@ -20,16 +20,16 @@ The end-to-end prototype is implemented: the foreground daemon owns its authenti
 swift test
 ./scripts/test-macos-integration.sh
 swift run clive status
-cd Apps/iPhoneTerminal && xcodegen generate
-xcodebuild -project iPhoneTerminal.xcodeproj -scheme iPhoneTerminal -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+cd Apps/Clive && xcodegen generate
+xcodebuild -project Clive.xcodeproj -scheme Clive -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ./scripts/build-pkg.sh
 ```
 
 `swift test` runs shared protocol and pairing tests. Startup requires RFC1918 IPv4, IPv6 ULA/link-local, or loopback connectivity unless `--allow-non-private-network` is supplied. The packaging script creates an unsigned arm64 development PKG by default; set `DEVELOPER_ID_APPLICATION`, `DEVELOPER_ID_INSTALLER`, and optionally `NOTARY_PROFILE` for signing and notarization.
 
-The PKG installs `/Applications/Clive.app` and `/usr/local/bin/clive`, with no launch agent or privileged helper. Run `clive start`, then use `pair`, `status`, `cellular <on|off>`, `revoke <device-id>`, and `stop`. Cellular access is disabled by default and remains visibly indicated in the menu bar while enabled. State remains under `~/Library/Application Support/iphone-terminal` so upgrades preserve identities and pairings; cryptographic identities remain device-local and owner protected.
+The PKG installs `/Applications/Clive.app` and `/usr/local/bin/clive`, with no launch agent or privileged helper. Run `clive start`, then use `pair`, `status`, `cellular <on|off>`, `revoke <device-id>`, and `stop`. Cellular access is disabled by default and remains visibly indicated in the menu bar while enabled. State remains under `~/Library/Application Support/clive` so upgrades preserve identities and pairings; cryptographic identities remain device-local and owner protected.
 
-To remove the prototype, delete `/usr/local/bin/clive` and the compatibility symlink `/usr/local/bin/iphone-terminald`. Remove the Application Support directory separately only when you also intend to erase the companion identity and every pairing.
+To remove the prototype, delete `/usr/local/bin/clive`. Remove the Application Support directory separately only when you also intend to erase the companion identity and every pairing.
 
 ## Get started
 
@@ -41,9 +41,9 @@ To remove the prototype, delete `/usr/local/bin/clive` and the compatibility sym
 
 An App Store discovery QR code only opens Clive's store listing. The pairing QR code is generated locally by `clive pair`, expires after five minutes, and authorizes exactly one pairing attempt. Neither QR code contains terminal content, credentials, or private keys.
 
-## Migration from iPhone Terminal
+## Migration notes
 
-The product and repository are now named Clive. Existing clones continue to work after GitHub's repository redirect; update remotes to `https://github.com/brendanwilliam/clive.git` when the repository rename is complete. The installer retains `iphone-terminald` as a symlink to `clive` for one migration cycle, but new instructions and scripts use `clive`. Existing bundle identifiers, Keychain services, protocol identifiers, and `~/Library/Application Support/iphone-terminal` are intentionally unchanged to preserve trusted devices and local state.
+The product and repository are named Clive. Existing clones continue to work after GitHub's repository redirect; update remotes to `https://github.com/brendanwilliam/clive.git` when the repository rename is complete. New instructions and scripts use `clive` throughout.
 
 ## Physical-device acceptance
 

@@ -1,0 +1,7 @@
+CLIVE_MAC_BUNDLE_ID = com.yourcompany.clive.mac
+CLIVE_ICLOUD_CONTAINER = iCloud.com.yourcompany.clive
+PRODUCT_BUNDLE_IDENTIFIER = $(CLIVE_MAC_BUNDLE_ID)
+PRODUCT_NAME = Clive
+CODE_SIGN_STYLE = Automatic
+MACOSX_DEPLOYMENT_TARGET = 14.0
+#include? "Local.xcconfig"
