@@ -18,7 +18,9 @@ final class CompanionModel: ObservableObject {
     @Published var pairingPrompt: PairingPrompt?
     @Published var pairingMessage: String?
     @Published var isPairing = false
+    @Published var shouldDismissPairingWindow = false
     private var pairingChannel: ControlChannel?
+    private var submittedPairingDecision = false
     private var runtime: DaemonRuntime?
     private var observer: NSObjectProtocol?
 
@@ -59,6 +61,7 @@ final class CompanionModel: ObservableObject {
     func beginPairing() {
         guard !isPairing else { return }
         isPairing = true; pairingTicket = nil; pairingPrompt = nil; pairingMessage = nil
+        shouldDismissPairingWindow = false; submittedPairingDecision = false
         Task.detached { [weak self] in
             do {
                 let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
@@ -74,6 +77,8 @@ final class CompanionModel: ObservableObject {
                         case .result:
                             self.pairingMessage = response.message
                             self.isPairing = false; self.pairingChannel = nil
+                            self.pairingPrompt = nil
+                            self.shouldDismissPairingWindow = self.submittedPairingDecision || response.success || response.message == "Pairing ticket expired."
                             Task { await self.refresh() }
                         }
                     }
@@ -86,7 +91,11 @@ final class CompanionModel: ObservableObject {
     }
 
     func approvePairing(_ approved: Bool) {
-        do { try pairingChannel?.send(.init(command: .approvePairing, approved: approved)); pairingPrompt = nil }
+        do {
+            guard let pairingChannel else { throw ControlSocketError.unavailable }
+            submittedPairingDecision = true
+            try pairingChannel.send(.init(command: .approvePairing, approved: approved)); pairingPrompt = nil
+        }
         catch { pairingMessage = error.localizedDescription; isPairing = false }
     }
 
@@ -196,8 +205,8 @@ private struct PairingWindow: View {
             Button("Cancel") { model.cancelPairing(); dismiss() }
         }
         .padding(24)
-        .onChange(of: model.isPairing) { pairing in
-            if !pairing, model.pairingMessage != nil { dismiss() }
+        .onChange(of: model.shouldDismissPairingWindow) { shouldDismiss in
+            if shouldDismiss { dismiss() }
         }
         .onDisappear { model.cancelPairing() }
     }
