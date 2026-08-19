@@ -121,7 +121,7 @@ enum WorkspaceLaunchResolver {
 @MainActor @Observable final class WorkspaceCoordinator {
     enum State: Equatable { case locked, authenticating, active, authenticationCancelled, failed(String) }
     enum PresentedScreen: Equatable { case terminalList, settings }
-    enum Recovery: Equatable { case unavailableMac(String), noPairedMac }
+    enum Recovery: Equatable { case unavailableMac(String), noPairedMac, disconnected }
 
     let macs = PairedMacsModel()
     var state: State = .locked
@@ -212,7 +212,12 @@ enum WorkspaceLaunchResolver {
     }
 
     func disconnectCurrentMac() {
-        saveCurrentDescriptors(); persist(); closeLiveSessions(); clearDestination()
+        closeLiveSessions()
+        selectedMacID = nil
+        snapshot.selectedMacID = nil
+        persist()
+        clearDestination()
+        recovery = .disconnected
     }
 
     func retryConnection() {

@@ -170,6 +170,14 @@ struct WorkspaceView: View {
             } actions: {
                 Button("Add Connection") { showingScanner = true }
             }
+        case .disconnected:
+            ContentUnavailableView {
+                Label("Disconnected", systemImage: "network.slash")
+            } description: {
+                Text("Choose a paired Mac to start another terminal.")
+            } actions: {
+                Button("Choose Mac") { coordinator.showSettings() }
+            }
         }
     }
 
