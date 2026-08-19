@@ -37,7 +37,9 @@ struct WorkspaceView: View {
             else if coordinator.state == .locked { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.authorize() } }
             else if ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
         }
-        .fullScreenCover(isPresented: settingsBinding) { SettingsView(preferences: coordinator.preferences) }
+        .fullScreenCover(isPresented: settingsBinding) {
+            SettingsView(preferences: coordinator.preferences, connection: coordinator.selectedMac)
+        }
         .fullScreenCover(isPresented: $showingScanner) { scanner }
         .alert("Rename terminal", isPresented: renameBinding) {
             TextField("Terminal name", text: $renameText)
@@ -108,13 +110,14 @@ struct WorkspaceView: View {
 
     private var connectionButton: some View {
         Button { coordinator.showConnections() } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "laptopcomputer")
-                    .foregroundStyle(coordinator.selectedMac == nil ? Color.secondary : Color.green)
-                Text(coordinator.selectedMac?.displayName ?? "Connections")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down").font(.caption2)
+            Group {
+                if let mac = coordinator.selectedMac {
+                    ConnectionIndicatorView(value: coordinator.preferences.indicator(for: mac), size: 36)
+                } else {
+                    Image(systemName: "person.2.fill")
+                        .frame(width: 36, height: 36)
+                        .background(Color.secondary.opacity(0.18), in: .circle)
+                }
             }
         }
         .accessibilityLabel("Connections")
@@ -159,9 +162,26 @@ struct WorkspaceView: View {
                 }
                 .padding(12)
             }
+            if let current = coordinator.selectedMac {
+                Divider()
+                HStack(spacing: 12) {
+                    ConnectionIndicatorView(value: coordinator.preferences.indicator(for: current), size: 38)
+                    Text(current.displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+                    Spacer(minLength: 8)
+                    Button("Settings", systemImage: "gearshape") { coordinator.showSettings() }
+                        .labelStyle(.iconOnly)
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
         }
-        .background(.background)
-        .ignoresSafeArea()
+        .safeAreaPadding(.top, 6)
+        .safeAreaPadding(.bottom, 4)
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
     }
 
     private func terminalRow(_ session: WorkspaceSession) -> some View {
@@ -190,7 +210,7 @@ struct WorkspaceView: View {
                 if let current = coordinator.selectedMac {
                     Text("CURRENT CONNECTION").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.bottom, 6)
                     HStack {
-                        Image(systemName: "laptopcomputer").foregroundStyle(.green)
+                        ConnectionIndicatorView(value: coordinator.preferences.indicator(for: current), size: 36)
                         VStack(alignment: .leading) { Text(current.displayName).fontWeight(.semibold); Text(routeStatus(current)).font(.caption).foregroundStyle(.secondary) }
                         Spacer()
                         Button("Settings", systemImage: "gearshape") { coordinator.showSettings() }.labelStyle(.iconOnly)
@@ -204,7 +224,12 @@ struct WorkspaceView: View {
                     Text("AVAILABLE CONNECTIONS").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.vertical, 10)
                     ForEach(available) { mac in
                         Button { coordinator.selectMac(mac) } label: {
-                            HStack { Image(systemName: "laptopcomputer"); Text(mac.displayName); Spacer(); Text(routeStatus(mac)).font(.caption).foregroundStyle(.secondary) }
+                            HStack {
+                                ConnectionIndicatorView(value: coordinator.preferences.indicator(for: mac), size: 32)
+                                Text(mac.displayName)
+                                Spacer()
+                                Text(routeStatus(mac)).font(.caption).foregroundStyle(.secondary)
+                            }
                                 .padding(.vertical, 8)
                         }
                     }
@@ -301,11 +326,28 @@ struct WorkspaceView: View {
 
 private struct SettingsView: View {
     @Bindable var preferences: AppPreferencesModel
+    let connection: PairedMac?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
+                if let connection {
+                    Section {
+                        HStack(spacing: 14) {
+                            ConnectionIndicatorView(value: preferences.indicator(for: connection), size: 48)
+                            TextField("Initials or emoji", text: Binding(
+                                get: { preferences.value.connectionIndicators[connection.id] ?? "" },
+                                set: { preferences.setIndicator($0, for: connection) }
+                            ))
+                            .textInputAutocapitalization(.characters)
+                        }
+                    } header: {
+                        Text("Connection indicator")
+                    } footer: {
+                        Text("Enter up to two initials or emoji. Leave blank to use initials from the connection name.")
+                    }
+                }
                 Section {
                     Toggle("Enable connections over cellular", isOn: Binding(
                         get: { preferences.value.allowsCellularConnections },
@@ -315,22 +357,19 @@ private struct SettingsView: View {
                     Text("This controls whether this iPhone may use cellular routes already enabled by the Mac.")
                 }
                 Section("Default directory") {
-                    TextField("~/Projects", text: Binding(
+                    CLITextField(text: Binding(
                         get: { preferences.value.defaultDirectoryPath },
                         set: { preferences.value.defaultDirectoryPath = $0 }
-                    ))
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                    ), placeholder: "~/Projects")
+                    .frame(minHeight: 34)
                 }
                 Section {
                     ForEach(preferences.value.shortcuts) { shortcut in
                         VStack(alignment: .leading, spacing: 8) {
                             TextField("Name", text: shortcutBinding(shortcut.id, \.name))
                                 .font(.headline)
-                            TextField("Command", text: shortcutBinding(shortcut.id, \.command))
-                                .font(.body.monospaced())
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
+                            CLITextField(text: shortcutBinding(shortcut.id, \.command), placeholder: "Command")
+                                .frame(minHeight: 34)
                         }
                         .padding(.vertical, 4)
                     }
@@ -359,5 +398,21 @@ private struct SettingsView: View {
                 preferences.value.shortcuts[index][keyPath: keyPath] = value
             }
         )
+    }
+}
+
+private struct ConnectionIndicatorView: View {
+    let value: String
+    let size: CGFloat
+
+    var body: some View {
+        Text(value)
+            .font(.system(size: size * 0.4, weight: .bold, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.55)
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(Color.accentColor.gradient, in: .circle)
+            .accessibilityHidden(true)
     }
 }
