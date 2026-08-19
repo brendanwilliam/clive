@@ -4,21 +4,31 @@ import SwiftUI
 
 struct TerminalSurfaceView: UIViewRepresentable {
     let session: SessionClient?
-    func makeCoordinator() -> Coordinator { Coordinator(session: session) }
+    let shortcuts: [CLIShortcut]
+    let saveShortcut: (String) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(session: session, shortcuts: shortcuts, saveShortcut: saveShortcut) }
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
         context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installEdgeControls(on: view)
         session?.onOutput = { [weak view] data in DispatchQueue.main.async { view?.feed(byteArray: ArraySlice(data)) } }
         return view
     }
-    func updateUIView(_ uiView: TerminalView, context: Context) { context.coordinator.session = session }
+    func updateUIView(_ uiView: TerminalView, context: Context) {
+        context.coordinator.session = session
+        context.coordinator.accessory?.updateShortcuts(shortcuts)
+    }
 
     final class Coordinator: NSObject, TerminalViewDelegate, @unchecked Sendable {
         var session: SessionClient?; weak var view: TerminalView?
-        private var accessory: TerminalKeyboardAccessory?
-        init(session: SessionClient?) { self.session = session }
+        fileprivate var accessory: TerminalKeyboardAccessory?
+        private var shortcuts: [CLIShortcut]
+        private var commandTracker = TerminalCommandTracker()
+        private let saveShortcut: (String) -> Void
+        init(session: SessionClient?, shortcuts: [CLIShortcut], saveShortcut: @escaping (String) -> Void) {
+            self.session = session; self.shortcuts = shortcuts; self.saveShortcut = saveShortcut
+        }
         @MainActor func installAccessory(on view: TerminalView) {
-            let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.session?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
+            let accessory = TerminalKeyboardAccessory(shortcuts: shortcuts, saveLastCommand: { [weak self] command in self?.saveShortcut(command) }, send: { [weak self] data in self?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
             self.accessory = accessory
             view.inputAccessoryView = accessory
             // SwiftTerm installs a default accessory during its initialization. Reload the
@@ -45,11 +55,16 @@ struct TerminalSurfaceView: UIViewRepresentable {
             MainActor.assumeIsolated {
                 if let accessory {
                     guard let transformed = accessory.transformSoftwareInput(input) else { return }
-                    session?.sendInput(transformed)
+                    sendInput(transformed)
                 } else {
                     session?.sendInput(input)
                 }
             }
+        }
+        @MainActor private func sendInput(_ data: Data) {
+            commandTracker.consume(data)
+            accessory?.updateLastCommand(commandTracker.lastCommand)
+            session?.sendInput(data)
         }
         func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
             guard newCols > 0, newRows > 0, newCols <= Int(UInt16.max), newRows <= Int(UInt16.max) else { return }
@@ -60,6 +75,31 @@ struct TerminalSurfaceView: UIViewRepresentable {
         func scrolled(source: TerminalView, position: Double) {}
         func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {}
         func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
+    }
+}
+
+struct TerminalCommandTracker {
+    private(set) var currentCommand = ""
+    private(set) var lastCommand: String?
+
+    mutating func consume(_ data: Data) {
+        if data.first == 0x1b { return }
+        for byte in data {
+            switch byte {
+            case 0x0d, 0x0a:
+                let command = currentCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !command.isEmpty { lastCommand = command }
+                currentCommand = ""
+            case 0x08, 0x7f:
+                if !currentCommand.isEmpty { currentCommand.removeLast() }
+            case 0x03:
+                currentCommand = ""
+            case 0x20...0x7e:
+                currentCommand.append(Character(UnicodeScalar(byte)))
+            default:
+                break
+            }
+        }
     }
 }
 

@@ -218,5 +218,21 @@ import Security
     #expect(mac.rendezvousCapability == nil && mac.certificate == nil)
     let legacyOpen = Data(#"{"clientSessionID":"00000000-0000-0000-0000-000000000001","initialSize":{"columns":80,"rows":24}}"#.utf8)
     let request = try JSONDecoder().decode(SessionOpenRequest.self, from: legacyOpen)
-    #expect(request.rendezvousCapability == nil && request.wanGateToken == nil)
+    #expect(request.rendezvousCapability == nil && request.wanGateToken == nil && request.workingDirectory == nil)
+}
+
+@Test func sessionOpenRoundTripsWorkingDirectory() throws {
+    let request = SessionOpenRequest(
+        clientSessionID: UUID(),
+        initialSize: TerminalSize(columns: 100, rows: 30),
+        workingDirectory: "~/Projects/clive"
+    )
+    let encoded = try ProtocolPayload.encode(request)
+    #expect(try ProtocolPayload.decode(SessionOpenRequest.self, from: encoded) == request)
+}
+
+@Test func selfRevocationFramesRoundTrip() throws {
+    let bytes = try ProtocolFrame(kind: .pairingRevoke).encoded() + ProtocolFrame(kind: .pairingRevoked).encoded()
+    var decoder = FrameDecoder()
+    #expect(try decoder.append(bytes).map(\.kind) == [.pairingRevoke, .pairingRevoked])
 }

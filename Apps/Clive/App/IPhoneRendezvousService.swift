@@ -11,9 +11,13 @@ actor IPhoneRendezvousService {
     private var lastSequence: [String: UInt64] = [:]
 
     init() throws {
+        #if targetEnvironment(simulator)
+        throw CloudRendezvousError.entitlementUnavailable
+        #else
         let identifier = Bundle.main.object(forInfoDictionaryKey: "CliveCloudContainer") as? String ?? "iCloud.com.clive"
         cloud = CloudRendezvousStore(containerIdentifier: identifier)
         keys = try RendezvousKeyStore(service: "com.clive.iphone.rendezvous").loadOrCreate()
+        #endif
     }
 
     func prepare() async throws -> RendezvousCapability {

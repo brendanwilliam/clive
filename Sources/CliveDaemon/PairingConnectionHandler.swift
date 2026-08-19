@@ -39,8 +39,9 @@ final class PairingConnectionHandler: @unchecked Sendable {
             do {
                 let acceptance = try await coordinator.accept(request)
                 let data = try ProtocolPayload.encode(acceptance)
-                framedConnection?.send(ProtocolFrame(kind: .pairingAccept, payload: data))
-                onFinished(true)
+                framedConnection?.send(ProtocolFrame(kind: .pairingAccept, payload: data)) { [weak self] sent in
+                    self?.onFinished(sent)
+                }
             } catch {
                 self.onDiagnostic("request rejected: \(error.localizedDescription)")
                 framedConnection?.cancel()

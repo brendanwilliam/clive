@@ -79,16 +79,18 @@ enum WorkspaceLaunchResolver {
     private let device: PairedMac
     private let identity: IPhoneIdentity
     private var routeIndex = 0
+    private let workingDirectory: String?
     private let localRendezvousCapability: RendezvousCapability?
     private let onUpgrade: (Data, RendezvousCapability) -> Void
     private(set) var activeRouteKind: MacRouteKind?
 
-    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, localRendezvousCapability: RendezvousCapability?, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
+    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String?, localRendezvousCapability: RendezvousCapability?, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
         self.descriptor = descriptor
         self.id = descriptor.id
         self.routes = routes
         self.device = device
         self.identity = identity
+        self.workingDirectory = workingDirectory
         self.localRendezvousCapability = localRendezvousCapability; self.onUpgrade = onUpgrade
         client.onState = { [weak self] value in DispatchQueue.main.async { self?.handleState(value) } }
         client.onActivityOutput = { [weak self] bytes in DispatchQueue.main.async {
@@ -114,22 +116,25 @@ enum WorkspaceLaunchResolver {
 
     private func connectCurrentRoute() {
         let route = routes[routeIndex]
-        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken)
+        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, workingDirectory: workingDirectory)
     }
 }
 
 @MainActor @Observable final class WorkspaceCoordinator {
     enum State: Equatable { case locked, authenticating, active, authenticationCancelled, failed(String) }
-    enum PresentedScreen: Equatable { case terminalList, settings }
-    enum Recovery: Equatable { case unavailableMac(String), noPairedMac }
+    enum PresentedScreen: Equatable { case terminalList, connectionMenu, settings }
+    enum Recovery: Equatable { case unavailableMac(String), noPairedMac, disconnected }
 
     let macs = PairedMacsModel()
+    let preferences = AppPreferencesModel()
     var state: State = .locked
     var selectedMacID: String?
     var sessions: [WorkspaceSession] = []
     var selectedSessionID: UUID?
     var presentedScreen: PresentedScreen?
     var recovery: Recovery?
+    var isDisconnecting = false
+    var disconnectError: String?
 
     private var snapshot = WorkspaceSnapshot(selectedMacID: nil, sessionsByMac: [:])
     private var restorableDestination: RestorableDestination?
@@ -179,6 +184,7 @@ enum WorkspaceLaunchResolver {
     }
 
     func showSettings() { presentedScreen = .settings }
+    func showConnections() { presentedScreen = .connectionMenu }
 
     func dismissPresentedScreen() {
         presentedScreen = nil
@@ -211,12 +217,29 @@ enum WorkspaceLaunchResolver {
         saveCurrentDescriptors(); persist()
     }
 
-    func disconnectCurrentMac() {
-        saveCurrentDescriptors(); persist(); closeLiveSessions(); clearDestination()
+    func disconnectCurrentMac() async {
+        guard !isDisconnecting, let mac = selectedMac, let identity else { return }
+        isDisconnecting = true
+        disconnectError = nil
+        defer { isDisconnecting = false }
+        do {
+            try await UnpairingClient().revoke(device: mac, routes: routes(for: mac), identity: identity.identity)
+            try macs.forget(mac)
+            closeLiveSessions()
+            snapshot.sessionsByMac.removeValue(forKey: mac.id)
+            selectedMacID = nil
+            snapshot.selectedMacID = nil
+            persist()
+            clearDestination()
+            recovery = .noPairedMac
+            presentedScreen = nil
+        } catch {
+            disconnectError = error.localizedDescription
+        }
     }
 
     func retryConnection() {
-        guard state == .active, let mac = selectedMac else { showSettings(); return }
+        guard state == .active, let mac = selectedMac else { showConnections(); return }
         Task { await macs.refreshRendezvous(); startFreshTerminal(on: mac) }
     }
 
@@ -239,7 +262,7 @@ enum WorkspaceLaunchResolver {
             selectedMacID = mac.id; snapshot.selectedMacID = mac.id
             startFreshTerminal(on: mac)
         case .connectionSetup:
-            closeLiveSessions(); recovery = .noPairedMac; presentedScreen = .settings
+            closeLiveSessions(); recovery = .noPairedMac; presentedScreen = .connectionMenu
         }
     }
 
@@ -284,12 +307,15 @@ enum WorkspaceLaunchResolver {
             let remoteRoute = MacRoute(host: remote.host, port: remote.port, kind: .privateVPN)
             if !values.contains(remoteRoute) { values.append(remoteRoute) }
         }
-        for route in macs.cellularRoutes(for: mac) where !values.contains(route) { values.append(route) }
+        if preferences.value.allowsCellularConnections {
+            for route in macs.cellularRoutes(for: mac) where !values.contains(route) { values.append(route) }
+        }
         return values
     }
 
     private func makeSession(descriptor: SessionDescriptor, mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity) -> WorkspaceSession {
-        WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, localRendezvousCapability: macs.localRendezvousCapability) { [weak self] certificate, capability in
+        let directory = preferences.value.defaultDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, workingDirectory: directory.isEmpty ? nil : directory, localRendezvousCapability: macs.localRendezvousCapability) { [weak self] certificate, capability in
             self?.macs.upgrade(macID: mac.id, certificate: certificate, capability: capability)
         }
     }
