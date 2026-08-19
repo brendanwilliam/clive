@@ -17,6 +17,8 @@ public enum FrameKind: UInt8, Sendable, CaseIterable {
     case pairingRequest = 0x10
     case pairingAccept = 0x11
     case sessionOpened = 0x12
+    case pairingRevoke = 0x13
+    case pairingRevoked = 0x14
 }
 
 public struct SessionOpenRequest: Codable, Equatable, Sendable {
@@ -25,11 +27,13 @@ public struct SessionOpenRequest: Codable, Equatable, Sendable {
     public let initialSize: TerminalSize
     public let rendezvousCapability: RendezvousCapability?
     public let wanGateToken: Data?
-    public init(clientSessionID: UUID, initialSize: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil) {
+    public let workingDirectory: String?
+    public init(clientSessionID: UUID, initialSize: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil) {
         self.clientSessionID = clientSessionID
         self.initialSize = initialSize
         self.rendezvousCapability = rendezvousCapability
         self.wanGateToken = wanGateToken
+        self.workingDirectory = workingDirectory
     }
 }
 

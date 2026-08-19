@@ -33,6 +33,7 @@ Application records are length-prefixed binary frames over TLS:
 | --- | --- | --- |
 | `session.open` / `session.close` | iOS → Mac | Request or end an interactive session. |
 | `session.opened` | Mac → iOS | Confirm shell creation and return its opaque session ID. |
+| `pairing.revoke` / `pairing.revoked` | iOS ↔ Mac | Revoke the authenticated iPhone and acknowledge persisted removal. |
 | `terminal.input` | iOS → Mac | UTF-8/control bytes to the PTY. |
 | `terminal.output` | Mac → iOS | Raw PTY output bytes. |
 | `terminal.resize` | iOS → Mac | Terminal columns and rows. |
@@ -43,3 +44,5 @@ Frames have a bounded maximum size and an explicit protocol version. The Mac rej
 ## Session lifecycle
 
 Each session maps to one PTY and one login shell. Network loss closes the TLS connection and sends SIGHUP to its child process; V1 does not preserve disconnected shell sessions. Stopping the CLI closes listeners and all active PTYs. Revoking a phone closes all sessions authenticated by its certificate.
+
+`session.open` may include a working directory. An omitted or empty value uses the Mac user's home directory; the daemon expands `~/`, rejects unavailable directories, and changes directory before starting the login shell. A phone-initiated `pairing.revoke` is bound to the mutual-TLS peer identity and cannot name or revoke another device. The iPhone removes its local pairing only after `pairing.revoked` is received.

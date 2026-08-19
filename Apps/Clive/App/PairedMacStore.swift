@@ -22,5 +22,10 @@ struct PairedMacStore {
     func upsert(_ record: PairedMac) throws {
         var records = try load(); records.removeAll { $0.id == record.id || $0.serviceID == record.serviceID }; records.append(record); try save(records)
     }
+    func remove(id: String) throws {
+        var records = try load()
+        records.removeAll { $0.id == id }
+        try save(records)
+    }
     enum StoreError: Error { case keychain(OSStatus) }
 }

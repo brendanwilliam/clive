@@ -4,21 +4,26 @@ import SwiftUI
 
 struct TerminalSurfaceView: UIViewRepresentable {
     let session: SessionClient?
-    func makeCoordinator() -> Coordinator { Coordinator(session: session) }
+    let shortcuts: [CLIShortcut]
+    func makeCoordinator() -> Coordinator { Coordinator(session: session, shortcuts: shortcuts) }
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
         context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installEdgeControls(on: view)
         session?.onOutput = { [weak view] data in DispatchQueue.main.async { view?.feed(byteArray: ArraySlice(data)) } }
         return view
     }
-    func updateUIView(_ uiView: TerminalView, context: Context) { context.coordinator.session = session }
+    func updateUIView(_ uiView: TerminalView, context: Context) {
+        context.coordinator.session = session
+        context.coordinator.accessory?.updateShortcuts(shortcuts)
+    }
 
     final class Coordinator: NSObject, TerminalViewDelegate, @unchecked Sendable {
         var session: SessionClient?; weak var view: TerminalView?
-        private var accessory: TerminalKeyboardAccessory?
-        init(session: SessionClient?) { self.session = session }
+        fileprivate var accessory: TerminalKeyboardAccessory?
+        private var shortcuts: [CLIShortcut]
+        init(session: SessionClient?, shortcuts: [CLIShortcut]) { self.session = session; self.shortcuts = shortcuts }
         @MainActor func installAccessory(on view: TerminalView) {
-            let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.session?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
+            let accessory = TerminalKeyboardAccessory(shortcuts: shortcuts, send: { [weak self] data in self?.session?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
             self.accessory = accessory
             view.inputAccessoryView = accessory
             // SwiftTerm installs a default accessory during its initialization. Reload the

@@ -19,6 +19,7 @@ targets:
     settings:
       base:
         SWIFT_VERSION: 6.0
+        PRODUCT_MODULE_NAME: Clive
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Config/Info.plist
         CODE_SIGN_ENTITLEMENTS: Config/Clive.entitlements
@@ -56,5 +57,15 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Clive - CLI for iOS.app/Clive - CLI for iOS"
     dependencies:
       - target: Clive
+schemes:
+  Clive:
+    build:
+      targets:
+        Clive: all
+        CliveTests: [test]
+    test:
+      targets:
+        - CliveTests

@@ -6,11 +6,13 @@ import CliveCore
 enum PTYProcessError: LocalizedError {
     case spawnFailed(Int32)
     case writeFailed(Int32)
+    case invalidWorkingDirectory
 
     var errorDescription: String? {
         switch self {
         case .spawnFailed(let code): "Could not create terminal PTY: \(String(cString: strerror(code)))."
         case .writeFailed(let code): "Could not write terminal input: \(String(cString: strerror(code)))."
+        case .invalidWorkingDirectory: "The configured default directory is unavailable."
         }
     }
 }
@@ -26,13 +28,15 @@ final class PTYProcess: @unchecked Sendable {
     private var outputSuspended = false
     private var terminated = false
 
-    init(size: TerminalSize, output: @escaping @Sendable (Data) -> Void) throws {
+    init(size: TerminalSize, workingDirectory: String? = nil, output: @escaping @Sendable (Data) -> Void) throws {
         self.output = output
+        let directory = try Self.resolveWorkingDirectory(workingDirectory)
         var masterFD: Int32 = -1
         var windowSize = winsize(ws_row: size.rows, ws_col: size.columns, ws_xpixel: 0, ws_ypixel: 0)
         let childPID = forkpty(&masterFD, nil, nil, &windowSize)
         guard childPID >= 0 else { throw PTYProcessError.spawnFailed(errno) }
         if childPID == 0 {
+            if chdir(directory) != 0 { _exit(126) }
             setenv("TERM", "xterm-256color", 1)
             var arguments: [UnsafeMutablePointer<CChar>?] = [strdup("zsh"), strdup("-l"), nil]
             arguments.withUnsafeMutableBufferPointer { buffer in
@@ -47,6 +51,20 @@ final class PTYProcess: @unchecked Sendable {
         readSource.setEventHandler { [weak self] in self?.readAvailableOutput() }
         readSource.setCancelHandler { close(masterFD) }
         readSource.resume()
+    }
+
+    private static func resolveWorkingDirectory(_ value: String?) throws -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let path: String
+        if trimmed.isEmpty || trimmed == "~" { path = home }
+        else if trimmed.hasPrefix("~/") { path = home + String(trimmed.dropFirst()) }
+        else { path = trimmed }
+        var isDirectory: ObjCBool = false
+        guard path.hasPrefix("/"), FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue, access(path, X_OK) == 0 else {
+            throw PTYProcessError.invalidWorkingDirectory
+        }
+        return path
     }
 
     func write(_ bytes: Data) throws {

@@ -115,6 +115,8 @@ final class DaemonRuntime: @unchecked Sendable {
         }, upgradePeer: { [weak trustStore, weak rendezvous] deviceID, certificate, capability in
             guard let trustStore, (try? await trustStore.upgrade(id: deviceID, certificate: certificate, rendezvousCapability: capability)) == true else { return }
             await rendezvous?.pairingChanged()
+        }, revokePeer: { [weak self] deviceID, requestingHandlerID in
+            await self?.revokeFromPhone(deviceID: deviceID, requestingHandlerID: requestingHandlerID) == true
         }, onClosed: { [weak self] id in
             _ = self?.lock.withLock {
                 self?.handlers.removeValue(forKey: id)
@@ -138,6 +140,22 @@ final class DaemonRuntime: @unchecked Sendable {
         }
         guard accepted else { connection.cancel(); return }
         handler.start(connection)
+    }
+
+    private func revokeFromPhone(deviceID: String, requestingHandlerID: UUID) async -> Bool {
+        do {
+            guard try await trustStore.revoke(id: deviceID) else { return false }
+            await rendezvous.revoke(deviceID: deviceID)
+            await refreshTrust()
+            let owned = lock.withLock {
+                handlers.filter { $0.key != requestingHandlerID && $0.value.deviceID == deviceID }.map { $0.value.handler }
+            }
+            owned.forEach { $0.revoke() }
+            _ = await registry.closeAll(forDeviceID: deviceID)
+            return true
+        } catch {
+            return false
+        }
     }
 
     func stop() {

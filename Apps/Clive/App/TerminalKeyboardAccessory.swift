@@ -11,12 +11,14 @@ final class TerminalKeyboardAccessory: UIInputView {
     private let onLayoutChanged: () -> Void
     private var buttons: [UIButton] = []
     private var customKeys: [String] = UserDefaults.standard.stringArray(forKey: "com.clive.keyboard.custom-keys") ?? []
+    private var shortcuts: [CLIShortcut]
     private weak var scrollView: UIScrollView?
     private weak var keyRow: UIStackView?
     private var palette: UIView?
     private var heightConstraint: NSLayoutConstraint?
 
-    init(send: @escaping (Data) -> Void, command: @escaping (String) -> Void, onLayoutChanged: @escaping () -> Void = {}) {
+    init(shortcuts: [CLIShortcut], send: @escaping (Data) -> Void, command: @escaping (String) -> Void, onLayoutChanged: @escaping () -> Void = {}) {
+        self.shortcuts = shortcuts
         self.send = send; self.command = command; self.onLayoutChanged = onLayoutChanged
         super.init(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48), inputViewStyle: .keyboard)
         allowsSelfSizing = true
@@ -32,6 +34,12 @@ final class TerminalKeyboardAccessory: UIInputView {
         scrollView = scroll; keyRow = row; rebuildRow()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func updateShortcuts(_ shortcuts: [CLIShortcut]) {
+        guard shortcuts != self.shortcuts else { return }
+        self.shortcuts = shortcuts
+        rebuildRow()
+    }
 
     func resetModifiers() { oneShot.removeAll(); locked.removeAll(); refreshModifierButtons() }
 
@@ -85,12 +93,34 @@ final class TerminalKeyboardAccessory: UIInputView {
         buttons.removeAll()
         let keys: [(String, String, String)] = [
             ("⇥", "tab", "Tab"), ("⇧", "shift", "Shift"), ("⌃", "control", "Control"), ("⌥", "option", "Option"), ("⌘", "command", "Command")
-        ] + customKeys.map { ($0, "custom:\($0)", "Custom key \($0)") } + [
+        ]
+        for (title, action, label) in keys { row.addArrangedSubview(makeButton(title: title, action: action, label: label)) }
+        row.addArrangedSubview(makeShortcutButton())
+        let remainingKeys = customKeys.map { ($0, "custom:\($0)", "Custom key \($0)") } + [
             ("←", "left", "Left arrow"), ("↓", "down", "Down arrow"), ("↑", "up", "Up arrow"), ("→", "right", "Right arrow"),
             (".", ".", "Period"), ("/", "/", "Slash"), ("@", "@", "At sign"), ("$", "$", "Dollar"), ("⌨", "keyboard", "Special keys")
         ]
-        for (title, action, label) in keys { row.addArrangedSubview(makeButton(title: title, action: action, label: label)) }
+        for (title, action, label) in remainingKeys { row.addArrangedSubview(makeButton(title: title, action: action, label: label)) }
         refreshModifierButtons()
+    }
+    private func makeShortcutButton() -> UIButton {
+        let available = shortcuts.filter {
+            !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !$0.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "text.badge.plus"), for: .normal)
+        button.accessibilityLabel = "CLI shortcuts"
+        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
+        button.showsMenuAsPrimaryAction = true
+        button.menu = UIMenu(title: "CLI Shortcuts", options: .displayInline, children: available.map { shortcut in
+            UIAction(title: shortcut.name) { [weak self] _ in
+                self?.send(Data((shortcut.command + "\r").utf8))
+                self?.consumeOneShot()
+            }
+        })
+        button.isEnabled = !available.isEmpty
+        return button
     }
     private func makeButton(title: String, action: String, label: String) -> UIButton {
         let button = UIButton(type: .system); button.setTitle(title, for: .normal); button.titleLabel?.font = .preferredFont(forTextStyle: .body)

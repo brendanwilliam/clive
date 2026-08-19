@@ -44,6 +44,14 @@ final class PairedMacsModel {
         try? store.upsert(upgraded); records = (try? store.load()) ?? records; update(routes)
         Task { await refreshRendezvous() }
     }
+    func forget(_ mac: PairedMac) throws {
+        try store.remove(id: mac.id)
+        records = try store.load()
+        routes = routes.filter { $0.key != mac.serviceID }
+        wanRoutes.removeValue(forKey: mac.id)
+        rendezvousDiagnostics.removeValue(forKey: mac.id)
+        update(routes)
+    }
     func refreshRendezvous() async {
         guard let rendezvous, let identity = try? IPhoneIdentityProvider().loadOrCreate() else { return }
         localRendezvousCapability = try? await rendezvous.prepare()
