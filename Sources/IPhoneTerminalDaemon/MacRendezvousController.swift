@@ -112,7 +112,9 @@ actor MacRendezvousController {
     private func publishAll() async {
         guard settings.enabled, let cloud, let listenerPort, let accountBinding else { return }
         var endpoints = PublicNetwork.publicIPv6Addresses().map { RendezvousEndpoint(host: $0, port: listenerPort, kind: .publicIPv6) }
-        if let manual = settings.manualEndpoint { endpoints.append(.init(host: manual.host, port: manual.port, kind: .manualPublicEndpoint)) }
+        if let manual = settings.manualEndpoint ?? state.remoteEndpoint {
+            endpoints.append(.init(host: manual.host, port: manual.port, kind: .manualPublicEndpoint))
+        }
         guard !endpoints.isEmpty else {
             gates.invalidateAll()
             currentStatus = CellularAccessStatus(enabled: true, state: .configurationRequired, diagnostic: "No public IPv6 address is available. Configure a private-beta public hostname and forwarded port.")
