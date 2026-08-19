@@ -43,6 +43,7 @@ targets:
       Release: Config/Base.xcconfig
     settings:
       base:
+        PRODUCT_NAME: CliveResumeWidget
         PRODUCT_BUNDLE_IDENTIFIER: $(IPHONE_TERMINAL_BUNDLE_ID).widget
         SWIFT_VERSION: 6.0
         GENERATE_INFOPLIST_FILE: NO

@@ -15,7 +15,7 @@ struct PairedMacListView: View {
                 if model.devices.isEmpty { ContentUnavailableView("No paired Macs available", systemImage: "laptopcomputer.and.iphone", description: Text("Start the daemon or scan a pairing QR code.")) }
                 if model.state == .pairing { ProgressView("Waiting for approval on Mac…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12)) }
             }
-            .alert("iPhone Terminal", isPresented: Binding(get: { if case .failed = model.state { true } else { false } }, set: { if !$0 { model.state = .idle } })) {
+            .alert("Clive", isPresented: Binding(get: { if case .failed = model.state { true } else { false } }, set: { if !$0 { model.state = .idle } })) {
                 Button("OK") { model.state = .idle }
             } message: { if case .failed(let message) = model.state { Text(message) } }
         }

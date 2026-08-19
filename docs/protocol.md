@@ -8,7 +8,7 @@ The Mac advertises `_iphone-term._tcp` with a non-secret service identifier, pro
 
 For opted-in cellular access, the same-account CloudKit private database stores short-lived per-device encrypted `RendezvousV1` and `ReachabilityHintV1` envelopes. APNs only prompts a refetch. Public IPv6 is preferred; CloudKit and APNs never carry terminal frames. Non-private `session.open` messages include the current WAN gate token, while authenticated local sessions exchange optional rendezvous capabilities to upgrade existing pairings.
 
-1. The Mac user runs `iphone-terminald pair` and confirms the request locally.
+1. The Mac user runs `clive pair` and confirms the request locally.
 2. The daemon creates a single-use pairing ticket that expires after 5 minutes. It uses the same persistent P-256 identity used by sessions.
 3. It displays a QR containing the temporary endpoint, version, expiry, one-time secret, and persistent daemon certificate fingerprint. The QR contains no private key.
 4. The iOS app scans the code, generates its own device key pair in the Keychain/Secure Enclave when available, and connects using TLS.

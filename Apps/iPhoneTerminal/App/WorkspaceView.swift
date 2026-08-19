@@ -46,14 +46,14 @@ struct WorkspaceView: View {
         HStack(spacing: 6) {
             Image(systemName: "laptopcomputer")
                 .foregroundStyle(.green)
-            Text(coordinator.selectedMac?.displayName ?? "iPhone Terminal")
+            Text(coordinator.selectedMac?.displayName ?? "Clive")
                 .font(.subheadline.weight(.medium))
                 .lineLimit(1)
             Image(systemName: "link")
                 .font(.caption)
                 .foregroundStyle(.green)
         }
-        .accessibilityLabel("Active connection to \(coordinator.selectedMac?.displayName ?? "iPhone Terminal")")
+        .accessibilityLabel("Active connection to \(coordinator.selectedMac?.displayName ?? "Clive")")
     }
 
     private var workspace: some View {

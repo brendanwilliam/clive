@@ -4,11 +4,13 @@ import IPhoneTerminalCore
 
 public enum CloudRendezvousError: LocalizedError, Sendable {
     case accountUnavailable
+    case entitlementUnavailable
     case malformedRecord
 
     public var errorDescription: String? {
         switch self {
         case .accountUnavailable: "Sign in to iCloud with the same Apple Account on both devices."
+        case .entitlementUnavailable: "Cellular access requires the signed Clive Mac app with its CloudKit entitlement."
         case .malformedRecord: "The encrypted rendezvous record is malformed."
         }
     }

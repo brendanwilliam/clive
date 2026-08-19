@@ -17,7 +17,7 @@ There are no build or test commands yet because this is a documentation-only rep
 
 ## Coding Style & Naming Conventions
 
-Use native Swift conventions: four-space indentation, `UpperCamelCase` for types, and `lowerCamelCase` for methods, properties, and local values. Name protocol frames and CLI commands exactly as specified, such as `session.open`, `terminal.resize`, and `iphone-terminald revoke <device-id>`. Prefer small, explicit types over unstructured dictionaries. Add the selected formatter/linter and its command when code tooling is introduced.
+Use native Swift conventions: four-space indentation, `UpperCamelCase` for types, and `lowerCamelCase` for methods, properties, and local values. Name protocol frames and CLI commands exactly as specified, such as `session.open`, `terminal.resize`, and `clive revoke <device-id>`. Prefer small, explicit types over unstructured dictionaries. Add the selected formatter/linter and its command when code tooling is introduced.
 
 ## Testing Guidelines
 

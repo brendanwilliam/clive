@@ -9,7 +9,7 @@ struct IPhoneTerminalDaemon {
             try await run(arguments: Array(CommandLine.arguments.dropFirst()))
             Foundation.exit(0)
         } catch {
-            FileHandle.standardError.write(Data("iphone-terminald: \(error.localizedDescription)\n".utf8))
+            FileHandle.standardError.write(Data("clive: \(error.localizedDescription)\n".utf8))
             Foundation.exit(1)
         }
     }
@@ -18,7 +18,7 @@ struct IPhoneTerminalDaemon {
         guard let command = arguments.first else { throw CommandError.usage }
         switch command {
         case "start":
-            if arguments.count == 1, FileManager.default.fileExists(atPath: "/Applications/iPhone Terminal.app") {
+            if arguments.count == 1, FileManager.default.fileExists(atPath: "/Applications/Clive.app") {
                 try launchCompanionApp(); return
             }
             let allowsNonPrivateNetwork = arguments.contains("--allow-non-private-network")
@@ -62,10 +62,10 @@ struct IPhoneTerminalDaemon {
     }
 
     private static func launchCompanionApp() throws {
-        let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/open"); process.arguments = ["-a", "/Applications/iPhone Terminal.app"]
+        let process = Process(); process.executableURL = URL(fileURLWithPath: "/usr/bin/open"); process.arguments = ["-a", "/Applications/Clive.app"]
         try process.run(); process.waitUntilExit()
-        guard process.terminationStatus == 0 else { throw CommandError.remote("The iPhone Terminal companion could not be launched.") }
-        print("Started the iPhone Terminal menu bar companion.")
+        guard process.terminationStatus == 0 else { throw CommandError.remote("The Clive companion could not be launched.") }
+        print("Started the Clive menu bar companion.")
     }
 
     private static func runOneShot(_ request: ControlRequest) throws {
@@ -114,7 +114,7 @@ struct IPhoneTerminalDaemon {
     }
 
     static let usage = """
-    Usage: iphone-terminald <start|pair|status|revoke|stop|cellular> [options]
+    Usage: clive <start|pair|status|revoke|stop|cellular> [options]
       start [--allow-non-private-network] [--remote-host <private-vpn-host-or-ip> --session-port <port>]
       start --clear-remote
       pair
