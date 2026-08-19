@@ -19,7 +19,10 @@ final class PairingOperation: @unchecked Sendable {
         self.endpoint = endpoint
         self.onEnded = onEnded
         fingerprint = try identityStore.fingerprint(of: identity)
-        let secretValue = UUID().uuidString.lowercased() + UUID().uuidString.lowercased()
+        var bytes = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw ControlSocketError.unavailable }
+        let secretBytes = Data(bytes)
+        let secretValue = secretBytes.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
         let placeholder = PairingTicket(endpoint: endpoint, port: 1, expiresAt: .now.addingTimeInterval(300), oneTimeSecret: secretValue, daemonCertificateFingerprint: fingerprint)
         let secret = PairingSecret(ticket: placeholder)
         coordinator = PairingCoordinator(secret: secret, trustStore: trustStore, macID: state.macID, displayName: Host.current().localizedName ?? "Mac", serviceID: state.serviceID, macCertificate: try identityStore.certificateData(of: identity), rendezvousCapability: rendezvousCapability, approval: { request in
@@ -52,8 +55,7 @@ final class PairingOperation: @unchecked Sendable {
     }
 
     private func pairingFinished(_ success: Bool) {
-        guard success else { return }
-        finish(success: true, message: "Pairing approved.")
+        finish(success: success, message: success ? "Pairing approved." : "Pairing rejected or failed.")
     }
 
     private func finish(success: Bool, message: String) {

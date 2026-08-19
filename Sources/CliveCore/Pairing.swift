@@ -63,18 +63,33 @@ public struct PairingAcceptance: Codable, Equatable, Sendable {
 }
 
 public enum PairingPayload {
-    /// URL-safe, unpadded JSON so the same ticket can be passed to a QR encoder and scanner.
+    private static let v2Prefix = "CL2:"
+    private static let base45Alphabet = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:")
+
+    /// Encodes a compact binary record using QR alphanumeric mode.
     public static func encode(_ ticket: PairingTicket) throws -> String {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return try encoder.encode(ticket).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+        guard ticket.protocolVersion == ProtocolFrame.version,
+              let secret = base64URLDecode(ticket.oneTimeSecret), secret.count == 32,
+              let fingerprint = hexDecode(ticket.daemonCertificateFingerprint), fingerprint.count == 32,
+              let endpoint = ticket.endpoint.data(using: .utf8), !endpoint.isEmpty, endpoint.count <= 255,
+              ticket.port > 0 else { throw PairingPayloadError.malformed }
+        var record = Data([2]); record.appendUInt16(ticket.protocolVersion)
+        record.appendUInt64(UInt64(ticket.expiresAt.timeIntervalSince1970))
+        record.append(UInt8(endpoint.count)); record.append(endpoint); record.appendUInt16(ticket.port)
+        record.append(secret); record.append(fingerprint)
+        if let remote = ticket.remoteEndpoint {
+            guard let host = remote.host.data(using: .utf8), !host.isEmpty, host.count <= 255, remote.port > 0 else { throw PairingPayloadError.malformed }
+            record.append(1); record.append(UInt8(host.count)); record.append(host); record.appendUInt16(remote.port)
+        } else { record.append(0) }
+        return v2Prefix + base45Encode(record)
     }
 
     public static func decode(_ payload: String) throws -> PairingTicket {
+        if payload.hasPrefix(v2Prefix) { return try decodeV2(String(payload.dropFirst(v2Prefix.count))) }
+        return try decodeV1(payload)
+    }
+
+    private static func decodeV1(_ payload: String) throws -> PairingTicket {
         let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         guard payload.unicodeScalars.allSatisfy({ allowedCharacters.contains($0) }) else {
             throw PairingPayloadError.malformed
@@ -90,6 +105,69 @@ public enum PairingPayload {
         } catch {
             throw PairingPayloadError.malformed
         }
+    }
+
+    private static func decodeV2(_ encoded: String) throws -> PairingTicket {
+        let data = try base45Decode(encoded); var offset = 0
+        func take(_ count: Int) throws -> Data { guard count >= 0, offset + count <= data.count else { throw PairingPayloadError.malformed }; defer { offset += count }; return data.subdata(in: offset..<(offset + count)) }
+        func byte() throws -> UInt8 { try take(1)[0] }
+        guard try byte() == 2 else { throw PairingPayloadError.malformed }
+        let versionData = try take(2); let protocolVersion = versionData.uint16(at: 0)
+        guard protocolVersion == ProtocolFrame.version else { throw PairingPayloadError.malformed }
+        let expiryData = try take(8); let seconds = expiryData.uint64(at: 0)
+        guard seconds <= UInt64(Int64.max), let expiry = Date(timeIntervalSince1970: TimeInterval(seconds)) as Date? else { throw PairingPayloadError.malformed }
+        let hostLength = Int(try byte()); let hostData = try take(hostLength)
+        guard !hostData.isEmpty, let endpoint = String(data: hostData, encoding: .utf8) else { throw PairingPayloadError.malformed }
+        let portData = try take(2); let port = portData.uint16(at: 0); guard port > 0 else { throw PairingPayloadError.malformed }
+        let secret = try take(32); let fingerprint = try take(32)
+        let flags = try byte(); guard flags & ~1 == 0 else { throw PairingPayloadError.malformed }
+        let remote: RemoteEndpoint?
+        if flags == 1 {
+            let length = Int(try byte()); let host = try take(length); let remotePort = try take(2).uint16(at: 0)
+            guard !host.isEmpty, let remoteHost = String(data: host, encoding: .utf8), remotePort > 0 else { throw PairingPayloadError.malformed }
+            remote = RemoteEndpoint(host: remoteHost, port: remotePort)
+        } else { remote = nil }
+        guard offset == data.count else { throw PairingPayloadError.malformed }
+        return PairingTicket(endpoint: endpoint, port: port, expiresAt: expiry, oneTimeSecret: base64URLEncode(secret), daemonCertificateFingerprint: fingerprint.map { String(format: "%02x", $0) }.joined(), remoteEndpoint: remote, protocolVersion: protocolVersion)
+    }
+
+    private static func base45Encode(_ data: Data) -> String {
+        var result = ""; var index = data.startIndex
+        while index < data.endIndex {
+            let first = Int(data[index]); index += 1
+            if index < data.endIndex {
+                let value = first * 256 + Int(data[index]); index += 1
+                result.append(base45Alphabet[value % 45]); result.append(base45Alphabet[(value / 45) % 45]); result.append(base45Alphabet[value / 2025])
+            } else { result.append(base45Alphabet[first % 45]); result.append(base45Alphabet[first / 45]) }
+        }
+        return result
+    }
+
+    private static func base45Decode(_ text: String) throws -> Data {
+        let values = try text.map { character -> Int in guard let value = base45Alphabet.firstIndex(of: character) else { throw PairingPayloadError.malformed }; return value }
+        guard !values.isEmpty, values.count % 3 != 1 else { throw PairingPayloadError.malformed }
+        var data = Data(); var index = 0
+        while index < values.count {
+            if index + 2 < values.count {
+                let value = values[index] + values[index + 1] * 45 + values[index + 2] * 2025
+                guard value <= 0xffff else { throw PairingPayloadError.malformed }; data.append(UInt8(value / 256)); data.append(UInt8(value % 256)); index += 3
+            } else {
+                let value = values[index] + values[index + 1] * 45
+                guard value <= 0xff else { throw PairingPayloadError.malformed }; data.append(UInt8(value)); index += 2
+            }
+        }
+        return data
+    }
+
+    private static func base64URLEncode(_ data: Data) -> String { data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") }
+    private static func base64URLDecode(_ value: String) -> Data? {
+        let padded = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/") + String(repeating: "=", count: (4 - value.count % 4) % 4)
+        return Data(base64Encoded: padded)
+    }
+    private static func hexDecode(_ value: String) -> Data? {
+        guard value.count == 64 else { return nil }; var data = Data(); var index = value.startIndex
+        while index < value.endIndex { let end = value.index(index, offsetBy: 2); guard let byte = UInt8(value[index..<end], radix: 16) else { return nil }; data.append(byte); index = end }
+        return data
     }
 }
 

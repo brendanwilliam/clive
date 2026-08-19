@@ -89,6 +89,11 @@ final class DaemonRuntime: @unchecked Sendable {
             stop()
         case .approvePairing:
             try? channel.send(ControlResponse(success: false, message: "Approval is only valid on an active pairing channel."))
+        case .cancelPairing:
+            let active = lock.withLock { pairing }
+            guard let active else { try? channel.send(ControlResponse(success: false, message: "No pairing operation is active.")); return }
+            active.cancel()
+            try? channel.send(ControlResponse(success: true, message: "Pairing cancelled."))
         case .setCellularAccess:
             guard let enabled = request.cellularEnabled else { try? channel.send(ControlResponse(success: false, message: "An enabled value is required.")); return }
             do {

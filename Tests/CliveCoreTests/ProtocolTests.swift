@@ -69,11 +69,24 @@ import Security
     #expect(await registry.sessions(forDeviceID: "phone-b").count == 1)
 }
 
-@Test func pairingTicketUsesQRCompatiblePayload() throws {
-    let ticket = PairingTicket(endpoint: "192.168.1.10", port: 4242, expiresAt: Date(timeIntervalSince1970: 1_700_000_000), oneTimeSecret: "secret", daemonCertificateFingerprint: "abc")
+@Test func pairingTicketUsesCompactV2QRPayload() throws {
+    let ticket = PairingTicket(endpoint: "192.168.1.10", port: 4242, expiresAt: Date(timeIntervalSince1970: 1_700_000_000), oneTimeSecret: Data(repeating: 7, count: 32).base64EncodedString().replacingOccurrences(of: "=", with: ""), daemonCertificateFingerprint: String(repeating: "ab", count: 32))
     let payload = try PairingPayload.encode(ticket)
-    #expect(!payload.contains("="))
+    #expect(payload.hasPrefix("CL2:"))
+    #expect(payload.dropFirst(4).allSatisfy { "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:".contains($0) })
     #expect(try PairingPayload.decode(payload) == ticket)
+}
+
+@Test func legacyV1PairingPayloadStillDecodes() throws {
+    let ticket = PairingTicket(endpoint: "127.0.0.1", port: 4242, expiresAt: Date(timeIntervalSince1970: 1_700_000_000), oneTimeSecret: "legacy", daemonCertificateFingerprint: "abc")
+    let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+    let payload = try encoder.encode(ticket).base64EncodedString().replacingOccurrences(of: "=", with: "")
+    #expect(try PairingPayload.decode(payload) == ticket)
+}
+
+@Test func malformedV2PairingPayloadIsRejected() {
+    #expect(throws: PairingPayloadError.malformed) { try PairingPayload.decode("CL2:0") }
+    #expect(throws: PairingPayloadError.malformed) { try PairingPayload.decode("CL2:@@") }
 }
 
 @Test func pairingRequestCannotConsumeSecretWhenMalformed() async throws {
