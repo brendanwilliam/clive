@@ -5,7 +5,7 @@ import SwiftUI
 struct TerminalSurfaceView: UIViewRepresentable {
     let session: SessionClient?
     let shortcuts: [CLIShortcut]
-    let saveShortcut: (String) -> Void
+    let saveShortcut: (String, String) -> Bool
     func makeCoordinator() -> Coordinator { Coordinator(session: session, shortcuts: shortcuts, saveShortcut: saveShortcut) }
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
@@ -23,12 +23,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
         fileprivate var accessory: TerminalKeyboardAccessory?
         private var shortcuts: [CLIShortcut]
         private var commandTracker = TerminalCommandTracker()
-        private let saveShortcut: (String) -> Void
-        init(session: SessionClient?, shortcuts: [CLIShortcut], saveShortcut: @escaping (String) -> Void) {
+        private let saveShortcut: (String, String) -> Bool
+        init(session: SessionClient?, shortcuts: [CLIShortcut], saveShortcut: @escaping (String, String) -> Bool) {
             self.session = session; self.shortcuts = shortcuts; self.saveShortcut = saveShortcut
         }
         @MainActor func installAccessory(on view: TerminalView) {
-            let accessory = TerminalKeyboardAccessory(shortcuts: shortcuts, saveLastCommand: { [weak self] command in self?.saveShortcut(command) }, send: { [weak self] data in self?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
+            let accessory = TerminalKeyboardAccessory(shortcuts: shortcuts, saveLastCommand: { [weak self] name, command in self?.saveShortcut(name, command) ?? false }, send: { [weak self] data in self?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
             self.accessory = accessory
             view.inputAccessoryView = accessory
             // SwiftTerm installs a default accessory during its initialization. Reload the

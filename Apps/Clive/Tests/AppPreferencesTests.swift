@@ -71,9 +71,21 @@ final class AppPreferencesTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let model = AppPreferencesModel(store: AppPreferencesStore(rootURL: root))
 
-        model.saveShortcut(command: "  git status --short  ")
+        XCTAssertTrue(model.saveShortcut(name: "Status", command: "  git status --short  "))
 
-        XCTAssertEqual(model.value.shortcuts.map(\.name), ["git status --short"])
+        XCTAssertEqual(model.value.shortcuts.map(\.name), ["Status"])
         XCTAssertEqual(model.value.shortcuts.map(\.command), ["git status --short"])
+    }
+
+    @MainActor
+    func testSavingShortcutRejectsDuplicateNameOrCommand() {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = AppPreferencesModel(store: AppPreferencesStore(rootURL: root))
+
+        XCTAssertTrue(model.saveShortcut(name: "Status", command: "git status"))
+        XCTAssertFalse(model.saveShortcut(name: "status", command: "pwd"))
+        XCTAssertFalse(model.saveShortcut(name: "Working directory", command: " git status "))
+        XCTAssertEqual(model.value.shortcuts.count, 1)
     }
 }

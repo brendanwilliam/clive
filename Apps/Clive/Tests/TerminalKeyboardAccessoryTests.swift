@@ -43,10 +43,17 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
     }
 
     func testSaveLastCommandEnablesAfterCommandIsTrackedAndSavesIt() throws {
+        var savedName: String?
         var savedCommand: String?
+        var saveCount = 0
         let accessory = TerminalKeyboardAccessory(
             shortcuts: [],
-            saveLastCommand: { savedCommand = $0 },
+            saveLastCommand: { name, command in
+                savedName = name
+                savedCommand = command
+                saveCount += 1
+                return true
+            },
             send: { _ in },
             command: { _ in }
         )
@@ -58,8 +65,28 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
 
         let saveButton = try XCTUnwrap(accessory.descendant(withIdentifier: "saveLastCommand") as? UIButton)
         XCTAssertTrue(saveButton.isEnabled)
-        saveButton.sendActions(for: .touchUpInside)
+        accessory.confirmLastCommandShortcut(name: "Repository status")
+
+        XCTAssertEqual(savedName, "Repository status")
         XCTAssertEqual(savedCommand, "git status")
+        XCTAssertEqual(saveCount, 1)
+        XCTAssertFalse(try XCTUnwrap(accessory.descendant(withIdentifier: "saveLastCommand") as? UIButton).isEnabled)
+    }
+
+    func testExistingShortcutCommandCannotBeSavedAgain() throws {
+        let accessory = TerminalKeyboardAccessory(
+            shortcuts: [CLIShortcut(name: "Status", command: "git status")],
+            lastCommand: " git status ",
+            saveLastCommand: { _, _ in XCTFail("Duplicate should not save"); return true },
+            send: { _ in },
+            command: { _ in }
+        )
+
+        let shortcutButton = try XCTUnwrap(accessory.descendant(withIdentifier: "shortcuts") as? UIButton)
+        shortcutButton.sendActions(for: .touchUpInside)
+
+        XCTAssertFalse(try XCTUnwrap(accessory.descendant(withIdentifier: "saveLastCommand") as? UIButton).isEnabled)
+        XCTAssertNil(accessory.descendant(withIdentifier: "closePanel"))
     }
 
     func testTerminalKeyShowsVisualPressedFeedback() throws {

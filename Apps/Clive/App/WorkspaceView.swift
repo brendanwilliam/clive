@@ -95,16 +95,18 @@ struct WorkspaceView: View {
             Image(systemName: "terminal")
                 .font(.system(size: 18, weight: .medium))
                 .frame(width: 44, height: 44)
+                .background(Color(uiColor: .secondarySystemBackground), in: .circle)
         }
         .overlay(alignment: .topTrailing) {
             Text("\(coordinator.sessions.count)")
                 .font(.caption2.bold().monospacedDigit())
                 .foregroundStyle(.white)
                 .frame(width: 20, height: 20)
-                .background(Color.blue, in: .circle)
+                .background(Color(uiColor: .systemBlue).opacity(1), in: .circle)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
+        .buttonStyle(.plain)
         .contentShape(.circle)
         .buttonBorderShape(.circle)
         .accessibilityLabel("Terminals")
@@ -141,7 +143,7 @@ struct WorkspaceView: View {
                             TerminalSurfaceView(
                                 session: session.client,
                                 shortcuts: coordinator.preferences.value.shortcuts,
-                                saveShortcut: coordinator.preferences.saveShortcut(command:)
+                                saveShortcut: coordinator.preferences.saveShortcut(name:command:)
                             )
                             sessionOverlay(session)
                         }

@@ -10,7 +10,7 @@ final class TerminalKeyboardAccessory: UIInputView {
     private let send: (Data) -> Void
     private let command: (String) -> Void
     private let onLayoutChanged: () -> Void
-    private let saveLastCommand: (String) -> Void
+    private let saveLastCommand: (String, String) -> Bool
     private var buttons: [UIButton] = []
     private var customKeys: [String] = UserDefaults.standard.stringArray(forKey: "com.clive.keyboard.custom-keys") ?? []
     private var shortcuts: [CLIShortcut]
@@ -20,9 +20,11 @@ final class TerminalKeyboardAccessory: UIInputView {
     private weak var keyRow: UIStackView?
     private var palette: UIView?
     private var expandedPanel: ExpandedPanel?
+    private var savedCommand: String?
+    private var shortcutSaveError: String?
     private var heightConstraint: NSLayoutConstraint?
 
-    init(shortcuts: [CLIShortcut], showsShortcutMenu: Bool = true, lastCommand: String? = nil, saveLastCommand: @escaping (String) -> Void = { _ in }, send: @escaping (Data) -> Void, command: @escaping (String) -> Void, onLayoutChanged: @escaping () -> Void = {}) {
+    init(shortcuts: [CLIShortcut], showsShortcutMenu: Bool = true, lastCommand: String? = nil, saveLastCommand: @escaping (String, String) -> Bool = { _, _ in false }, send: @escaping (Data) -> Void, command: @escaping (String) -> Void, onLayoutChanged: @escaping () -> Void = {}) {
         self.shortcuts = shortcuts
         self.showsShortcutMenu = showsShortcutMenu
         self.lastCommand = lastCommand
@@ -52,6 +54,7 @@ final class TerminalKeyboardAccessory: UIInputView {
     func updateLastCommand(_ command: String?) {
         guard command != lastCommand else { return }
         lastCommand = command
+        shortcutSaveError = nil
         if expandedPanel == .shortcuts { showPanel(.shortcuts) }
     }
 
@@ -76,10 +79,8 @@ final class TerminalKeyboardAccessory: UIInputView {
         guard let action = sender.accessibilityIdentifier else { return }
         if action == "keyboard" { togglePanel(.additionalKeys); return }
         if action == "shortcuts" { togglePanel(.shortcuts); return }
-        if action == "closePanel" { closePanel(); return }
         if action == "saveLastCommand" {
-            guard let lastCommand, !lastCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            saveLastCommand(lastCommand)
+            presentShortcutNamePrompt()
             return
         }
         if action.hasPrefix("shortcut:"), let id = UUID(uuidString: String(action.dropFirst(9))), let shortcut = shortcuts.first(where: { $0.id == id }) {
@@ -182,12 +183,7 @@ final class TerminalKeyboardAccessory: UIInputView {
     private func makePanelHeader(title text: String) -> UIView {
         let header = UIStackView(); header.axis = .horizontal; header.alignment = .center
         let title = UILabel(); title.text = text; title.font = .preferredFont(forTextStyle: .caption1); title.textColor = .secondaryLabel
-        let close = UIButton(type: .system); close.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-        close.accessibilityLabel = "Close \(text.lowercased())"; close.accessibilityIdentifier = "closePanel"
-        close.widthAnchor.constraint(equalToConstant: 36).isActive = true
-        close.heightAnchor.constraint(equalToConstant: 32).isActive = true
-        close.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
-        header.addArrangedSubview(title); header.addArrangedSubview(close)
+        header.addArrangedSubview(title)
         return header
     }
 
@@ -195,8 +191,12 @@ final class TerminalKeyboardAccessory: UIInputView {
         let scroll = UIScrollView(); scroll.alwaysBounceVertical = true; scroll.translatesAutoresizingMaskIntoConstraints = false
         let list = UIStackView(); list.axis = .vertical; list.spacing = 6; list.translatesAutoresizingMaskIntoConstraints = false
         let save = makePanelButton(title: "Save last command", image: "square.and.arrow.down", action: "saveLastCommand")
-        save.isEnabled = lastCommand?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        save.isEnabled = canSaveLastCommand
         list.addArrangedSubview(save)
+        if let shortcutSaveError {
+            let error = UILabel(); error.text = shortcutSaveError; error.textColor = .systemRed; error.font = .preferredFont(forTextStyle: .caption1); error.numberOfLines = 0
+            list.addArrangedSubview(error)
+        }
         let available = shortcuts.filter {
             !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !$0.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -212,6 +212,48 @@ final class TerminalKeyboardAccessory: UIInputView {
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
         NSLayoutConstraint.activate([list.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor), list.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor), list.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor), list.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor), list.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)])
         return scroll
+    }
+
+    private func presentShortcutNamePrompt() {
+        guard let command = normalizedLastCommand, canSaveLastCommand, let presenter = nearestViewController else { return }
+        let alert = UIAlertController(title: "Save CLI shortcut", message: command, preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "Shortcut name"
+            field.text = command
+            field.clearButtonMode = .whileEditing
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self, weak alert] _ in
+            self?.confirmLastCommandShortcut(name: alert?.textFields?.first?.text ?? "")
+        })
+        presenter.present(alert, animated: true)
+    }
+
+    func confirmLastCommandShortcut(name: String) {
+        guard let command = normalizedLastCommand, canSaveLastCommand else { return }
+        if saveLastCommand(name, command) {
+            savedCommand = command
+            shortcutSaveError = nil
+        } else {
+            shortcutSaveError = "That shortcut name or command already exists."
+        }
+        if expandedPanel == .shortcuts { showPanel(.shortcuts) }
+    }
+
+    private var nearestViewController: UIViewController? {
+        var controller = window?.rootViewController
+        while let presented = controller?.presentedViewController { controller = presented }
+        return controller
+    }
+
+    private var normalizedLastCommand: String? {
+        guard let command = lastCommand?.trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty else { return nil }
+        return command
+    }
+
+    private var canSaveLastCommand: Bool {
+        guard let command = normalizedLastCommand, command != savedCommand else { return false }
+        return !shortcuts.contains { $0.command.trimmingCharacters(in: .whitespacesAndNewlines) == command }
     }
 
     private func makePanelButton(title: String, image: String, action: String) -> UIButton {
