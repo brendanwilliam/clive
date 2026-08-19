@@ -190,16 +190,26 @@ private struct PairingWindow: View {
     var body: some View {
         VStack(spacing: 16) {
             Text("Pair iPhone").font(.title2.bold())
-            if let ticket = model.pairingTicket, let image = qrImage(for: ticket) {
+            if let prompt = model.pairingPrompt {
+                Image(systemName: "iphone.gen3")
+                    .font(.system(size: 72))
+                    .foregroundStyle(.tint)
+                Text("Approve this iPhone").font(.headline)
+                Text("Pair (prompt.displayName)?")
+                Text("Certificate fingerprint\n\(prompt.certificateFingerprint)")
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                    .multilineTextAlignment(.center)
+                HStack {
+                    Button("Reject") { model.approvePairing(false) }
+                    Button("Approve") { model.approvePairing(true) }
+                        .keyboardShortcut(.defaultAction)
+                }
+            } else if let ticket = model.pairingTicket, let image = qrImage(for: ticket) {
                 Image(nsImage: image).interpolation(.none).resizable().scaledToFit().frame(width: 280, height: 280)
                 Text("Scan this code in Clive for iPhone. It expires \(ticket.expiresAt, style: .relative).")
                     .multilineTextAlignment(.center).foregroundStyle(.secondary)
             } else if model.isPairing { ProgressView("Creating secure pairing code…") }
-            if let prompt = model.pairingPrompt {
-                Divider(); Text("Pair \(prompt.displayName)?").font(.headline)
-                Text("Certificate fingerprint\n\(prompt.certificateFingerprint)").font(.caption.monospaced()).textSelection(.enabled).multilineTextAlignment(.center)
-                HStack { Button("Reject") { model.approvePairing(false) }; Button("Approve") { model.approvePairing(true) }.keyboardShortcut(.defaultAction) }
-            }
             if let message = model.pairingMessage { Text(message).foregroundStyle(.secondary) }
             Spacer()
             Button("Cancel") { model.cancelPairing(); dismiss() }
