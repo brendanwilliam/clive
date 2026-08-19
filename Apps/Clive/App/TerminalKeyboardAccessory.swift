@@ -12,13 +12,15 @@ final class TerminalKeyboardAccessory: UIInputView {
     private var buttons: [UIButton] = []
     private var customKeys: [String] = UserDefaults.standard.stringArray(forKey: "com.clive.keyboard.custom-keys") ?? []
     private var shortcuts: [CLIShortcut]
+    private let showsShortcutMenu: Bool
     private weak var scrollView: UIScrollView?
     private weak var keyRow: UIStackView?
     private var palette: UIView?
     private var heightConstraint: NSLayoutConstraint?
 
-    init(shortcuts: [CLIShortcut], send: @escaping (Data) -> Void, command: @escaping (String) -> Void, onLayoutChanged: @escaping () -> Void = {}) {
+    init(shortcuts: [CLIShortcut], showsShortcutMenu: Bool = true, send: @escaping (Data) -> Void, command: @escaping (String) -> Void, onLayoutChanged: @escaping () -> Void = {}) {
         self.shortcuts = shortcuts
+        self.showsShortcutMenu = showsShortcutMenu
         self.send = send; self.command = command; self.onLayoutChanged = onLayoutChanged
         super.init(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48), inputViewStyle: .keyboard)
         allowsSelfSizing = true
@@ -95,7 +97,7 @@ final class TerminalKeyboardAccessory: UIInputView {
             ("⇥", "tab", "Tab"), ("⇧", "shift", "Shift"), ("⌃", "control", "Control"), ("⌥", "option", "Option"), ("⌘", "command", "Command")
         ]
         for (title, action, label) in keys { row.addArrangedSubview(makeButton(title: title, action: action, label: label)) }
-        row.addArrangedSubview(makeShortcutButton())
+        if showsShortcutMenu { row.addArrangedSubview(makeShortcutButton()) }
         let remainingKeys = customKeys.map { ($0, "custom:\($0)", "Custom key \($0)") } + [
             ("←", "left", "Left arrow"), ("↓", "down", "Down arrow"), ("↑", "up", "Up arrow"), ("→", "right", "Right arrow"),
             (".", ".", "Period"), ("/", "/", "Slash"), ("@", "@", "At sign"), ("$", "$", "Dollar"), ("⌨", "keyboard", "Special keys")

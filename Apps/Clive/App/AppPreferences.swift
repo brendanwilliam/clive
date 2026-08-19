@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import CliveCore
 
 struct CLIShortcut: Codable, Equatable, Identifiable {
     var id: UUID
@@ -18,6 +19,26 @@ struct AppPreferences: Codable, Equatable {
     var allowsCellularConnections = false
     var defaultDirectoryPath = ""
     var shortcuts: [CLIShortcut] = []
+    var connectionIndicators: [String: String] = [:]
+
+    private enum CodingKeys: String, CodingKey {
+        case allowsCellularConnections, defaultDirectoryPath, shortcuts, connectionIndicators
+    }
+
+    init(allowsCellularConnections: Bool = false, defaultDirectoryPath: String = "", shortcuts: [CLIShortcut] = [], connectionIndicators: [String: String] = [:]) {
+        self.allowsCellularConnections = allowsCellularConnections
+        self.defaultDirectoryPath = defaultDirectoryPath
+        self.shortcuts = shortcuts
+        self.connectionIndicators = connectionIndicators
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        allowsCellularConnections = try values.decodeIfPresent(Bool.self, forKey: .allowsCellularConnections) ?? false
+        defaultDirectoryPath = try values.decodeIfPresent(String.self, forKey: .defaultDirectoryPath) ?? ""
+        shortcuts = try values.decodeIfPresent([CLIShortcut].self, forKey: .shortcuts) ?? []
+        connectionIndicators = try values.decodeIfPresent([String: String].self, forKey: .connectionIndicators) ?? [:]
+    }
 }
 
 struct AppPreferencesStore {
@@ -61,5 +82,17 @@ struct AppPreferencesStore {
 
     func moveShortcuts(from offsets: IndexSet, to destination: Int) {
         value.shortcuts.move(fromOffsets: offsets, toOffset: destination)
+    }
+
+    func indicator(for mac: PairedMac) -> String {
+        let saved = value.connectionIndicators[mac.id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !saved.isEmpty { return String(saved.prefix(2)) }
+        let words = mac.displayName.split(whereSeparator: { $0.isWhitespace || $0 == "-" })
+        let initials = words.prefix(2).compactMap { $0.first }.map(String.init).joined().uppercased()
+        return initials.isEmpty ? "⌘" : initials
+    }
+
+    func setIndicator(_ indicator: String, for mac: PairedMac) {
+        value.connectionIndicators[mac.id] = String(indicator.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2))
     }
 }
