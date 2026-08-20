@@ -21,7 +21,11 @@ targets:
         SWIFT_VERSION: 6.0
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Config/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Config/CliveMac.entitlements
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: Config/CliveMac.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: Config/CliveMacRelease.entitlements
     dependencies:
       - package: Clive
         product: CliveCore
