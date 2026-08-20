@@ -31,6 +31,8 @@ jobs:
       APPLE_DEVELOPMENT_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPMENT_CERTIFICATE_PASSWORD }}
       APPLE_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}
       APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      APP_STORE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APP_STORE_PROVISIONING_PROFILE_BASE64 }}
+      WIDGET_APP_STORE_PROVISIONING_PROFILE_BASE64: ${{ secrets.WIDGET_APP_STORE_PROVISIONING_PROFILE_BASE64 }}
 
     steps:
       - name: Check out repository
@@ -50,6 +52,8 @@ jobs:
             APPLE_DEVELOPMENT_CERTIFICATE_PASSWORD
             APPLE_DISTRIBUTION_CERTIFICATE_BASE64
             APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD
+            APP_STORE_PROVISIONING_PROFILE_BASE64
+            WIDGET_APP_STORE_PROVISIONING_PROFILE_BASE64
           )
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
@@ -61,18 +65,22 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Install signing certificates and API key
+      - name: Install signing assets and API key
         shell: bash
         run: |
           set -euo pipefail
           development_certificate_path="$RUNNER_TEMP/development.p12"
           distribution_certificate_path="$RUNNER_TEMP/distribution.p12"
+          app_profile_path="$RUNNER_TEMP/app.mobileprovision"
+          widget_profile_path="$RUNNER_TEMP/widget.mobileprovision"
           keychain_path="$RUNNER_TEMP/app-signing.keychain-db"
           keychain_password="$(uuidgen)"
           api_key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
 
           printf '%s' "$APPLE_DEVELOPMENT_CERTIFICATE_BASE64" | base64 --decode > "$development_certificate_path"
           printf '%s' "$APPLE_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$distribution_certificate_path"
+          printf '%s' "$APP_STORE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$app_profile_path"
+          printf '%s' "$WIDGET_APP_STORE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$widget_profile_path"
           printf '%s' "$APP_STORE_CONNECT_API_PRIVATE_KEY" > "$api_key_path"
 
           security create-keychain -p "$keychain_password" "$keychain_path"
@@ -91,8 +99,19 @@ jobs:
           security list-keychains -d user -s "$keychain_path"
           security find-identity -v -p codesigning "$keychain_path"
 
+          profile_directory="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profile_directory"
+          security cms -D -i "$app_profile_path" > "$RUNNER_TEMP/app-profile.plist"
+          security cms -D -i "$widget_profile_path" > "$RUNNER_TEMP/widget-profile.plist"
+          app_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/app-profile.plist")"
+          widget_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/widget-profile.plist")"
+          cp "$app_profile_path" "$profile_directory/$app_profile_uuid.mobileprovision"
+          cp "$widget_profile_path" "$profile_directory/$widget_profile_uuid.mobileprovision"
+
           echo "API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
           echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+          echo "APP_PROFILE_UUID=$app_profile_uuid" >> "$GITHUB_ENV"
+          echo "WIDGET_PROFILE_UUID=$widget_profile_uuid" >> "$GITHUB_ENV"
 
       - name: Generate Xcode project
         working-directory: Apps/Clive
@@ -124,6 +143,9 @@ jobs:
           export_options="$RUNNER_TEMP/TestFlightExportOptions.plist"
           cp Apps/Clive/Config/TestFlightExportOptions.plist "$export_options"
           plutil -replace teamID -string "$APPLE_TEAM_ID" "$export_options"
+          /usr/libexec/PlistBuddy -c 'Add :provisioningProfiles dict' "$export_options"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:$CLIVE_BUNDLE_ID string $APP_PROFILE_UUID" "$export_options"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:$CLIVE_BUNDLE_ID.widget string $WIDGET_PROFILE_UUID" "$export_options"
 
           xcodebuild \
             -exportArchive \
@@ -144,4 +166,10 @@ jobs:
           rm -f \
             "${API_KEY_PATH:-}" \
             "$RUNNER_TEMP/development.p12" \
-            "$RUNNER_TEMP/distribution.p12"
+            "$RUNNER_TEMP/distribution.p12" \
+            "$RUNNER_TEMP/app.mobileprovision" \
+            "$RUNNER_TEMP/widget.mobileprovision" \
+            "$RUNNER_TEMP/app-profile.plist" \
+            "$RUNNER_TEMP/widget-profile.plist" \
+            "$HOME/Library/MobileDevice/Provisioning Profiles/${APP_PROFILE_UUID:-}.mobileprovision" \
+            "$HOME/Library/MobileDevice/Provisioning Profiles/${WIDGET_PROFILE_UUID:-}.mobileprovision"

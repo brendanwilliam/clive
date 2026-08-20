@@ -34,7 +34,9 @@ Add these environment secrets:
 - `APPLE_DEVELOPMENT_CERTIFICATE_PASSWORD`: the Development `.p12` export password
 - `APPLE_DISTRIBUTION_CERTIFICATE_BASE64`: an Apple Distribution `.p12`, encoded with `base64 -i Distribution.p12 | pbcopy`
 - `APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD`: the `.p12` export password
+- `APP_STORE_PROVISIONING_PROFILE_BASE64`: the app's App Store Connect `.mobileprovision`, Base64 encoded
+- `WIDGET_APP_STORE_PROVISIONING_PROFILE_BASE64`: the widget's App Store Connect `.mobileprovision`, Base64 encoded
 
-Create the app, widget identifiers, iCloud container, and App Store Connect app record before the first run. The API key must be allowed to manage signing assets and upload builds. Run the workflow from the Actions tab, enter the marketing version, and approve the `testflight` environment if protection rules are enabled. GitHub's run number becomes the monotonically increasing build number.
+Create the app, widget identifiers, iCloud container, App Store Connect app record, and separate App Store Connect provisioning profiles for the app and widget before the first run. Both profiles must use the uploaded Apple Distribution certificate. The API key must be allowed to upload builds. Run the workflow from the Actions tab, enter the marketing version, and approve the `testflight` environment if protection rules are enabled. GitHub's run number becomes the monotonically increasing build number.
 
 After Apple finishes processing the first upload, complete its export-compliance response and assign the build to an internal testing group in App Store Connect. Keep external testing disabled until physical-device acceptance and Beta App Review are complete.
