@@ -72,10 +72,10 @@ jobs:
               exit 1
             fi
           done
-          gh release view "${{ inputs.tag }}" >/dev/null 2>&1 && {
+          if gh release view "${{ inputs.tag }}" >/dev/null 2>&1; then
             echo "::error::GitHub Release ${{ inputs.tag }} already exists"
             exit 1
-          }
+          fi
 
       - name: Install XcodeGen
         run: brew install xcodegen
