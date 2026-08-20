@@ -53,6 +53,13 @@ cp "${ROOT_DIR}/.build/arm64-apple-macosx/release/clive" "${STAGE_DIR}/usr/local
 cp -R "${MAC_DERIVED_DIR}/Build/Products/Release/Clive.app" "${STAGE_DIR}/Applications/Clive.app"
 [[ $(lipo -archs "${STAGE_DIR}/usr/local/bin/clive") == arm64 ]]
 if [[ -n ${DEVELOPER_ID_APPLICATION:-} ]]; then
+    signed_entitlements="${MAC_DERIVED_DIR}/signed-entitlements.plist"
+    codesign -d --entitlements :- "${STAGE_DIR}/Applications/Clive.app" > "${signed_entitlements}"
+    if [[ $(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.get-task-allow' "${signed_entitlements}" 2>/dev/null || true) == true ]]; then
+        echo "Release app must not request com.apple.security.get-task-allow" >&2
+        exit 1
+    fi
+    codesign -d --verbose=4 "${STAGE_DIR}/Applications/Clive.app" 2>&1 | grep -q 'flags=.*runtime'
     codesign --force --options runtime --timestamp --sign "${DEVELOPER_ID_APPLICATION}" "${STAGE_DIR}/usr/local/bin/clive"
     codesign --verify --deep --strict --verbose=2 "${STAGE_DIR}/Applications/Clive.app"
     codesign --verify --strict --verbose=2 "${STAGE_DIR}/usr/local/bin/clive"
@@ -65,11 +72,22 @@ if [[ -n ${DEVELOPER_ID_INSTALLER:-} ]]; then
     if [[ -n ${NOTARY_KEY_PATH:-} ]]; then
         : ${NOTARY_KEY_ID:?Missing NOTARY_KEY_ID}
         : ${NOTARY_ISSUER_ID:?Missing NOTARY_ISSUER_ID}
-        xcrun notarytool submit "${SIGNED_PKG}" \
+        notary_result="$(xcrun notarytool submit "${SIGNED_PKG}" \
             --key "${NOTARY_KEY_PATH}" \
             --key-id "${NOTARY_KEY_ID}" \
             --issuer "${NOTARY_ISSUER_ID}" \
-            --wait
+            --wait \
+            --output-format json)"
+        printf '%s\n' "${notary_result}"
+        notary_status="$(printf '%s' "${notary_result}" | plutil -extract status raw -o - -)"
+        notary_id="$(printf '%s' "${notary_result}" | plutil -extract id raw -o - -)"
+        if [[ ${notary_status} != Accepted ]]; then
+            xcrun notarytool log "${notary_id}" \
+                --key "${NOTARY_KEY_PATH}" \
+                --key-id "${NOTARY_KEY_ID}" \
+                --issuer "${NOTARY_ISSUER_ID}"
+            exit 1
+        fi
         xcrun stapler staple "${SIGNED_PKG}"
         xcrun stapler validate "${SIGNED_PKG}"
     elif [[ -n ${NOTARY_PROFILE:-} ]]; then
