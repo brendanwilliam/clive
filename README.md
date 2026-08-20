@@ -31,6 +31,31 @@ The PKG installs `/Applications/Clive.app` and `/usr/local/bin/clive`, with no l
 
 TestFlight uploads are performed by the manually triggered `Deploy iOS to TestFlight` GitHub Actions workflow. Signing and App Store Connect credentials live only in the protected `testflight` GitHub environment; see [the iPhone app release instructions](Apps/Clive/README.md#testflight-deployment) for setup.
 
+### Publishing the macOS package
+
+The manually triggered `Publish macOS package` workflow builds the Apple-silicon CLI and menu-bar app, signs them with Developer ID, notarizes and staples the installer, and publishes `clive.pkg` plus its SHA-256 checksum to a new GitHub Release.
+
+Create a protected GitHub environment named `macos-release` with these variables:
+
+- `APPLE_TEAM_ID`
+- `CLIVE_MAC_BUNDLE_ID` (for example, `com.brendanwilliam.clive.mac`)
+- `CLIVE_ICLOUD_CONTAINER` (the same production CloudKit container used by the iOS app)
+
+Add these environment secrets:
+
+- `APP_STORE_CONNECT_API_KEY_ID`
+- `APP_STORE_CONNECT_API_ISSUER_ID`
+- `APP_STORE_CONNECT_API_PRIVATE_KEY`
+- `DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64`
+- `DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD`
+- `DEVELOPER_ID_INSTALLER_CERTIFICATE_BASE64`
+- `DEVELOPER_ID_INSTALLER_CERTIFICATE_PASSWORD`
+- `DEVELOPER_ID_PROVISIONING_PROFILE_BASE64`
+
+The two certificate values are base64-encoded, password-protected PKCS#12 exports. The provisioning profile must be a **Developer ID** profile for the explicit Mac App ID and include its production iCloud and push-notification entitlements. Base64-encode binary inputs with `base64 -i <file> | pbcopy` on macOS. The App Store Connect API key must have permission to submit software for notarization.
+
+Run the workflow from `main` with a new semantic version tag such as `v0.1.0`. Keep the first release marked as a prerelease until the package passes the physical-device acceptance checks below. A tag is created only after signing and notarization succeed; an existing release tag is never overwritten.
+
 To remove the prototype, delete `/usr/local/bin/clive`. Remove the Application Support directory separately only when you also intend to erase the companion identity and every pairing.
 
 ## Get started
