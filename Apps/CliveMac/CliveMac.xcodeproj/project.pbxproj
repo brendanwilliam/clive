@@ -160,9 +160,6 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
-					85B10414F6EB61CAC4CC1A20 = {
-						ProvisioningStyle = Automatic;
-					};
 				};
 			};
 			buildConfigurationList = 2B5BAC039F06929A030CBDD6 /* Build configuration list for PBXProject "CliveMac" */;
@@ -236,14 +233,21 @@
 			baseConfigurationReference = D3C8834CD01AC2306A198613 /* Base.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLIVE_ICLOUD_CONTAINER = "$(CLIVE_RELEASE_ICLOUD_CONTAINER)";
 				CODE_SIGN_ENTITLEMENTS = Config/CliveMacRelease.entitlements;
+				CODE_SIGN_IDENTITY = "$(CLIVE_RELEASE_CODE_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "$(CLIVE_RELEASE_TEAM_ID)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Config/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OTHER_CODE_SIGN_FLAGS = "--timestamp --options runtime";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(CLIVE_RELEASE_BUNDLE_ID)";
+				PROVISIONING_PROFILE_SPECIFIER = "$(CLIVE_RELEASE_PROVISIONING_PROFILE)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
 			};

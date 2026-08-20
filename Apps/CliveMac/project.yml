@@ -25,7 +25,14 @@ targets:
         Debug:
           CODE_SIGN_ENTITLEMENTS: Config/CliveMac.entitlements
         Release:
+          CLIVE_ICLOUD_CONTAINER: $(CLIVE_RELEASE_ICLOUD_CONTAINER)
+          CODE_SIGN_IDENTITY: $(CLIVE_RELEASE_CODE_SIGN_IDENTITY)
           CODE_SIGN_ENTITLEMENTS: Config/CliveMacRelease.entitlements
+          CODE_SIGN_STYLE: Manual
+          DEVELOPMENT_TEAM: $(CLIVE_RELEASE_TEAM_ID)
+          OTHER_CODE_SIGN_FLAGS: --timestamp --options runtime
+          PRODUCT_BUNDLE_IDENTIFIER: $(CLIVE_RELEASE_BUNDLE_ID)
+          PROVISIONING_PROFILE_SPECIFIER: $(CLIVE_RELEASE_PROVISIONING_PROFILE)
     dependencies:
       - package: Clive
         product: CliveCore
