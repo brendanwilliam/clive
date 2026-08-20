@@ -27,6 +27,8 @@ jobs:
       APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
       APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
       APP_STORE_CONNECT_API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+      APPLE_DEVELOPMENT_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPMENT_CERTIFICATE_BASE64 }}
+      APPLE_DEVELOPMENT_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPMENT_CERTIFICATE_PASSWORD }}
       APPLE_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}
       APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
 
@@ -44,6 +46,8 @@ jobs:
             APP_STORE_CONNECT_API_KEY_ID
             APP_STORE_CONNECT_API_ISSUER_ID
             APP_STORE_CONNECT_API_PRIVATE_KEY
+            APPLE_DEVELOPMENT_CERTIFICATE_BASE64
+            APPLE_DEVELOPMENT_CERTIFICATE_PASSWORD
             APPLE_DISTRIBUTION_CERTIFICATE_BASE64
             APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD
           )
@@ -57,22 +61,27 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Install signing certificate and API key
+      - name: Install signing certificates and API key
         shell: bash
         run: |
           set -euo pipefail
-          certificate_path="$RUNNER_TEMP/distribution.p12"
+          development_certificate_path="$RUNNER_TEMP/development.p12"
+          distribution_certificate_path="$RUNNER_TEMP/distribution.p12"
           keychain_path="$RUNNER_TEMP/app-signing.keychain-db"
           keychain_password="$(uuidgen)"
           api_key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
 
-          printf '%s' "$APPLE_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+          printf '%s' "$APPLE_DEVELOPMENT_CERTIFICATE_BASE64" | base64 --decode > "$development_certificate_path"
+          printf '%s' "$APPLE_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$distribution_certificate_path"
           printf '%s' "$APP_STORE_CONNECT_API_PRIVATE_KEY" > "$api_key_path"
 
           security create-keychain -p "$keychain_password" "$keychain_path"
           security set-keychain-settings -lut 21600 "$keychain_path"
           security unlock-keychain -p "$keychain_password" "$keychain_path"
-          security import "$certificate_path" \
+          security import "$development_certificate_path" \
+            -P "$APPLE_DEVELOPMENT_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          security import "$distribution_certificate_path" \
             -P "$APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD" \
             -A -t cert -f pkcs12 -k "$keychain_path"
           security set-key-partition-list \
@@ -80,6 +89,7 @@ jobs:
             -k "$keychain_password" \
             "$keychain_path"
           security list-keychains -d user -s "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path"
 
           echo "API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
           echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
@@ -131,4 +141,7 @@ jobs:
           if [[ -n "${KEYCHAIN_PATH:-}" && -f "$KEYCHAIN_PATH" ]]; then
             security delete-keychain "$KEYCHAIN_PATH"
           fi
-          rm -f "${API_KEY_PATH:-}" "$RUNNER_TEMP/distribution.p12"
+          rm -f \
+            "${API_KEY_PATH:-}" \
+            "$RUNNER_TEMP/development.p12" \
+            "$RUNNER_TEMP/distribution.p12"

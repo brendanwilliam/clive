@@ -30,6 +30,8 @@ Add these environment secrets:
 - `APP_STORE_CONNECT_API_KEY_ID`
 - `APP_STORE_CONNECT_API_ISSUER_ID`
 - `APP_STORE_CONNECT_API_PRIVATE_KEY`: the complete contents of the `.p8` key
+- `APPLE_DEVELOPMENT_CERTIFICATE_BASE64`: the team's Apple Development identity and private key, exported as a `.p12` and Base64 encoded
+- `APPLE_DEVELOPMENT_CERTIFICATE_PASSWORD`: the Development `.p12` export password
 - `APPLE_DISTRIBUTION_CERTIFICATE_BASE64`: an Apple Distribution `.p12`, encoded with `base64 -i Distribution.p12 | pbcopy`
 - `APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD`: the `.p12` export password
 
