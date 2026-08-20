@@ -17,3 +17,22 @@ xcodebuild -project Clive.xcodeproj -scheme Clive -destination 'platform=iOS Sim
 ```
 
 Before release, verify on a physical iOS 17+ device that the small Home Screen widget and the App Shortcut behave identically for a selected terminal, the terminal list, no saved screen, an offline Mac, a revoked pairing, a changed certificate, and cancelled biometric authentication. Confirm that neither surface displays connection or terminal metadata.
+
+## TestFlight deployment
+
+The `Deploy iOS to TestFlight` GitHub Actions workflow archives and uploads a manually requested build. Configure a protected GitHub environment named `testflight` with these variables:
+
+- `APPLE_TEAM_ID`: the 10-character Apple Developer team ID
+- `CLIVE_BUNDLE_ID`: the App Store Connect bundle ID; the widget uses `<bundle-id>.widget`
+
+Add these environment secrets:
+
+- `APP_STORE_CONNECT_API_KEY_ID`
+- `APP_STORE_CONNECT_API_ISSUER_ID`
+- `APP_STORE_CONNECT_API_PRIVATE_KEY`: the complete contents of the `.p8` key
+- `APPLE_DISTRIBUTION_CERTIFICATE_BASE64`: an Apple Distribution `.p12`, encoded with `base64 -i Distribution.p12 | pbcopy`
+- `APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD`: the `.p12` export password
+
+Create the app, widget identifiers, iCloud container, and App Store Connect app record before the first run. The API key must be allowed to manage signing assets and upload builds. Run the workflow from the Actions tab, enter the marketing version, and approve the `testflight` environment if protection rules are enabled. GitHub's run number becomes the monotonically increasing build number.
+
+After Apple finishes processing the first upload, complete its export-compliance response and assign the build to an internal testing group in App Store Connect. Keep external testing disabled until physical-device acceptance and Beta App Review are complete.

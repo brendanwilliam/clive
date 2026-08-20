@@ -1,0 +1,134 @@
+name: Deploy iOS to TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: App version shown in TestFlight
+        required: true
+        default: "1.0"
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Archive and upload
+    runs-on: macos-15
+    environment: testflight
+    timeout-minutes: 45
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      CLIVE_BUNDLE_ID: ${{ vars.CLIVE_BUNDLE_ID }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+      APP_STORE_CONNECT_API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+      APPLE_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_BASE64 }}
+      APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            APPLE_TEAM_ID
+            CLIVE_BUNDLE_ID
+            APP_STORE_CONNECT_API_KEY_ID
+            APP_STORE_CONNECT_API_ISSUER_ID
+            APP_STORE_CONNECT_API_PRIVATE_KEY
+            APPLE_DISTRIBUTION_CERTIFICATE_BASE64
+            APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing TestFlight configuration: $name"
+              exit 1
+            fi
+          done
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Install signing certificate and API key
+        shell: bash
+        run: |
+          set -euo pipefail
+          certificate_path="$RUNNER_TEMP/distribution.p12"
+          keychain_path="$RUNNER_TEMP/app-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          api_key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+
+          printf '%s' "$APPLE_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+          printf '%s' "$APP_STORE_CONNECT_API_PRIVATE_KEY" > "$api_key_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -k "$keychain_password" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          echo "API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+
+      - name: Generate Xcode project
+        working-directory: Apps/Clive
+        run: xcodegen generate
+
+      - name: Archive app
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Apps/Clive/Clive.xcodeproj \
+            -scheme Clive \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Clive.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CLIVE_BUNDLE_ID="$CLIVE_BUNDLE_ID" \
+            MARKETING_VERSION="${{ inputs.marketing_version }}" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CODE_SIGN_STYLE=Automatic \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$API_KEY_PATH" \
+            -authenticationKeyID "$APP_STORE_CONNECT_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_API_ISSUER_ID" \
+            archive
+
+      - name: Upload archive to App Store Connect
+        run: |
+          set -euo pipefail
+          export_options="$RUNNER_TEMP/TestFlightExportOptions.plist"
+          cp Apps/Clive/Config/TestFlightExportOptions.plist "$export_options"
+          plutil -replace teamID -string "$APPLE_TEAM_ID" "$export_options"
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/Clive.xcarchive" \
+            -exportOptionsPlist "$export_options" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$API_KEY_PATH" \
+            -authenticationKeyID "$APP_STORE_CONNECT_API_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_API_ISSUER_ID"
+
+      - name: Clean up signing material
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${KEYCHAIN_PATH:-}" && -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi
+          rm -f "${API_KEY_PATH:-}" "$RUNNER_TEMP/distribution.p12"
