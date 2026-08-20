@@ -29,6 +29,8 @@ xcodebuild -project Clive.xcodeproj -scheme Clive -destination 'platform=iOS Sim
 
 The PKG installs `/Applications/Clive.app` and `/usr/local/bin/clive`, with no launch agent or privileged helper. Run `clive start`, then use `pair`, `status`, `cellular <on|off>`, `revoke <device-id>`, and `stop`. Cellular access is disabled by default and remains visibly indicated in the menu bar while enabled. State remains under `~/Library/Application Support/clive` so upgrades preserve identities and pairings; cryptographic identities remain device-local and owner protected.
 
+TestFlight uploads are performed by the manually triggered `Deploy iOS to TestFlight` GitHub Actions workflow. Signing and App Store Connect credentials live only in the protected `testflight` GitHub environment; see [the iPhone app release instructions](Apps/Clive/README.md#testflight-deployment) for setup.
+
 To remove the prototype, delete `/usr/local/bin/clive`. Remove the Application Support directory separately only when you also intend to erase the companion identity and every pairing.
 
 ## Get started
