@@ -18,7 +18,7 @@ permissions:
 jobs:
   deploy:
     name: Archive and upload
-    runs-on: macos-15
+    runs-on: macos-26
     environment: testflight
     timeout-minutes: 45
     env:
@@ -64,6 +64,17 @@ jobs:
 
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      - name: Verify release SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          if (( ${sdk_version%%.*} < 26 )); then
+            echo "::error::App Store Connect requires the iOS 26 SDK or later; found $sdk_version"
+            exit 1
+          fi
 
       - name: Install signing assets and API key
         shell: bash
