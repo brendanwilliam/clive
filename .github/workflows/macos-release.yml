@@ -1,0 +1,177 @@
+name: Publish macOS package
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (for example, v0.1.0)
+        required: true
+        default: v0.1.0
+      prerelease:
+        description: Mark the GitHub Release as a prerelease
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: macos-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Sign, notarize, and publish
+    runs-on: macos-26
+    environment: macos-release
+    timeout-minutes: 45
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      CLIVE_MAC_BUNDLE_ID: ${{ vars.CLIVE_MAC_BUNDLE_ID }}
+      CLIVE_ICLOUD_CONTAINER: ${{ vars.CLIVE_ICLOUD_CONTAINER }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+      APP_STORE_CONNECT_API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+      DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64 }}
+      DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD }}
+      DEVELOPER_ID_INSTALLER_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_INSTALLER_CERTIFICATE_BASE64 }}
+      DEVELOPER_ID_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_INSTALLER_CERTIFICATE_PASSWORD }}
+      DEVELOPER_ID_PROVISIONING_PROFILE_BASE64: ${{ secrets.DEVELOPER_ID_PROVISIONING_PROFILE_BASE64 }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate release configuration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${{ inputs.tag }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tag must look like v0.1.0"
+            exit 1
+          fi
+          required=(
+            APPLE_TEAM_ID
+            CLIVE_MAC_BUNDLE_ID
+            CLIVE_ICLOUD_CONTAINER
+            APP_STORE_CONNECT_API_KEY_ID
+            APP_STORE_CONNECT_API_ISSUER_ID
+            APP_STORE_CONNECT_API_PRIVATE_KEY
+            DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64
+            DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD
+            DEVELOPER_ID_INSTALLER_CERTIFICATE_BASE64
+            DEVELOPER_ID_INSTALLER_CERTIFICATE_PASSWORD
+            DEVELOPER_ID_PROVISIONING_PROFILE_BASE64
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing macOS release configuration: $name"
+              exit 1
+            fi
+          done
+          gh release view "${{ inputs.tag }}" >/dev/null 2>&1 && {
+            echo "::error::GitHub Release ${{ inputs.tag }} already exists"
+            exit 1
+          }
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Install signing assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          application_certificate_path="$RUNNER_TEMP/developer-id-application.p12"
+          installer_certificate_path="$RUNNER_TEMP/developer-id-installer.p12"
+          profile_path="$RUNNER_TEMP/developer-id.provisionprofile"
+          api_key_path="$RUNNER_TEMP/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          keychain_path="$RUNNER_TEMP/macos-release.keychain-db"
+          keychain_password="$(uuidgen)"
+
+          printf '%s' "$DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64" | base64 --decode > "$application_certificate_path"
+          printf '%s' "$DEVELOPER_ID_INSTALLER_CERTIFICATE_BASE64" | base64 --decode > "$installer_certificate_path"
+          printf '%s' "$DEVELOPER_ID_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile_path"
+          printf '%s' "$APP_STORE_CONNECT_API_PRIVATE_KEY" > "$api_key_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$application_certificate_path" -P "$DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security import "$installer_certificate_path" -P "$DEVELOPER_ID_INSTALLER_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          profile_plist="$RUNNER_TEMP/developer-id-profile.plist"
+          security cms -D -i "$profile_path" > "$profile_plist"
+          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"
+          profile_directory="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profile_directory"
+          cp "$profile_path" "$profile_directory/$profile_uuid.provisionprofile"
+
+          application_identity="$(security find-identity -v -p codesigning "$keychain_path" | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -1)"
+          installer_identity="$(security find-identity -v -p basic "$keychain_path" | sed -n 's/.*"\(Developer ID Installer:.*\)"/\1/p' | head -1)"
+          [[ -n "$application_identity" ]] || { echo "::error::Developer ID Application identity was not imported"; exit 1; }
+          [[ -n "$installer_identity" ]] || { echo "::error::Developer ID Installer identity was not imported"; exit 1; }
+
+          echo "DEVELOPER_ID_APPLICATION=$application_identity" >> "$GITHUB_ENV"
+          echo "DEVELOPER_ID_INSTALLER=$installer_identity" >> "$GITHUB_ENV"
+          echo "MAC_PROVISIONING_PROFILE=$profile_uuid" >> "$GITHUB_ENV"
+          echo "NOTARY_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+          echo "NOTARY_KEY_ID=$APP_STORE_CONNECT_API_KEY_ID" >> "$GITHUB_ENV"
+          echo "NOTARY_ISSUER_ID=$APP_STORE_CONNECT_API_ISSUER_ID" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
+          echo "PROFILE_PATH=$profile_directory/$profile_uuid.provisionprofile" >> "$GITHUB_ENV"
+
+      - name: Build signed and notarized package
+        env:
+          VERSION: ${{ inputs.tag }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          VERSION="${VERSION#v}" ./scripts/build-pkg.sh
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          arguments=(
+            "${{ inputs.tag }}"
+            dist/clive.pkg
+            dist/clive.pkg.sha256
+            --target "$GITHUB_SHA"
+            --title "Clive ${{ inputs.tag }}"
+            --generate-notes
+          )
+          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            arguments+=(--prerelease)
+          fi
+          gh release create "${arguments[@]}"
+
+      - name: Upload package artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: clive-macos-package
+          path: |
+            dist/clive.pkg
+            dist/clive.pkg.sha256
+          if-no-files-found: ignore
+
+      - name: Clean up signing material
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${KEYCHAIN_PATH:-}" && -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi
+          rm -f \
+            "${NOTARY_KEY_PATH:-}" \
+            "${PROFILE_PATH:-}" \
+            "$RUNNER_TEMP/developer-id-application.p12" \
+            "$RUNNER_TEMP/developer-id-installer.p12" \
+            "$RUNNER_TEMP/developer-id.provisionprofile" \
+            "$RUNNER_TEMP/developer-id-profile.plist"
