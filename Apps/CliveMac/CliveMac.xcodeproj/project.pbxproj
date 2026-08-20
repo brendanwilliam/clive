@@ -236,7 +236,7 @@
 			baseConfigurationReference = D3C8834CD01AC2306A198613 /* Base.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Config/CliveMac.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Config/CliveMacRelease.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Config/Info.plist;
