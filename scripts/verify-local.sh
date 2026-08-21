@@ -52,7 +52,9 @@ raw_ios_destinations=$(xcodebuild \
     print_simulator_diagnostics "${raw_ios_destinations}"
     exit 69
 }
-IOS_DESTINATION_ID=$(print -r -- "${raw_ios_destinations}" | awk '
+IOS_DESTINATION_ID=${CLIVE_IOS_DESTINATION_ID:-}
+if [[ -z ${IOS_DESTINATION_ID} ]]; then
+    IOS_DESTINATION_ID=$(print -r -- "${raw_ios_destinations}" | awk '
     /^[[:space:]]*\{/ {
         line = $0
         sub(/^[^{]*\{[[:space:]]*/, "", line)
@@ -78,6 +80,7 @@ IOS_DESTINATION_ID=$(print -r -- "${raw_ios_destinations}" | awk '
         }
     }
 ')
+fi
 if [[ -z ${IOS_DESTINATION_ID} ]]; then
     echo "No iOS Simulator destination is installed." >&2
     print_simulator_diagnostics "${raw_ios_destinations}"

@@ -51,6 +51,7 @@ jobs:
           [[ -n "$simulator_id" ]] || { echo "::error::No available iPhone Simulator was found"; exit 1; }
           xcrun simctl boot "$simulator_id"
           xcrun simctl bootstatus "$simulator_id" -b
+          echo "CLIVE_IOS_DESTINATION_ID=$simulator_id" >> "$GITHUB_ENV"
 
       - name: Verify both platforms
         env:
