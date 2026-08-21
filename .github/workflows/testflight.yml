@@ -114,6 +114,13 @@ jobs:
           mkdir -p "$profile_directory"
           security cms -D -i "$app_profile_path" > "$RUNNER_TEMP/app-profile.plist"
           security cms -D -i "$widget_profile_path" > "$RUNNER_TEMP/widget-profile.plist"
+          app_group="group.$CLIVE_BUNDLE_ID"
+          for profile in "$RUNNER_TEMP/app-profile.plist" "$RUNNER_TEMP/widget-profile.plist"; do
+            if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$profile" | grep -Fq "$app_group"; then
+              echo "::error::Provisioning profile $(basename "$profile") does not include app group $app_group"
+              exit 1
+            fi
+          done
           app_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/app-profile.plist")"
           widget_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/widget-profile.plist")"
           cp "$app_profile_path" "$profile_directory/$app_profile_uuid.mobileprovision"

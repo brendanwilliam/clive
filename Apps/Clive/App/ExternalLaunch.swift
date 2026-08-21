@@ -4,13 +4,24 @@ import Foundation
 enum ExternalLaunchURL {
     static let resumeOrStart = URL(string: "clive://resume-or-start")!
 
+    enum Action: Equatable {
+        case resumeOrStart
+        case newTerminal
+        case shortcut(UUID)
+    }
+
+    static func action(for url: URL) -> Action? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme == "clive", components.query == nil, components.fragment == nil else { return nil }
+        if components.host == "resume-or-start", components.path.isEmpty || components.path == "/" { return .resumeOrStart }
+        if components.host == "new-terminal", components.path.isEmpty || components.path == "/" { return .newTerminal }
+        if components.host == "shortcut",
+           let id = UUID(uuidString: components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))) { return .shortcut(id) }
+        return nil
+    }
+
     static func matches(_ url: URL) -> Bool {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return false }
-        return components.scheme == "clive"
-            && components.host == "resume-or-start"
-            && (components.path.isEmpty || components.path == "/")
-            && components.query == nil
-            && components.fragment == nil
+        action(for: url) != nil
     }
 }
 

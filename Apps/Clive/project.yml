@@ -50,6 +50,7 @@ targets:
         SWIFT_VERSION: 6.0
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Widgets/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/CliveWidget.entitlements
   CliveTests:
     type: bundle.unit-test
     platform: iOS

@@ -109,7 +109,11 @@ final class WorkspaceRestorationTests: XCTestCase {
     func testExternalLaunchURLAcceptsOnlyFixedDataFreeRoute() {
         XCTAssertTrue(ExternalLaunchURL.matches(URL(string: "clive://resume-or-start")!))
         XCTAssertTrue(ExternalLaunchURL.matches(URL(string: "clive://resume-or-start/")!))
+        XCTAssertEqual(ExternalLaunchURL.action(for: URL(string: "clive://new-terminal")!), .newTerminal)
+        let shortcutID = UUID()
+        XCTAssertEqual(ExternalLaunchURL.action(for: URL(string: "clive://shortcut/\(shortcutID)")!), .shortcut(shortcutID))
         XCTAssertFalse(ExternalLaunchURL.matches(URL(string: "clive://resume-or-start?mac=secret")!))
+        XCTAssertFalse(ExternalLaunchURL.matches(URL(string: "clive://shortcut/not-a-uuid")!))
         XCTAssertFalse(ExternalLaunchURL.matches(URL(string: "clive://other")!))
         XCTAssertFalse(ExternalLaunchURL.matches(URL(string: "https://resume-or-start")!))
     }
@@ -124,5 +128,40 @@ final class WorkspaceRestorationTests: XCTestCase {
         store.request()
         XCTAssertTrue(store.consumePending())
         XCTAssertFalse(store.consumePending())
+    }
+
+    func testNewTerminalUsesTrimmedDefaultDirectoryWithoutCommand() {
+        var preferences = AppPreferences()
+        preferences.defaultDirectoryPath = "  ~/Projects  "
+
+        XCTAssertEqual(
+            WorkspaceTerminalLaunchResolver.resolve(action: .newTerminal, preferences: preferences),
+            TerminalLaunchConfiguration(workingDirectory: "~/Projects", initialCommand: nil)
+        )
+    }
+
+    func testShortcutLaunchUsesDefaultDirectoryAndConfiguredCommand() {
+        let shortcut = CLIShortcut(name: "Status", command: "git status --short")
+        var preferences = AppPreferences()
+        preferences.defaultDirectoryPath = "~/Code"
+        preferences.shortcuts = [shortcut]
+
+        XCTAssertEqual(
+            WorkspaceTerminalLaunchResolver.resolve(action: .shortcut(shortcut.id), preferences: preferences),
+            TerminalLaunchConfiguration(workingDirectory: "~/Code", initialCommand: "git status --short")
+        )
+    }
+
+    func testMissingWidgetShortcutFallsBackToNewTerminal() {
+        let configuration = WorkspaceTerminalLaunchResolver.resolve(action: .shortcut(UUID()), preferences: AppPreferences())
+
+        XCTAssertEqual(configuration, TerminalLaunchConfiguration(workingDirectory: nil, initialCommand: nil))
+    }
+
+    func testInitialCommandCanOnlyBeConsumedOnce() {
+        var buffer = InitialCommandBuffer("swift test")
+
+        XCTAssertEqual(buffer.take(), "swift test")
+        XCTAssertNil(buffer.take())
     }
 }

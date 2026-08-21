@@ -8,7 +8,7 @@ The terminal menu manages active shells, while the connection menu switches pair
 
 ## Widget and App Shortcut
 
-The generated project embeds the `CliveResumeWidget` extension and publishes the **Resume Terminal** App Shortcut. The widget carries only the fixed `clive://resume-or-start` URL; it does not read app storage or expose a Mac, terminal label, command, output, certificate, or token. Both entry points return to the app's biometric gate before the coordinator restores navigation or creates a fresh TLS/PTY session.
+The generated project embeds a configurable terminal widget and publishes the **Resume Terminal** App Shortcut. A widget can start a new terminal or run one saved CLI shortcut in a new terminal. The app group shares only shortcut names and opaque IDs with the widget; command text, Mac details, output, certificates, and tokens remain in the app. Every widget launch returns to the biometric gate, creates a fresh TLS/PTY session in the configured default directory, and only then runs the selected command.
 
 Run the iOS unit tests after generating the project:
 
@@ -23,7 +23,7 @@ Before release, verify on a physical iOS 17+ device that the small Home Screen w
 The `Deploy iOS to TestFlight` GitHub Actions workflow archives and uploads a manually requested build. Configure a protected GitHub environment named `testflight` with these variables:
 
 - `APPLE_TEAM_ID`: the 10-character Apple Developer team ID
-- `CLIVE_BUNDLE_ID`: the App Store Connect bundle ID; the widget uses `<bundle-id>.widget`
+- `CLIVE_BUNDLE_ID`: the App Store Connect bundle ID; the widget uses `<bundle-id>.widget` and the shared container uses `group.<bundle-id>`
 
 Add these environment secrets:
 
@@ -37,6 +37,6 @@ Add these environment secrets:
 - `APP_STORE_PROVISIONING_PROFILE_BASE64`: the app's App Store Connect `.mobileprovision`, Base64 encoded
 - `WIDGET_APP_STORE_PROVISIONING_PROFILE_BASE64`: the widget's App Store Connect `.mobileprovision`, Base64 encoded
 
-Create the app, widget identifiers, iCloud container, App Store Connect app record, and separate App Store Connect provisioning profiles for the app and widget before the first run. Both profiles must use the uploaded Apple Distribution certificate. The API key must be allowed to upload builds. Run the workflow from the Actions tab, enter the marketing version, and approve the `testflight` environment if protection rules are enabled. GitHub's run number becomes the monotonically increasing build number.
+Create the app, widget identifiers, iCloud container, App Store Connect app record, and the `group.<bundle-id>` app group before the first run. Enable that app group for both identifiers, then create separate App Store Connect provisioning profiles for the app and widget. Both profiles must include the shared app group and use the uploaded Apple Distribution certificate. The API key must be allowed to upload builds. Run the workflow from the Actions tab, enter the marketing version, and approve the `testflight` environment if protection rules are enabled. GitHub's run number becomes the monotonically increasing build number.
 
 After Apple finishes processing the first upload, complete its export-compliance response and assign the build to an internal testing group in App Store Connect. Keep external testing disabled until physical-device acceptance and Beta App Review are complete.

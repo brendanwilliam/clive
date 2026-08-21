@@ -3,6 +3,7 @@ import Observation
 import SwiftUI
 import CliveCore
 import UIKit
+import WidgetKit
 
 struct CLIShortcut: Codable, Equatable, Identifiable {
     var id: UUID
@@ -66,7 +67,10 @@ struct AppPreferencesStore {
 
 @MainActor @Observable final class AppPreferencesModel {
     var value: AppPreferences {
-        didSet { try? store.save(value) }
+        didSet {
+            try? store.save(value)
+            WidgetShortcutStore.save(value.shortcuts)
+        }
     }
 
     private let store: AppPreferencesStore
@@ -74,6 +78,7 @@ struct AppPreferencesStore {
     init(store: AppPreferencesStore = AppPreferencesStore()) {
         self.store = store
         value = (try? store.load()) ?? AppPreferences()
+        WidgetShortcutStore.save(value.shortcuts)
     }
 
     func addShortcut() {
@@ -127,6 +132,25 @@ struct AppPreferencesStore {
             (red, green, blue, alpha) = (components[0], components[0], components[0], components.count > 1 ? components[1] : 1)
         }
         value.connectionIndicatorColors[mac.id] = String(format: "#%02X%02X%02X%02X", Int(red * 255), Int(green * 255), Int(blue * 255), Int(alpha * 255))
+    }
+}
+
+enum WidgetShortcutStore {
+    static let key = "widget.shortcuts"
+
+    static func choices(for shortcuts: [CLIShortcut]) -> [[String: String]] {
+        shortcuts.compactMap { shortcut -> [String: String]? in
+            let name = shortcut.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let command = shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines)
+            return name.isEmpty || command.isEmpty ? nil : ["id": shortcut.id.uuidString, "name": name]
+        }
+    }
+
+    static func save(_ shortcuts: [CLIShortcut]) {
+        guard let group = Bundle.main.object(forInfoDictionaryKey: "CliveAppGroup") as? String,
+              let defaults = UserDefaults(suiteName: group) else { return }
+        defaults.set(choices(for: shortcuts), forKey: key)
+        WidgetCenter.shared.reloadTimelines(ofKind: "CliveResumeWidget")
     }
 }
 

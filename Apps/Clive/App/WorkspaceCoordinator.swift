@@ -66,6 +66,38 @@ enum WorkspaceLaunchResolver {
     }
 }
 
+struct TerminalLaunchConfiguration: Equatable {
+    let workingDirectory: String?
+    let initialCommand: String?
+}
+
+enum WorkspaceTerminalLaunchResolver {
+    static func resolve(action: ExternalLaunchURL.Action, preferences: AppPreferences) -> TerminalLaunchConfiguration {
+        let directory = preferences.defaultDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let command: String?
+        if case .shortcut(let id) = action {
+            command = preferences.shortcuts.first(where: { $0.id == id })?.command
+        } else {
+            command = nil
+        }
+        return TerminalLaunchConfiguration(
+            workingDirectory: directory.isEmpty ? nil : directory,
+            initialCommand: command
+        )
+    }
+}
+
+struct InitialCommandBuffer {
+    private var command: String?
+
+    init(_ command: String?) { self.command = command }
+
+    mutating func take() -> String? {
+        defer { command = nil }
+        return command
+    }
+}
+
 @MainActor @Observable final class WorkspaceSession: Identifiable {
     var descriptor: SessionDescriptor
     nonisolated let id: UUID
@@ -80,17 +112,19 @@ enum WorkspaceLaunchResolver {
     private let identity: IPhoneIdentity
     private var routeIndex = 0
     private let workingDirectory: String?
+    private var initialCommand: InitialCommandBuffer
     private let localRendezvousCapability: RendezvousCapability?
     private let onUpgrade: (Data, RendezvousCapability) -> Void
     private(set) var activeRouteKind: MacRouteKind?
 
-    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String?, localRendezvousCapability: RendezvousCapability?, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
+    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String?, initialCommand: String? = nil, localRendezvousCapability: RendezvousCapability?, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
         self.descriptor = descriptor
         self.id = descriptor.id
         self.routes = routes
         self.device = device
         self.identity = identity
         self.workingDirectory = workingDirectory
+        self.initialCommand = InitialCommandBuffer(initialCommand)
         self.localRendezvousCapability = localRendezvousCapability; self.onUpgrade = onUpgrade
         client.onState = { [weak self] value in DispatchQueue.main.async { self?.handleState(value) } }
         client.onActivityOutput = { [weak self] bytes in DispatchQueue.main.async {
@@ -106,7 +140,13 @@ enum WorkspaceLaunchResolver {
 
     private func handleState(_ value: SessionClient.State) {
         state = value
-        if case .active = value { activeRouteKind = routes[routeIndex].kind }
+        if case .active = value {
+            activeRouteKind = routes[routeIndex].kind
+            if let command = initialCommand.take() {
+                client.sendInput(Data((command + "\r").utf8))
+                noteInput()
+            }
+        }
         guard case .networkError = value, routeIndex + 1 < routes.count else { return }
         routeIndex += 1
         clearTransientActivity()
@@ -140,6 +180,7 @@ enum WorkspaceLaunchResolver {
     private var restorableDestination: RestorableDestination?
     private var identity: IPhoneIdentity?
     private var suppressDestinationUpdates = false
+    private var pendingExternalAction: ExternalLaunchURL.Action?
 
     func start() {
         macs.start()
@@ -157,13 +198,23 @@ enum WorkspaceLaunchResolver {
             try await LocalAuthenticator.authorizeConnection()
             identity = try IPhoneIdentityProvider().loadOrCreate()
             state = .active
-            resolveExternalLaunch()
+            if let action = pendingExternalAction {
+                pendingExternalAction = nil
+                performExternalLaunch(action)
+            } else {
+                resolveExternalLaunch()
+            }
         } catch { state = .authenticationCancelled }
     }
 
     func handleExternalLaunch() {
         guard state == .active else { return }
         resolveExternalLaunch()
+    }
+
+    func handleExternalLaunch(_ action: ExternalLaunchURL.Action) {
+        guard state == .active else { pendingExternalAction = action; return }
+        performExternalLaunch(action)
     }
 
     func selectMac(_ mac: PairedMac) {
@@ -284,7 +335,7 @@ enum WorkspaceLaunchResolver {
         saveCurrentDescriptors(); persist()
     }
 
-    private func startFreshTerminal(on mac: PairedMac) {
+    private func startFreshTerminal(on mac: PairedMac, action: ExternalLaunchURL.Action = .newTerminal) {
         guard let identity else { return }
         let routes = routes(for: mac)
         selectedMacID = mac.id; snapshot.selectedMacID = mac.id; presentedScreen = nil
@@ -293,11 +344,31 @@ enum WorkspaceLaunchResolver {
         }
         closeLiveSessions()
         let descriptor = SessionDescriptor(label: "Shell 1")
-        let session = makeSession(descriptor: descriptor, mac: mac, routes: routes, identity: identity)
+        let configuration = WorkspaceTerminalLaunchResolver.resolve(action: action, preferences: preferences.value)
+        let session = makeSession(
+            descriptor: descriptor,
+            mac: mac,
+            routes: routes,
+            identity: identity,
+            workingDirectory: configuration.workingDirectory,
+            initialCommand: configuration.initialCommand
+        )
         sessions = [session]
         snapshot.sessionsByMac[mac.id] = [descriptor]
         recovery = nil
         selectSession(session.id); persist()
+    }
+
+    private func performExternalLaunch(_ action: ExternalLaunchURL.Action) {
+        guard action != .resumeOrStart else { resolveExternalLaunch(); return }
+        guard let mac = selectedMac ?? macs.devices.first else {
+            recovery = .noPairedMac; presentedScreen = .connectionMenu; return
+        }
+        switch action {
+        case .resumeOrStart: resolveExternalLaunch()
+        case .newTerminal: startFreshTerminal(on: mac)
+        case .shortcut: startFreshTerminal(on: mac, action: action)
+        }
     }
 
     private func routes(for mac: PairedMac) -> [MacRoute] {
@@ -313,9 +384,9 @@ enum WorkspaceLaunchResolver {
         return values
     }
 
-    private func makeSession(descriptor: SessionDescriptor, mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity) -> WorkspaceSession {
-        let directory = preferences.value.defaultDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        return WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, workingDirectory: directory.isEmpty ? nil : directory, localRendezvousCapability: macs.localRendezvousCapability) { [weak self] certificate, capability in
+    private func makeSession(descriptor: SessionDescriptor, mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String? = nil, initialCommand: String? = nil) -> WorkspaceSession {
+        let configuredDirectory = preferences.value.defaultDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, workingDirectory: workingDirectory ?? (configuredDirectory.isEmpty ? nil : configuredDirectory), initialCommand: initialCommand, localRendezvousCapability: macs.localRendezvousCapability) { [weak self] certificate, capability in
             self?.macs.upgrade(macID: mac.id, certificate: certificate, capability: capability)
         }
     }
