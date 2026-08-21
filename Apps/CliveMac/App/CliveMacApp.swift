@@ -19,6 +19,7 @@ final class CompanionModel: ObservableObject {
     @Published var pairingMessage: String?
     @Published var isPairing = false
     @Published var shouldDismissPairingWindow = false
+    @Published var isConfiguringCellular = false
     private var pairingChannel: ControlChannel?
     private var submittedPairingDecision = false
     private var runtime: DaemonRuntime?
@@ -51,6 +52,33 @@ final class CompanionModel: ObservableObject {
             do {
                 let response = try request(.init(command: .setCellularAccess, cellularEnabled: enabled))
                 if let cellular = response.cellularStatus { status = cellular }
+                errorMessage = response.success ? nil : response.message
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    func configureCellular(_ configuration: CellularConfiguration) {
+        guard !isConfiguringCellular else { return }
+        isConfiguringCellular = true; errorMessage = nil
+        Task {
+            defer { isConfiguringCellular = false }
+            do {
+                let configured = try request(.init(command: .configureCellular, cellularConfiguration: configuration))
+                guard configured.success else { throw CompanionError.message(configured.message ?? "Cellular configuration failed.") }
+                let enabled = try request(.init(command: .setCellularAccess, cellularEnabled: true))
+                guard enabled.success else { throw CompanionError.message(enabled.message ?? "Cellular access could not be enabled.") }
+                let verification = try request(.init(command: .beginCellularVerification))
+                if let status = verification.cellularStatus { self.status = status }
+                errorMessage = verification.success ? nil : verification.message
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    func retryCellularVerification() {
+        Task {
+            do {
+                let response = try request(.init(command: .beginCellularVerification))
+                if let status = response.cellularStatus { self.status = status }
                 errorMessage = response.success ? nil : response.message
             } catch { errorMessage = error.localizedDescription }
         }
@@ -114,6 +142,11 @@ final class CompanionModel: ObservableObject {
     }
 }
 
+private enum CompanionError: LocalizedError {
+    case message(String)
+    var errorDescription: String? { if case .message(let value) = self { value } else { nil } }
+}
+
 @main
 struct CliveMacApp: App {
     @NSApplicationDelegateAdaptor(CompanionAppDelegate.self) private var appDelegate
@@ -137,6 +170,7 @@ struct CliveMacApp: App {
                 else { ForEach(model.devices, id: \.id) { device in Text("\(device.displayName) — \(device.activeSessionCount) sessions") } }
                 Divider()
                 Button("Refresh") { Task { await model.refresh() } }
+                CellularSetupMenuButton(model: model)
                 PairMenuButton(model: model)
                 Button("Pair from Terminal…") {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clive pair", forType: .string)
@@ -156,6 +190,9 @@ struct CliveMacApp: App {
             PairingWindow(model: model)
                 .frame(minWidth: 390, minHeight: 500)
         }
+        WindowGroup("Set Up Cellular Access", id: "cellular-setup") {
+            CellularSetupWindow(model: model).frame(minWidth: 520, minHeight: 460)
+        }
         Settings { EmptyView() }
     }
 
@@ -163,10 +200,89 @@ struct CliveMacApp: App {
         switch model.status.state {
         case .disabled: "Cellular access is off"
         case .preparing: "Preparing cellular access…"
+        case .verifying: "Waiting for iPhone verification…"
         case .available: "Cellular access is enabled"
         case .configurationRequired: "Cellular configuration required"
         case .blocked: "Cellular access is blocked"
         }
+    }
+}
+
+private struct CellularSetupMenuButton: View {
+    @ObservedObject var model: CompanionModel
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button(model.status.state == .available ? "Cellular Setup…" : "Set Up Cellular Access…") {
+            openWindow(id: "cellular-setup"); NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+}
+
+private struct CellularSetupWindow: View {
+    @ObservedObject var model: CompanionModel
+    @State private var mode = CellularEndpointMode.automatic
+    @State private var allowMapping = false
+    @State private var host = ""
+    @State private var externalPort = "64236"
+    @State private var listenerPort = "64236"
+
+    var body: some View {
+        Form {
+            Section("Cellular route") {
+                Picker("Configuration", selection: $mode) {
+                    Text("Automatic").tag(CellularEndpointMode.automatic)
+                    Text("Manual port forwarding").tag(CellularEndpointMode.manual)
+                }.pickerStyle(.segmented)
+                if mode == .automatic {
+                    Toggle("Allow temporary PCP or NAT-PMP router mapping", isOn: $allowMapping)
+                    Text("Clive prefers public IPv6. Router mapping is attempted only with this permission; UPnP is never used.").foregroundStyle(.secondary)
+                } else {
+                    TextField("Public hostname or address", text: $host)
+                    TextField("External TCP port", text: $externalPort)
+                    Text("Forward this TCP port to this Mac on port \(listenerPort). Mutual TLS and a rotating gate token remain required.").foregroundStyle(.secondary)
+                }
+                TextField("Mac listener port", text: $listenerPort)
+            }
+            Section("Status") {
+                Text(statusText)
+                if let endpoint = model.status.advertisedEndpoint { Text("Advertised route: \(endpoint.host):\(endpoint.port)\(model.status.mappingMethod.map { " via \($0)" } ?? "")").font(.system(.body, design: .monospaced)) }
+                if let message = model.status.diagnostic ?? model.errorMessage { Text(message).foregroundStyle(.secondary) }
+            }
+            HStack {
+                Button("Refresh") { Task { await model.refresh() } }
+                if model.status.enabled { Button("Retry iPhone Test") { model.retryCellularVerification() } }
+                Spacer()
+                Button(model.isConfiguringCellular ? "Configuring…" : "Configure and Test") { configure() }
+                    .keyboardShortcut(.defaultAction).disabled(!isValid || model.isConfiguringCellular)
+            }
+        }
+        .formStyle(.grouped).padding()
+        .onAppear { loadExistingConfiguration() }
+    }
+
+    private var isValid: Bool {
+        guard UInt16(listenerPort).map({ $0 > 0 }) == true else { return false }
+        return mode == .automatic || (!host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && UInt16(externalPort).map({ $0 > 0 }) == true)
+    }
+    private var statusText: String {
+        switch model.status.state {
+        case .disabled: "Cellular access is off."
+        case .preparing: "Preparing encrypted rendezvous…"
+        case .verifying: "Turn off Wi-Fi on the paired iPhone and open Clive."
+        case .available: "Cellular access was verified."
+        case .configurationRequired: "Configuration or iPhone verification is required."
+        case .blocked: "Cellular access is blocked."
+        }
+    }
+    private func configure() {
+        guard let localPort = UInt16(listenerPort) else { return }
+        let endpoint = mode == .manual ? UInt16(externalPort).map { RemoteEndpoint(host: host.trimmingCharacters(in: .whitespacesAndNewlines), port: $0) } : nil
+        model.configureCellular(.init(listenerPort: localPort, endpointMode: mode, manualEndpoint: endpoint, allowsRouterMapping: mode == .automatic && allowMapping))
+    }
+    private func loadExistingConfiguration() {
+        guard let value = model.status.configuration else { return }
+        mode = value.endpointMode; allowMapping = value.allowsRouterMapping; listenerPort = String(value.listenerPort)
+        if let endpoint = value.manualEndpoint { host = endpoint.host; externalPort = String(endpoint.port) }
     }
 }
 

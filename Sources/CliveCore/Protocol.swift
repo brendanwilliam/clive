@@ -19,6 +19,19 @@ public enum FrameKind: UInt8, Sendable, CaseIterable {
     case sessionOpened = 0x12
     case pairingRevoke = 0x13
     case pairingRevoked = 0x14
+    case reachabilityProbe = 0x15
+    case reachabilityVerified = 0x16
+}
+
+public struct ReachabilityProbe: Codable, Equatable, Sendable {
+    public let challenge: UUID
+    public let wanGateToken: Data
+    public init(challenge: UUID, wanGateToken: Data) { self.challenge = challenge; self.wanGateToken = wanGateToken }
+}
+
+public struct ReachabilityVerified: Codable, Equatable, Sendable {
+    public let challenge: UUID
+    public init(challenge: UUID) { self.challenge = challenge }
 }
 
 public struct SessionOpenRequest: Codable, Equatable, Sendable {

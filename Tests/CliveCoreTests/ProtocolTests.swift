@@ -220,6 +220,22 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(try JSONDecoder().decode(ControlRequest.self, from: encoded.dropLast()) == request)
 }
 
+@Test func cellularSetupControlRequestRoundTrips() throws {
+    let configuration = CellularConfiguration(listenerPort: 64236, endpointMode: .manual, manualEndpoint: .init(host: "terminal.example.com", port: 443))
+    let request = ControlRequest(command: .configureCellular, cellularConfiguration: configuration)
+    let encoded = try ControlCodec.encode(request)
+    #expect(try JSONDecoder().decode(ControlRequest.self, from: encoded.dropLast()) == request)
+}
+
+@Test func reachabilityProbeFramesRoundTripWithoutOpeningASession() throws {
+    let challenge = UUID(); let token = Data(repeating: 4, count: 32)
+    let request = ProtocolFrame(kind: .reachabilityProbe, payload: try ProtocolPayload.encode(ReachabilityProbe(challenge: challenge, wanGateToken: token)))
+    let response = ProtocolFrame(kind: .reachabilityVerified, payload: try ProtocolPayload.encode(ReachabilityVerified(challenge: challenge)))
+    var decoder = FrameDecoder(); let frames = try decoder.append(request.encoded() + response.encoded())
+    #expect(frames.map(\.kind) == [.reachabilityProbe, .reachabilityVerified])
+    #expect(try ProtocolPayload.decode(ReachabilityProbe.self, from: frames[0].payload).wanGateToken == token)
+}
+
 @Test func trustStorePersistsWithOwnerOnlyPermissions() async throws {
     let directory = URL.temporaryDirectory.appending(path: "clive-trust-\(UUID().uuidString)")
     let url = directory.appending(path: "devices.json")
@@ -246,6 +262,15 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(throws: RendezvousError.invalidSignature) {
         try RendezvousCrypto.open(tampered, as: RendezvousAdvertisement.self, recipientID: "phone", recipientAgreementKey: recipient.agreementPrivateKey, senderSigningKey: sender.publicKeys.signing, now: now)
     }
+}
+
+@Test func rendezvousAdvertisementCarriesVerificationChallenge() throws {
+    let challenge = UUID()
+    let advertisement = RendezvousAdvertisement(generation: UUID(), gateToken: Data(repeating: 1, count: 32), endpoints: [], verificationChallenge: challenge)
+    let encoded = try JSONEncoder().encode(advertisement)
+    #expect(try JSONDecoder().decode(RendezvousAdvertisement.self, from: encoded).verificationChallenge == challenge)
+    let legacy = Data(#"{"generation":"00000000-0000-0000-0000-000000000001","gateToken":"AQ==","endpoints":[]}"#.utf8)
+    #expect(try JSONDecoder().decode(RendezvousAdvertisement.self, from: legacy).verificationChallenge == nil)
 }
 
 @Test func rendezvousEnvelopeRejectsWrongRecipientAndExpiry() throws {

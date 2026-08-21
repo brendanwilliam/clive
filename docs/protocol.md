@@ -6,7 +6,7 @@ The Mac advertises `_iphone-term._tcp` with a non-secret service identifier, pro
 
 ## Pairing
 
-For opted-in cellular access, the same-account CloudKit private database stores short-lived per-device encrypted `RendezvousV1` and `ReachabilityHintV1` envelopes. APNs only prompts a refetch. Public IPv6 is preferred; CloudKit and APNs never carry terminal frames. Non-private `session.open` messages include the current WAN gate token, while authenticated local sessions exchange optional rendezvous capabilities to upgrade existing pairings.
+For opted-in cellular access, the same-account CloudKit private database stores short-lived per-device encrypted `RendezvousV1`, `ReachabilityHintV1`, and `ReachabilityResultV1` envelopes. APNs only prompts a refetch. Public IPv6 is preferred; CloudKit and APNs never carry terminal frames. Non-private `session.open` messages include the current WAN gate token, while authenticated local sessions exchange optional rendezvous capabilities to upgrade existing pairings. Setup verification uses `reachability.probe` as the first mutually authenticated TLS frame; it must match the current rendezvous challenge and gate token, replies with `reachability.verified`, and cannot allocate a PTY.
 
 1. The Mac user chooses **Pair iPhone** in the menu-bar app (or uses `clive pair` as a terminal fallback) and confirms the request locally.
 2. The daemon creates a single-use pairing ticket that expires after 5 minutes. It uses the same persistent P-256 identity used by sessions.

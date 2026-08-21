@@ -23,12 +23,14 @@ final class SessionConnectionHandler: @unchecked Sendable {
     private let validateGate: @Sendable (String, Data?) async -> Bool
     private let upgradePeer: @Sendable (String, Data, RendezvousCapability) async -> Void
     private let revokePeer: @Sendable (String, UUID) async -> Bool
+    private let verifyReachability: @Sendable (String, UUID, Data?) async -> Bool
 
-    init(deviceID: String, peerCertificate: Data? = nil, requiresWANGate: Bool = false, localCapability: RendezvousCapability? = nil, registry: SessionRegistry, queue: DispatchQueue, validateGate: @escaping @Sendable (String, Data?) async -> Bool = { _, _ in true }, upgradePeer: @escaping @Sendable (String, Data, RendezvousCapability) async -> Void = { _, _, _ in }, revokePeer: @escaping @Sendable (String, UUID) async -> Bool = { _, _ in false }, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }, replaceExisting: @escaping @Sendable (String, UUID, SessionConnectionHandler) async -> Void = { _, _, _ in }) {
+    init(deviceID: String, peerCertificate: Data? = nil, requiresWANGate: Bool = false, localCapability: RendezvousCapability? = nil, registry: SessionRegistry, queue: DispatchQueue, validateGate: @escaping @Sendable (String, Data?) async -> Bool = { _, _ in true }, upgradePeer: @escaping @Sendable (String, Data, RendezvousCapability) async -> Void = { _, _, _ in }, revokePeer: @escaping @Sendable (String, UUID) async -> Bool = { _, _ in false }, verifyReachability: @escaping @Sendable (String, UUID, Data?) async -> Bool = { _, _, _ in false }, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }, replaceExisting: @escaping @Sendable (String, UUID, SessionConnectionHandler) async -> Void = { _, _, _ in }) {
         self.deviceID = deviceID; self.registry = registry; self.queue = queue
         self.peerCertificate = peerCertificate; self.requiresWANGate = requiresWANGate; self.localCapability = localCapability
         self.validateGate = validateGate; self.upgradePeer = upgradePeer
         self.revokePeer = revokePeer
+        self.verifyReachability = verifyReachability
         self.onClosed = onClosed
         self.replaceExisting = replaceExisting
     }
@@ -52,6 +54,17 @@ final class SessionConnectionHandler: @unchecked Sendable {
 
     private func handle(_ frame: ProtocolFrame) {
         if shell == nil {
+            if !opening, frame.kind == .reachabilityProbe,
+               let probe = try? ProtocolPayload.decode(ReachabilityProbe.self, from: frame.payload) {
+                opening = true
+                Task {
+                    let verified = requiresWANGate
+                        ? await verifyReachability(deviceID, probe.challenge, probe.wanGateToken)
+                        : false
+                    queue.async { [weak self] in self?.finishReachability(challenge: probe.challenge, succeeded: verified) }
+                }
+                return
+            }
             if !opening, frame.kind == .pairingRevoke, frame.payload.isEmpty {
                 opening = true
                 Task {
@@ -93,6 +106,13 @@ final class SessionConnectionHandler: @unchecked Sendable {
         case .sessionClose: close()
         default: fail(.invalidFrameOrder, "Frame is not valid in an open session")
         }
+    }
+
+    private func finishReachability(challenge: UUID, succeeded: Bool) {
+        guard succeeded, let data = try? ProtocolPayload.encode(ReachabilityVerified(challenge: challenge)) else {
+            return fail(.authenticationFailed, "The cellular verification challenge is invalid or expired")
+        }
+        framed?.send(ProtocolFrame(kind: .reachabilityVerified, payload: data)) { [weak self] _ in self?.close() }
     }
 
     private func finishRevocation(succeeded: Bool) {
