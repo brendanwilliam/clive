@@ -29,6 +29,8 @@ public actor SessionRegistry {
         return session
     }
 
+    public func record(_ session: TerminalSession) { sessions[session.id] = session }
+
     public func close(id: UUID) {
         sessions.removeValue(forKey: id)
     }

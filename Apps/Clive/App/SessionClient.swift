@@ -11,7 +11,7 @@ final class SessionClient: @unchecked Sendable {
     var onState: ((State) -> Void)?
     var onRendezvousUpgrade: ((Data, RendezvousCapability) -> Void)?
     enum State: Equatable {
-        case connecting, active(UUID), disconnected, revoked, certificateChanged, protocolError, networkError(String)
+        case connecting, active(UUID, SessionOpened.Disposition, Bool), disconnected, revoked, workingDirectoryUnavailable, certificateChanged, protocolError, networkError(String)
     }
     private let queue = DispatchQueue(label: "com.clive.session")
     private var connection: NWConnection?
@@ -74,6 +74,7 @@ final class SessionClient: @unchecked Sendable {
         sendResize(size)
     }
     func close() { send(ProtocolFrame(kind: .sessionClose)); connection?.cancel(); connection = nil }
+    func detach() { terminalStateReported = true; connection?.cancel(); connection = nil; opened = false }
     private func send(_ frame: ProtocolFrame) { guard let data = try? frame.encoded() else { return }; connection?.send(content: data, completion: .idempotent) }
     private func receive() {
         connection?.receive(minimumIncompleteLength: 1, maximumLength: ProtocolFrame.defaultMaximumPayloadSize + 7) { [weak self] data, _, complete, error in
@@ -91,13 +92,14 @@ final class SessionClient: @unchecked Sendable {
             opened = true
             if let certificate = peerCertificate, let capability = reply.rendezvousCapability { onRendezvousUpgrade?(certificate, capability) }
             if let pendingResize { self.pendingResize = nil; sendResize(pendingResize) }
-            onState?(.active(reply.serverSessionID)); return
+            onState?(.active(reply.serverSessionID, reply.disposition, reply.replayTruncated)); return
         }
         switch frame.kind { case .terminalOutput: onActivityOutput?(frame.payload); onOutput?(frame.payload); case .sessionClose: connection?.cancel(); case .sessionError: try handleError(frame); default: throw ClientError.protocolViolation }
     }
     private func handleError(_ frame: ProtocolFrame) throws {
         let error = try ProtocolPayload.decode(SessionError.self, from: frame.payload)
-        reportTerminalState(error.code == .revoked ? .revoked : .protocolError); connection?.cancel()
+        let state: State = switch error.code { case .revoked: .revoked; case .workingDirectoryUnavailable: .workingDirectoryUnavailable; default: .protocolError }
+        reportTerminalState(state); connection?.cancel()
     }
     private func reportTerminalState(_ state: State) { terminalStateReported = true; onState?(state) }
     private func sendResize(_ size: TerminalSize) {

@@ -37,10 +37,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
             _ = view.becomeFirstResponder()
         }
         @MainActor func installEdgeControls(on view: TerminalView) {
-            let overlay = EdgeKeyOverlay { [weak self] sequence in self?.session?.sendInput(Data(sequence.utf8)) }
-            overlay.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(overlay)
-            NSLayoutConstraint.activate([overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor), overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor), overlay.topAnchor.constraint(equalTo: view.topAnchor), overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor)])
+            let gesture = TerminalEdgeTapGestureRecognizer { [weak self] sequence in self?.session?.sendInput(Data(sequence.utf8)) }
+            gesture.cancelsTouchesInView = false; view.addGestureRecognizer(gesture)
+            view.accessibilityCustomActions = [
+                ("Cursor up", "\u{1b}[A"), ("Cursor down", "\u{1b}[B"),
+                ("Cursor left", "\u{1b}[D"), ("Cursor right", "\u{1b}[C")
+            ].map { name, sequence in UIAccessibilityCustomAction(name: name) { [weak self] _ in self?.session?.sendInput(Data(sequence.utf8)); return true } }
         }
         @MainActor private func performCommand(_ key: String) {
             switch key.lowercased() {
@@ -103,22 +105,33 @@ struct TerminalCommandTracker {
     }
 }
 
-/// Transparent edge targets preserve the terminal's centre for selection/tapping while
-/// making one-handed cursor navigation available around its perimeter.
-@MainActor private final class EdgeKeyOverlay: UIView {
-    init(send: @escaping (String) -> Void) {
-        super.init(frame: .zero)
-        let edges: [(String, String)] = [("top", "\u{1b}[A"), ("bottom", "\u{1b}[B"), ("left", "\u{1b}[D"), ("right", "\u{1b}[C")]
-        for (edge, sequence) in edges {
-            let button = UIButton(type: .custom); button.backgroundColor = .clear; button.accessibilityLabel = "Cursor \(edge)"
-            button.addAction(UIAction { _ in send(sequence) }, for: .touchUpInside); button.translatesAutoresizingMaskIntoConstraints = false; addSubview(button)
-            switch edge {
-            case "top": NSLayoutConstraint.activate([button.leadingAnchor.constraint(equalTo: leadingAnchor), button.trailingAnchor.constraint(equalTo: trailingAnchor), button.topAnchor.constraint(equalTo: topAnchor), button.heightAnchor.constraint(equalToConstant: 34)])
-            case "bottom": NSLayoutConstraint.activate([button.leadingAnchor.constraint(equalTo: leadingAnchor), button.trailingAnchor.constraint(equalTo: trailingAnchor), button.bottomAnchor.constraint(equalTo: bottomAnchor), button.heightAnchor.constraint(equalToConstant: 34)])
-            case "left": NSLayoutConstraint.activate([button.leadingAnchor.constraint(equalTo: leadingAnchor), button.topAnchor.constraint(equalTo: topAnchor, constant: 34), button.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -34), button.widthAnchor.constraint(equalToConstant: 34)])
-            default: NSLayoutConstraint.activate([button.trailingAnchor.constraint(equalTo: trailingAnchor), button.topAnchor.constraint(equalTo: topAnchor, constant: 34), button.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -34), button.widthAnchor.constraint(equalToConstant: 34)])
-            }
-        }
+@MainActor private final class TerminalEdgeTapGestureRecognizer: UIGestureRecognizer {
+    private let send: (String) -> Void
+    private var start = CGPoint.zero
+    private var beganAt = Date()
+    private var sequence: String?
+    init(send: @escaping (String) -> Void) { self.send = send; super.init(target: nil, action: nil) }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard touches.count == 1, let touch = touches.first, let view else { state = .failed; return }
+        start = touch.location(in: view); beganAt = Date(); sequence = Self.sequence(at: start, in: view.bounds)
+        if sequence == nil { state = .failed }
     }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let touch = touches.first, let view else { state = .failed; return }
+        let point = touch.location(in: view)
+        if hypot(point.x - start.x, point.y - start.y) > 10 { state = .failed }
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard state == .possible, Date().timeIntervalSince(beganAt) < 0.35, let sequence else { state = .failed; return }
+        state = .recognized; send(sequence)
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { state = .cancelled }
+    override func reset() { sequence = nil }
+    private static func sequence(at point: CGPoint, in bounds: CGRect) -> String? {
+        let distances: [(CGFloat, Bool, String)] = [
+            (point.y - bounds.minY, true, "\u{1b}[A"), (bounds.maxY - point.y, true, "\u{1b}[B"),
+            (point.x - bounds.minX, false, "\u{1b}[D"), (bounds.maxX - point.x, false, "\u{1b}[C")
+        ].filter { $0.0 >= 0 && $0.0 <= 44 }
+        return distances.min { lhs, rhs in lhs.0 == rhs.0 ? (lhs.1 && !rhs.1) : lhs.0 < rhs.0 }?.2
+    }
 }

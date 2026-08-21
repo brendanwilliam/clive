@@ -2,37 +2,33 @@ import Foundation
 import CliveCore
 import Network
 
-/// One authenticated TLS connection owns one PTY. The stable client ID permits a fresh
-/// connection to replace a stale PTY after network handoff.
+/// One authenticated TLS connection attaches to a daemon-owned PTY.
 final class SessionConnectionHandler: @unchecked Sendable {
     let identifier = UUID()
     private let deviceID: String
     private let peerCertificate: Data?
     private let requiresWANGate: Bool
     private let localCapability: RendezvousCapability?
-    private let registry: SessionRegistry
+    private let sessions: TerminalSessionManager
     private let queue: DispatchQueue
     private var framed: FramedConnection?
-    private var shell: PTYProcess?
     private var sessionID: UUID?
+    private var clientSessionID: UUID?
     private var opening = false
-    private var flow = OutputBackpressure()
     private var closed = false
     private let onClosed: @Sendable (UUID) -> Void
-    private let replaceExisting: @Sendable (String, UUID, SessionConnectionHandler) async -> Void
     private let validateGate: @Sendable (String, Data?) async -> Bool
     private let upgradePeer: @Sendable (String, Data, RendezvousCapability) async -> Void
     private let revokePeer: @Sendable (String, UUID) async -> Bool
     private let verifyReachability: @Sendable (String, UUID, Data?) async -> Bool
 
-    init(deviceID: String, peerCertificate: Data? = nil, requiresWANGate: Bool = false, localCapability: RendezvousCapability? = nil, registry: SessionRegistry, queue: DispatchQueue, validateGate: @escaping @Sendable (String, Data?) async -> Bool = { _, _ in true }, upgradePeer: @escaping @Sendable (String, Data, RendezvousCapability) async -> Void = { _, _, _ in }, revokePeer: @escaping @Sendable (String, UUID) async -> Bool = { _, _ in false }, verifyReachability: @escaping @Sendable (String, UUID, Data?) async -> Bool = { _, _, _ in false }, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }, replaceExisting: @escaping @Sendable (String, UUID, SessionConnectionHandler) async -> Void = { _, _, _ in }) {
-        self.deviceID = deviceID; self.registry = registry; self.queue = queue
+    init(deviceID: String, peerCertificate: Data? = nil, requiresWANGate: Bool = false, localCapability: RendezvousCapability? = nil, sessions: TerminalSessionManager, queue: DispatchQueue, validateGate: @escaping @Sendable (String, Data?) async -> Bool = { _, _ in true }, upgradePeer: @escaping @Sendable (String, Data, RendezvousCapability) async -> Void = { _, _, _ in }, revokePeer: @escaping @Sendable (String, UUID) async -> Bool = { _, _ in false }, verifyReachability: @escaping @Sendable (String, UUID, Data?) async -> Bool = { _, _, _ in false }, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }) {
+        self.deviceID = deviceID; self.sessions = sessions; self.queue = queue
         self.peerCertificate = peerCertificate; self.requiresWANGate = requiresWANGate; self.localCapability = localCapability
         self.validateGate = validateGate; self.upgradePeer = upgradePeer
         self.revokePeer = revokePeer
         self.verifyReachability = verifyReachability
         self.onClosed = onClosed
-        self.replaceExisting = replaceExisting
     }
 
     func start(_ connection: NWConnection) {
@@ -43,17 +39,20 @@ final class SessionConnectionHandler: @unchecked Sendable {
         framed.start(alreadyStarted: true)
     }
 
-    func close() {
+    func close(terminateSession: Bool = false) {
         guard !closed else { return }; closed = true
-        shell?.terminate(); shell = nil; framed?.cancel(); framed = nil
-        if let sessionID { Task { await registry.close(id: sessionID) } }
+        framed?.cancel(); framed = nil
+        if let clientSessionID {
+            if terminateSession { sessions.close(deviceID: deviceID, clientSessionID: clientSessionID) }
+            else { sessions.detach(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier) }
+        }
         onClosed(identifier)
     }
 
     func revoke() { queue.async { [weak self] in self?.fail(.revoked, "This iPhone was revoked") } }
 
     private func handle(_ frame: ProtocolFrame) {
-        if shell == nil {
+        if sessionID == nil {
             if !opening, frame.kind == .reachabilityProbe,
                let probe = try? ProtocolPayload.decode(ReachabilityProbe.self, from: frame.payload) {
                 opening = true
@@ -88,22 +87,20 @@ final class SessionConnectionHandler: @unchecked Sendable {
                     return
                 }
                 if let certificate = peerCertificate, let capability = request.rendezvousCapability { await upgradePeer(deviceID, certificate, capability) }
-                await replaceExisting(deviceID, request.clientSessionID, self)
-                let session = await registry.open(deviceID: deviceID, clientSessionID: request.clientSessionID, size: request.initialSize)
-                queue.async { [weak self] in self?.finishOpening(session: session, size: request.initialSize, workingDirectory: request.workingDirectory) }
+                queue.async { [weak self] in self?.finishOpening(request: request) }
             }
             return
         }
         switch frame.kind {
         case .terminalInput:
-            do { try shell?.write(frame.payload) }
+            do { if let clientSessionID { try sessions.input(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier, bytes: frame.payload) } }
             catch { print("Session: terminal input failed: \(error.localizedDescription)"); close() }
         case .terminalResize:
             guard let size = try? ProtocolPayload.decode(TerminalSize.self, from: frame.payload), size.isValid else {
                 return fail(.protocolError, "Invalid terminal size")
             }
-            shell?.resize(to: size)
-        case .sessionClose: close()
+            if let clientSessionID { sessions.resize(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier, size: size) }
+        case .sessionClose: close(terminateSession: true)
         default: fail(.invalidFrameOrder, "Frame is not valid in an open session")
         }
     }
@@ -120,39 +117,35 @@ final class SessionConnectionHandler: @unchecked Sendable {
         framed?.send(ProtocolFrame(kind: .pairingRevoked)) { [weak self] _ in self?.close() }
     }
 
-    private func finishOpening(session: TerminalSession, size: TerminalSize, workingDirectory: String?) {
-        guard !closed else { Task { await registry.close(id: session.id) }; return }
+    private func finishOpening(request: SessionOpenRequest) {
+        guard !closed else { return }
         do {
             opening = false
-            shell = try PTYProcess(size: size, workingDirectory: workingDirectory) { [weak self] bytes in
-                guard let owner = self else { return }; owner.queue.async { [weak owner] in owner?.sendOutput(bytes) }
+            let attachment = try sessions.attach(deviceID: deviceID, clientSessionID: request.clientSessionID, size: request.initialSize, workingDirectory: request.workingDirectory, attachmentID: identifier) { [weak self] bytes in
+                self?.queue.async { self?.sendOutput(bytes) }
             }
-            sessionID = session.id
-            let data = try ProtocolPayload.encode(SessionOpened(serverSessionID: session.id, rendezvousCapability: localCapability))
+            clientSessionID = request.clientSessionID; sessionID = attachment.serverSessionID
+            let data = try ProtocolPayload.encode(SessionOpened(serverSessionID: attachment.serverSessionID, rendezvousCapability: localCapability, disposition: attachment.disposition, replayTruncated: attachment.replayTruncated))
             framed?.send(ProtocolFrame(kind: .sessionOpened, payload: data))
+            if !attachment.replay.isEmpty { framed?.send(ProtocolFrame(kind: .terminalOutput, payload: attachment.replay)) }
             print("Session: shell opened.")
+        } catch PTYProcessError.invalidWorkingDirectory {
+            fail(.workingDirectoryUnavailable, "The configured working directory is unavailable. Choose another directory in Settings.")
         } catch {
-            print("Session: shell creation failed: \(error.localizedDescription)")
-            Task { await registry.close(id: session.id) }
+            print("Session: shell creation failed.")
             fail(.shellCreationFailed, "Unable to create login shell")
         }
     }
 
     private func sendOutput(_ bytes: Data) {
         guard !closed else { return }
-        if flow.enqueue(bytes.count) { shell?.suspendOutput() }
-        framed?.send(ProtocolFrame(kind: .terminalOutput, payload: bytes)) { [weak self] _ in
-            guard let self else { return }
-            let wasSuspended = self.flow.isSuspended
-            _ = self.flow.complete(bytes.count)
-            if wasSuspended && !self.flow.isSuspended { self.shell?.resumeOutput() }
-        }
+        framed?.send(ProtocolFrame(kind: .terminalOutput, payload: bytes))
     }
 
     private func fail(_ code: SessionError.Code, _ message: String) {
         if let data = try? ProtocolPayload.encode(SessionError(code: code, message: message)) {
             framed?.send(ProtocolFrame(kind: .sessionError, payload: data))
         }
-        close()
+        close(terminateSession: true)
     }
 }

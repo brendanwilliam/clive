@@ -73,16 +73,16 @@ struct TerminalLaunchConfiguration: Equatable {
 
 enum WorkspaceTerminalLaunchResolver {
     static func resolve(action: ExternalLaunchURL.Action, preferences: AppPreferences) -> TerminalLaunchConfiguration {
-        let directory = preferences.defaultDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let command: String?
-        if case .shortcut(let id) = action {
-            command = preferences.shortcuts.first(where: { $0.id == id })?.command
-        } else {
-            command = nil
+        let shortcut: CLIShortcut?
+        switch action {
+        case .shortcut(let id): shortcut = preferences.shortcuts.first { $0.id == id }
+        case .newTerminal, .resumeOrStart: shortcut = preferences.newTerminalDefaultShortcutID.flatMap { id in preferences.shortcuts.first { $0.id == id } }
         }
+        let directory = shortcut?.workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmedCommand = shortcut?.command.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return TerminalLaunchConfiguration(
             workingDirectory: directory.isEmpty ? nil : directory,
-            initialCommand: command
+            initialCommand: trimmedCommand.isEmpty ? nil : shortcut?.command
         )
     }
 }
@@ -137,12 +137,13 @@ struct InitialCommandBuffer {
     func noteInput() { lastActivityAt = .now }
     func clearTransientActivity() { accumulator.clear(); preview = nil; lastActivityAt = nil }
     func close() { clearTransientActivity(); client.close() }
+    func detach() { clearTransientActivity(); client.detach() }
 
     private func handleState(_ value: SessionClient.State) {
         state = value
-        if case .active = value {
+        if case .active(_, let disposition, _) = value {
             activeRouteKind = routes[routeIndex].kind
-            if let command = initialCommand.take() {
+            if disposition == .created, let command = initialCommand.take() {
                 client.sendInput(Data((command + "\r").utf8))
                 noteInput()
             }
@@ -189,7 +190,7 @@ struct InitialCommandBuffer {
         selectedMacID = snapshot.selectedMacID
     }
 
-    func stop() { closeLiveSessions(); macs.stop() }
+    func stop() { detachLiveSessions(); macs.stop() }
     var selectedMac: PairedMac? { macs.devices.first { $0.id == selectedMacID } }
 
     func authorize() async {
@@ -250,7 +251,8 @@ struct InitialCommandBuffer {
         guard !routes.isEmpty else { recovery = .unavailableMac(mac.displayName); return }
         recovery = nil
         let descriptor = SessionDescriptor(label: "Shell \(sessions.count + 1)")
-        let session = makeSession(descriptor: descriptor, mac: mac, routes: routes, identity: identity)
+        let configuration = WorkspaceTerminalLaunchResolver.resolve(action: .newTerminal, preferences: preferences.value)
+        let session = makeSession(descriptor: descriptor, mac: mac, routes: routes, identity: identity, workingDirectory: configuration.workingDirectory, initialCommand: configuration.initialCommand)
         sessions.append(session); selectSession(session.id); saveCurrentDescriptors(); persist()
     }
 
@@ -294,7 +296,7 @@ struct InitialCommandBuffer {
         Task { await macs.refreshRendezvous(); startFreshTerminal(on: mac) }
     }
 
-    func sceneDidBackground() { saveCurrentDescriptors(); persist(); closeLiveSessions(); state = .locked }
+    func sceneDidBackground() { saveCurrentDescriptors(); persist(); detachLiveSessions(); state = .locked }
 
     private func resolveExternalLaunch() {
         let resolution = WorkspaceLaunchResolver.resolve(
@@ -385,8 +387,7 @@ struct InitialCommandBuffer {
     }
 
     private func makeSession(descriptor: SessionDescriptor, mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String? = nil, initialCommand: String? = nil) -> WorkspaceSession {
-        let configuredDirectory = preferences.value.defaultDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        return WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, workingDirectory: workingDirectory ?? (configuredDirectory.isEmpty ? nil : configuredDirectory), initialCommand: initialCommand, localRendezvousCapability: macs.localRendezvousCapability) { [weak self] certificate, capability in
+        return WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, workingDirectory: workingDirectory, initialCommand: initialCommand, localRendezvousCapability: macs.localRendezvousCapability) { [weak self] certificate, capability in
             self?.macs.upgrade(macID: mac.id, certificate: certificate, capability: capability)
         }
     }
@@ -402,6 +403,7 @@ struct InitialCommandBuffer {
     }
 
     private func closeLiveSessions() { sessions.forEach { $0.close() }; sessions.removeAll(); selectedSessionID = nil }
+    private func detachLiveSessions() { sessions.forEach { $0.detach() }; sessions.removeAll(); selectedSessionID = nil }
     private func saveCurrentDescriptors() { guard let id = selectedMacID else { return }; snapshot.sessionsByMac[id] = sessions.map(\.descriptor); snapshot.selectedMacID = id }
     private func persist() { try? WorkspaceStore().save(snapshot) }
 }

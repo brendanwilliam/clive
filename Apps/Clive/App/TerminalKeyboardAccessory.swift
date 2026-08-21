@@ -294,6 +294,7 @@ final class TerminalKeyboardAccessory: UIInputView {
 }
 
 private final class TerminalKeyButton: UIButton {
+    private weak var preview: UILabel?
     override var isHighlighted: Bool {
         didSet { updateKeyAppearance(animated: true) }
     }
@@ -301,6 +302,7 @@ private final class TerminalKeyButton: UIButton {
     override var isSelected: Bool {
         didSet { updateKeyAppearance(animated: false) }
     }
+    override var isEnabled: Bool { didSet { updateKeyAppearance(animated: false) } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -316,14 +318,33 @@ private final class TerminalKeyButton: UIButton {
         layer.cornerRadius = 7
         layer.cornerCurve = .continuous
         clipsToBounds = true
+        addTarget(self, action: #selector(showPreview), for: .touchDown)
+        addTarget(self, action: #selector(hidePreview), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
         updateKeyAppearance(animated: false)
     }
 
+    @objc private func showPreview() {
+        guard let window, let value = title(for: .normal), !value.isEmpty,
+              let action = accessibilityIdentifier,
+              !["keyboard", "shortcuts", "shift", "control", "option", "command"].contains(action) else { return }
+        let label = UILabel(); label.text = value; label.textAlignment = .center
+        label.font = .preferredFont(forTextStyle: .title1); label.adjustsFontForContentSizeCategory = true
+        label.textColor = .label; label.backgroundColor = .secondarySystemBackground
+        label.layer.cornerRadius = 10; label.clipsToBounds = true
+        let size = label.sizeThatFits(CGSize(width: 180, height: 100))
+        let width = max(54, size.width + 28), height = max(54, size.height + 16)
+        let source = convert(bounds, to: window); let safe = window.bounds.inset(by: window.safeAreaInsets).insetBy(dx: 8, dy: 8)
+        var origin = CGPoint(x: source.midX - width / 2, y: source.minY - height - 8)
+        origin.x = min(max(origin.x, safe.minX), safe.maxX - width); origin.y = min(max(origin.y, safe.minY), safe.maxY - height)
+        label.frame = CGRect(origin: origin, size: CGSize(width: width, height: height)); window.addSubview(label); preview = label
+    }
+    @objc private func hidePreview() { preview?.removeFromSuperview() }
+
     private func updateKeyAppearance(animated: Bool) {
         let changes = {
-            self.backgroundColor = self.isHighlighted
-                ? .systemFill
-                : (self.isSelected ? UIColor.systemBlue.withAlphaComponent(0.22) : .tertiarySystemFill)
+            self.backgroundColor = !self.isEnabled ? .quaternarySystemFill : (self.isHighlighted ? .systemFill : (self.isSelected ? UIColor.systemBlue.withAlphaComponent(0.22) : .tertiarySystemFill))
+            self.tintColor = !self.isEnabled ? .tertiaryLabel : (self.isSelected ? .systemBlue : .label)
+            self.setTitleColor(!self.isEnabled ? .tertiaryLabel : (self.isSelected ? .systemBlue : .label), for: .normal)
             self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.94, y: 0.94) : .identity
         }
         if animated {

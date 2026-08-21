@@ -24,12 +24,14 @@ final class PTYProcess: @unchecked Sendable {
     private let masterFD: Int32
     private let readSource: DispatchSourceRead
     private let output: @Sendable (Data) -> Void
+    private let onExit: @Sendable () -> Void
     private let stateLock = NSLock()
     private var outputSuspended = false
     private var terminated = false
 
-    init(size: TerminalSize, workingDirectory: String? = nil, output: @escaping @Sendable (Data) -> Void) throws {
+    init(size: TerminalSize, workingDirectory: String? = nil, output: @escaping @Sendable (Data) -> Void, onExit: @escaping @Sendable () -> Void = {}) throws {
         self.output = output
+        self.onExit = onExit
         let directory = try Self.resolveWorkingDirectory(workingDirectory)
         var masterFD: Int32 = -1
         var windowSize = winsize(ws_row: size.rows, ws_col: size.columns, ws_xpixel: 0, ws_ypixel: 0)
@@ -112,6 +114,7 @@ final class PTYProcess: @unchecked Sendable {
             output(Data(bytes.prefix(Int(count))))
         } else if count == 0 || errno != EAGAIN {
             readSource.cancel()
+            onExit()
         }
     }
 }

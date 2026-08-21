@@ -326,11 +326,15 @@ struct WorkspaceView: View {
 
     @ViewBuilder private func sessionOverlay(_ session: WorkspaceSession) -> some View {
         switch session.state {
-        case .active: EmptyView()
+        case .active(_, let disposition, let replayTruncated):
+            if replayTruncated { Text("Some output produced while disconnected was discarded.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
+            else if disposition == .resumed { Text("Reconnected. Earlier screen contents were not restored.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
         case .connecting: ProgressView("Connecting…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12))
         case .disconnected: ContentUnavailableView("Disconnected", systemImage: "network.slash")
         case .revoked:
             ContentUnavailableView { Label("Access revoked", systemImage: "lock.slash") } description: { Text("Pair this iPhone with the Mac again.") } actions: { Button("Pair Again") { showingScanner = true } }
+        case .workingDirectoryUnavailable:
+            ContentUnavailableView("Working directory unavailable", systemImage: "folder.badge.questionmark", description: Text("Choose another directory for this shortcut in Settings."))
         case .certificateChanged:
             ContentUnavailableView { Label("Certificate changed", systemImage: "exclamationmark.shield") } description: { Text("Verify the Mac locally before pairing it again.") } actions: { Button("Pair Again") { showingScanner = true } }
         case .protocolError: ContentUnavailableView("Protocol error", systemImage: "exclamationmark.triangle")
@@ -376,19 +380,27 @@ private struct SettingsView: View {
                 } footer: {
                     Text("This controls whether this iPhone may use cellular routes already enabled by the Mac.")
                 }
-                Section("Default directory") {
-                    CLITextField(text: Binding(
-                        get: { preferences.value.defaultDirectoryPath },
-                        set: { preferences.value.defaultDirectoryPath = $0 }
-                    ), placeholder: "~/Projects")
-                    .frame(minHeight: 34)
+                Section {
+                    Picker("New terminal default", selection: Binding(
+                        get: { preferences.value.newTerminalDefaultShortcutID },
+                        set: { preferences.value.newTerminalDefaultShortcutID = $0 }
+                    )) {
+                        Text("Login shell in Home").tag(nil as UUID?)
+                        ForEach(preferences.value.shortcuts) { shortcut in
+                            Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name).tag(Optional(shortcut.id))
+                        }
+                    }
+                } footer: {
+                    Text("Ordinary new terminals use the selected shortcut. With no selection, Clive starts a login shell in your Home directory.")
                 }
                 Section {
                     ForEach(preferences.value.shortcuts) { shortcut in
                         VStack(alignment: .leading, spacing: 8) {
                             TextField("Name", text: shortcutBinding(shortcut.id, \.name))
                                 .font(.headline)
-                            CLITextField(text: shortcutBinding(shortcut.id, \.command), placeholder: "Command")
+                            CLITextField(text: shortcutBinding(shortcut.id, \.workingDirectory), placeholder: "Working directory (optional)")
+                                .frame(minHeight: 34)
+                            CLITextField(text: shortcutBinding(shortcut.id, \.command), placeholder: "Command (optional)")
                                 .frame(minHeight: 34)
                         }
                         .padding(.vertical, 4)
@@ -399,7 +411,7 @@ private struct SettingsView: View {
                 } header: {
                     Text("CLI shortcuts")
                 } footer: {
-                    Text("Selecting a shortcut above the keyboard runs its command immediately. Avoid storing secrets in commands.")
+                    Text("A shortcut may set a directory, a command, or both. Commands run only after a new shell opens. Avoid storing secrets in commands.")
                 }
             }
             .navigationTitle("Settings")
