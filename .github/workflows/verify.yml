@@ -21,5 +21,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
       - name: Verify both platforms
         run: ./scripts/verify-local.sh

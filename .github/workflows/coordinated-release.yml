@@ -52,6 +52,9 @@ jobs:
           grep -Eq '^APS_ENVIRONMENT = production$' Apps/Clive/Config/Release.xcconfig
           /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.icloud-container-environment' Apps/CliveMac/Config/CliveMacRelease.entitlements | grep -qx Production
 
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
       - name: Verify both platforms
         run: ./scripts/verify-local.sh
 

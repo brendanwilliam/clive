@@ -18,6 +18,13 @@ fi
 mkdir -p "${LOG_DIR}"
 command -v swift >/dev/null
 command -v xcodebuild >/dev/null
+if [[ ! -d "${ROOT_DIR}/Apps/Clive/Clive.xcodeproj" ]]; then
+    command -v xcodegen >/dev/null || {
+        echo "Clive.xcodeproj is generated; install XcodeGen and retry." >&2
+        exit 69
+    }
+    (cd "${ROOT_DIR}/Apps/Clive" && xcodegen generate)
+fi
 
 signing_arguments=()
 if [[ ${SIGNED} == false ]]; then
