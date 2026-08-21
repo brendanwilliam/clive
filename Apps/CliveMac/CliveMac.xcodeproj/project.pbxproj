@@ -10,6 +10,7 @@
 		04EC09251334E65F2172B059 /* RouterPortMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 890F935BD95C5F530A2C09EE /* RouterPortMapperTests.swift */; };
 		0A8E269A6A73014FC087BEB9 /* TLSIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B313E66C117656DA2DE5B09D /* TLSIdentityStore.swift */; };
 		25E343CD42025A9D8DA65D94 /* DaemonRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18C99C57EC206EF177F4DE12 /* DaemonRuntime.swift */; };
+		26BBEDE3641B11A71E33ADCC /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 91C5CF6D00F1D462E9D0CB0E /* AppIcon.icon */; };
 		2D1694EDDC49793FEFDCF4AC /* SleepActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92CB25B7BDA5E31175D64D78 /* SleepActivityCoordinator.swift */; };
 		396053332283B492826B2578 /* CliveCore in Frameworks */ = {isa = PBXBuildFile; productRef = AD86DDA4593CF8E09639B401 /* CliveCore */; };
 		3D8CB484C0770FF989E95D96 /* PrivateNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14F1B5D289F1CD03443BC423 /* PrivateNetwork.swift */; };
@@ -54,6 +55,7 @@
 		5F07FA8A8BC51A16A770C37C /* DaemonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonState.swift; sourceTree = "<group>"; };
 		75EC5A92E9B1309DCB3F1727 /* PublicNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicNetwork.swift; sourceTree = "<group>"; };
 		890F935BD95C5F530A2C09EE /* RouterPortMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterPortMapperTests.swift; sourceTree = "<group>"; };
+		91C5CF6D00F1D462E9D0CB0E /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		92CB25B7BDA5E31175D64D78 /* SleepActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepActivityCoordinator.swift; sourceTree = "<group>"; };
 		9CA07D1DAE49FAD94729A772 /* TerminalQRCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalQRCode.swift; sourceTree = "<group>"; };
 		AF16C5B4A36564967CA5517D /* SecureListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureListener.swift; sourceTree = "<group>"; };
@@ -89,6 +91,15 @@
 			name = Packages;
 			sourceTree = "<group>";
 		};
+		25F771B67C3D34901177412F /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				91C5CF6D00F1D462E9D0CB0E /* AppIcon.icon */,
+			);
+			name = Resources;
+			path = ../../Resources;
+			sourceTree = "<group>";
+		};
 		37EFA4B049EE0351B1D53B27 /* Config */ = {
 			isa = PBXGroup;
 			children = (
@@ -121,6 +132,7 @@
 				EABE69C40559F43AC3D10E96 /* CliveDaemon */,
 				37EFA4B049EE0351B1D53B27 /* Config */,
 				1B8AE428182B2A2E323C94D8 /* Packages */,
+				25F771B67C3D34901177412F /* Resources */,
 				FBEF46E8C1CD04A2BE8A3CE3 /* Tests */,
 				AC94A3FBBD222D73C6F84D79 /* Products */,
 			);
@@ -185,6 +197,7 @@
 			buildConfigurationList = 503D7033C72F80634F920653 /* Build configuration list for PBXNativeTarget "CliveMac" */;
 			buildPhases = (
 				C864A6C4E2CAD2A3A639C7CB /* Sources */,
+				E723AB5494E14A31C7DC6ADA /* Resources */,
 				1CEC10D92657B9BFB29BDD1A /* Frameworks */,
 			);
 			buildRules = (
@@ -234,6 +247,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E723AB5494E14A31C7DC6ADA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				26BBEDE3641B11A71E33ADCC /* AppIcon.icon in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		995B0E7F94318509A83B9A9C /* Sources */ = {
