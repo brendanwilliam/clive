@@ -34,6 +34,24 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Boot an iOS Simulator
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulator_id="$(xcrun simctl list devices available | awk '
+            /^-- iOS / { in_ios = 1; next }
+            /^-- / { if (in_ios) exit }
+            in_ios && /iPhone/ && match($0, /\([0-9A-F-]{36}\)/) {
+              print substr($0, RSTART + 1, RLENGTH - 2)
+              exit
+            }
+          ')"
+          [[ -n "$simulator_id" ]] || { echo "::error::No available iPhone Simulator was found"; exit 1; }
+          xcrun simctl boot "$simulator_id"
+          xcrun simctl bootstatus "$simulator_id" -b
+
       - name: Verify both platforms
         env:
           DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
