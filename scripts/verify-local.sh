@@ -31,9 +31,56 @@ if [[ ${SIGNED} == false ]]; then
     signing_arguments+=(CODE_SIGNING_ALLOWED=NO)
 fi
 
-IOS_DESTINATION_ID=$(xcodebuild -project "${ROOT_DIR}/Apps/Clive/Clive.xcodeproj" -scheme Clive -showdestinations 2>/dev/null | sed -n 's/.*platform:iOS Simulator, arch:[^,]*, id:\([^,}]*\).*/\1/p' | sed -n '1p' | xargs)
+print_simulator_diagnostics() {
+    local raw_destinations=$1
+
+    echo "Xcode version:" >&2
+    xcodebuild -version >&2 || true
+    echo "Installed simulator runtimes:" >&2
+    xcrun simctl list runtimes >&2 || true
+    echo "Available simulator devices:" >&2
+    xcrun simctl list devices available >&2 || true
+    echo "Raw Clive scheme destinations:" >&2
+    print -r -- "${raw_destinations}" >&2
+}
+
+raw_ios_destinations=$(xcodebuild \
+    -project "${ROOT_DIR}/Apps/Clive/Clive.xcodeproj" \
+    -scheme Clive \
+    -showdestinations 2>&1) || {
+    echo "Unable to discover iOS Simulator destinations." >&2
+    print_simulator_diagnostics "${raw_ios_destinations}"
+    exit 69
+}
+IOS_DESTINATION_ID=$(print -r -- "${raw_ios_destinations}" | awk '
+    /^[[:space:]]*\{/ {
+        line = $0
+        sub(/^[^{]*\{[[:space:]]*/, "", line)
+        sub(/[[:space:]]*\}[^}]*$/, "", line)
+        count = split(line, fields, ",")
+        platform = id = name = error = ""
+        for (field_index = 1; field_index <= count; field_index++) {
+            separator = match(fields[field_index], /:/)
+            if (!separator) continue
+            key = substr(fields[field_index], 1, separator - 1)
+            value = substr(fields[field_index], separator + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            if (key == "platform") platform = value
+            else if (key == "id") id = value
+            else if (key == "name") name = value
+            else if (key == "error") error = value
+        }
+        if (platform == "iOS Simulator" && id != "" &&
+            name != "Any iOS Simulator Device" && error == "") {
+            print id
+            exit
+        }
+    }
+')
 if [[ -z ${IOS_DESTINATION_ID} ]]; then
     echo "No iOS Simulator destination is installed." >&2
+    print_simulator_diagnostics "${raw_ios_destinations}"
     exit 69
 fi
 
