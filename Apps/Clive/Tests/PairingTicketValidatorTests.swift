@@ -1,5 +1,6 @@
 import Foundation
 import CliveCore
+import CliveSecurity
 import XCTest
 import Security
 @testable import Clive
@@ -19,13 +20,12 @@ final class PairingTicketValidatorTests: XCTestCase {
     }
 
     @MainActor func testIPhoneIdentityPersistsAsP256() throws {
-        let provider = IPhoneIdentityProvider()
-        let first = try provider.loadOrCreate()
-        let second = try provider.loadOrCreate()
-        XCTAssertEqual(first.deviceID, second.deviceID)
-        XCTAssertEqual(first.certificate, second.certificate)
+        let store = AppleIdentityStore(label: "com.clive.tests.\(UUID().uuidString)", commonName: "test iPhone", usesDataProtectionKeychain: false)
+        let first = try store.loadOrCreate()
+        let second = try store.loadOrCreate()
+        XCTAssertEqual(try store.certificateData(of: first), try store.certificateData(of: second))
         var key: SecKey?
-        XCTAssertEqual(SecIdentityCopyPrivateKey(first.identity, &key), errSecSuccess)
+        XCTAssertEqual(SecIdentityCopyPrivateKey(first, &key), errSecSuccess)
         let attributes = SecKeyCopyAttributes(try XCTUnwrap(key)) as? [String: Any]
         XCTAssertEqual(attributes?[kSecAttrKeySizeInBits as String] as? Int, 256)
     }

@@ -105,6 +105,24 @@ struct TerminalCommandTracker {
     }
 }
 
+struct TerminalEdgeGesturePolicy {
+    static let edgeWidth: CGFloat = 44
+    static let maximumMovement: CGFloat = 10
+    static let maximumDuration: TimeInterval = 0.35
+
+    static func sequence(at point: CGPoint, in bounds: CGRect) -> String? {
+        let distances: [(CGFloat, Bool, String)] = [
+            (point.y - bounds.minY, true, "\u{1b}[A"), (bounds.maxY - point.y, true, "\u{1b}[B"),
+            (point.x - bounds.minX, false, "\u{1b}[D"), (bounds.maxX - point.x, false, "\u{1b}[C")
+        ].filter { $0.0 >= 0 && $0.0 <= edgeWidth }
+        return distances.min { lhs, rhs in lhs.0 == rhs.0 ? (lhs.1 && !rhs.1) : lhs.0 < rhs.0 }?.2
+    }
+
+    static func accepts(movement: CGFloat, duration: TimeInterval) -> Bool {
+        movement <= maximumMovement && duration < maximumDuration
+    }
+}
+
 @MainActor private final class TerminalEdgeTapGestureRecognizer: UIGestureRecognizer {
     private let send: (String) -> Void
     private var start = CGPoint.zero
@@ -113,25 +131,18 @@ struct TerminalCommandTracker {
     init(send: @escaping (String) -> Void) { self.send = send; super.init(target: nil, action: nil) }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         guard touches.count == 1, let touch = touches.first, let view else { state = .failed; return }
-        start = touch.location(in: view); beganAt = Date(); sequence = Self.sequence(at: start, in: view.bounds)
+        start = touch.location(in: view); beganAt = Date(); sequence = TerminalEdgeGesturePolicy.sequence(at: start, in: view.bounds)
         if sequence == nil { state = .failed }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
         guard let touch = touches.first, let view else { state = .failed; return }
         let point = touch.location(in: view)
-        if hypot(point.x - start.x, point.y - start.y) > 10 { state = .failed }
+        if hypot(point.x - start.x, point.y - start.y) > TerminalEdgeGesturePolicy.maximumMovement { state = .failed }
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard state == .possible, Date().timeIntervalSince(beganAt) < 0.35, let sequence else { state = .failed; return }
+        guard state == .possible, TerminalEdgeGesturePolicy.accepts(movement: 0, duration: Date().timeIntervalSince(beganAt)), let sequence else { state = .failed; return }
         state = .recognized; send(sequence)
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { state = .cancelled }
     override func reset() { sequence = nil }
-    private static func sequence(at point: CGPoint, in bounds: CGRect) -> String? {
-        let distances: [(CGFloat, Bool, String)] = [
-            (point.y - bounds.minY, true, "\u{1b}[A"), (bounds.maxY - point.y, true, "\u{1b}[B"),
-            (point.x - bounds.minX, false, "\u{1b}[D"), (bounds.maxX - point.x, false, "\u{1b}[C")
-        ].filter { $0.0 >= 0 && $0.0 <= 44 }
-        return distances.min { lhs, rhs in lhs.0 == rhs.0 ? (lhs.1 && !rhs.1) : lhs.0 < rhs.0 }?.2
-    }
 }

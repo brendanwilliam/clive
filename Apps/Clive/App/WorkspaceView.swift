@@ -327,8 +327,10 @@ struct WorkspaceView: View {
     @ViewBuilder private func sessionOverlay(_ session: WorkspaceSession) -> some View {
         switch session.state {
         case .active(_, let disposition, let replayTruncated):
-            if replayTruncated { Text("Some output produced while disconnected was discarded.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
-            else if disposition == .resumed { Text("Reconnected. Earlier screen contents were not restored.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
+            VStack(spacing: 6) {
+                if disposition == .resumed { Text("Reconnected to the existing shell.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
+                if replayTruncated { Text("Some output produced while disconnected was discarded.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
+            }
         case .connecting: ProgressView("Connecting…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12))
         case .disconnected: ContentUnavailableView("Disconnected", systemImage: "network.slash")
         case .revoked:

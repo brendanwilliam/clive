@@ -293,7 +293,17 @@ final class TerminalKeyboardAccessory: UIInputView {
     private func refreshModifierButtons() { for button in buttons { if let action = button.accessibilityIdentifier, let modifier = modifier(named: action) { button.isSelected = active(modifier); button.tintColor = button.isSelected ? .systemBlue : .label } } }
 }
 
-private final class TerminalKeyButton: UIButton {
+enum TerminalKeyPreviewLayout {
+    static func frame(source: CGRect, contentSize: CGSize, safeBounds: CGRect) -> CGRect {
+        let width = max(54, contentSize.width + 28), height = max(54, contentSize.height + 16)
+        var origin = CGPoint(x: source.midX - width / 2, y: source.minY - height - 8)
+        origin.x = min(max(origin.x, safeBounds.minX), safeBounds.maxX - width)
+        origin.y = min(max(origin.y, safeBounds.minY), safeBounds.maxY - height)
+        return CGRect(origin: origin, size: CGSize(width: width, height: height))
+    }
+}
+
+final class TerminalKeyButton: UIButton {
     private weak var preview: UILabel?
     override var isHighlighted: Bool {
         didSet { updateKeyAppearance(animated: true) }
@@ -332,11 +342,9 @@ private final class TerminalKeyButton: UIButton {
         label.textColor = .label; label.backgroundColor = .secondarySystemBackground
         label.layer.cornerRadius = 10; label.clipsToBounds = true
         let size = label.sizeThatFits(CGSize(width: 180, height: 100))
-        let width = max(54, size.width + 28), height = max(54, size.height + 16)
         let source = convert(bounds, to: window); let safe = window.bounds.inset(by: window.safeAreaInsets).insetBy(dx: 8, dy: 8)
-        var origin = CGPoint(x: source.midX - width / 2, y: source.minY - height - 8)
-        origin.x = min(max(origin.x, safe.minX), safe.maxX - width); origin.y = min(max(origin.y, safe.minY), safe.maxY - height)
-        label.frame = CGRect(origin: origin, size: CGSize(width: width, height: height)); window.addSubview(label); preview = label
+        label.frame = TerminalKeyPreviewLayout.frame(source: source, contentSize: size, safeBounds: safe)
+        window.addSubview(label); preview = label
     }
     @objc private func hidePreview() { preview?.removeFromSuperview() }
 
@@ -347,7 +355,7 @@ private final class TerminalKeyButton: UIButton {
             self.setTitleColor(!self.isEnabled ? .tertiaryLabel : (self.isSelected ? .systemBlue : .label), for: .normal)
             self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.94, y: 0.94) : .identity
         }
-        if animated {
+        if animated && !UIAccessibility.isReduceMotionEnabled {
             UIView.animate(withDuration: 0.08, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: changes)
         } else {
             changes()

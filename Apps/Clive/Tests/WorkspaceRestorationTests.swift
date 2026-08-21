@@ -140,15 +140,15 @@ final class WorkspaceRestorationTests: XCTestCase {
         )
     }
 
-    func testShortcutLaunchUsesDefaultDirectoryAndConfiguredCommand() {
-        let shortcut = CLIShortcut(name: "Status", command: "git status --short")
+    func testExplicitShortcutUsesItsOwnDirectoryAndCommand() {
+        let shortcut = CLIShortcut(name: "Status", command: "git status --short", workingDirectory: "~/Status")
         var preferences = AppPreferences()
         preferences.defaultDirectoryPath = "~/Code"
         preferences.shortcuts = [shortcut]
 
         XCTAssertEqual(
             WorkspaceTerminalLaunchResolver.resolve(action: .shortcut(shortcut.id), preferences: preferences),
-            TerminalLaunchConfiguration(workingDirectory: "~/Code", initialCommand: "git status --short")
+            TerminalLaunchConfiguration(workingDirectory: "~/Status", initialCommand: "git status --short")
         )
     }
 
