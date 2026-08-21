@@ -1,6 +1,7 @@
 import Darwin
 import Dispatch
 import Foundation
+import CliveCloud
 import CliveCore
 
 struct CliveDaemon {
@@ -41,7 +42,7 @@ struct CliveDaemon {
         case "stop": try runOneShot(.init(command: .stop))
         case "cellular":
             guard arguments.count == 2, let enabled = ["on": true, "off": false][arguments[1]] else { throw CommandError.usage }
-            try runOneShot(.init(command: .setCellularAccess, cellularEnabled: enabled))
+            try runCellularCommand(enabled: enabled)
         case "shell": try requireInteractiveTerminal(); try runLocalShell()
         case "help", "--help", "-h": print(usage)
         default: throw CommandError.usage
@@ -68,10 +69,37 @@ struct CliveDaemon {
         print("Started the Clive menu bar companion.")
     }
 
+    private static func runCellularCommand(enabled: Bool) throws {
+        let request = ControlRequest(command: .setCellularAccess, cellularEnabled: enabled)
+        let response: ControlResponse
+        if enabled {
+            response = try CompanionStartupPolicy.run(
+                companionIsInstalled: FileManager.default.fileExists(atPath: "/Applications/Clive.app"),
+                launch: launchCompanionApp,
+                request: { try sendOneShot(request) },
+                isUnavailable: { $0 is ControlSocketError }
+            )
+        } else {
+            response = try sendOneShot(request)
+        }
+        if !response.success,
+           response.message == CloudRendezvousError.entitlementUnavailable.localizedDescription {
+            throw CommandError.remote("\(response.message!) Stop the foreground daemon with `clive stop`, then retry so the signed companion can start.")
+        }
+        try printResponse(response)
+    }
+
     private static func runOneShot(_ request: ControlRequest) throws {
+        try printResponse(sendOneShot(request))
+    }
+
+    private static func sendOneShot(_ request: ControlRequest) throws -> ControlResponse {
         let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
         try channel.send(request)
-        let response = try channel.readResponse()
+        return try channel.readResponse()
+    }
+
+    private static func printResponse(_ response: ControlResponse) throws {
         guard response.success else { throw CommandError.remote(response.message ?? "Command failed.") }
         if let devices = response.devices {
             if devices.isEmpty { print("No paired devices.") }
