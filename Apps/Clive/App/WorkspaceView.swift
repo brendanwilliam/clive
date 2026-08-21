@@ -30,7 +30,7 @@ struct WorkspaceView: View {
             .animation(.snappy(duration: 0.28), value: coordinator.presentedScreen)
         }
         .task { coordinator.start(); ExternalLaunchRequestStore().consumePending(); await coordinator.authorize() }
-        .onOpenURL { url in if ExternalLaunchURL.matches(url) { coordinator.handleExternalLaunch() } }
+        .onOpenURL { url in if let action = ExternalLaunchURL.action(for: url) { coordinator.handleExternalLaunch(action) } }
         .onReceive(NotificationCenter.default.publisher(for: .externalTerminalLaunchRequested)) { _ in coordinator.handleExternalLaunch() }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { coordinator.sceneDidBackground() }
@@ -92,23 +92,16 @@ struct WorkspaceView: View {
 
     private var terminalButton: some View {
         Button { coordinator.showTerminalList() } label: {
-            Image(systemName: "terminal")
-                .font(.system(size: 18, weight: .medium))
-                .frame(width: 44, height: 44)
-                .background(Color(uiColor: .secondarySystemBackground), in: .circle)
-        }
-        .overlay(alignment: .topTrailing) {
-            Text("\(coordinator.sessions.count)")
-                .font(.caption2.bold().monospacedDigit())
-                .foregroundStyle(.white)
-                .frame(width: 20, height: 20)
-                .background(Color(uiColor: .systemBlue).opacity(1), in: .circle)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            HStack(spacing: 3) {
+                Image(systemName: "chevron.left")
+                Text("\(coordinator.sessions.count)").monospacedDigit()
+            }
+            .font(.body.weight(.semibold))
+            .foregroundStyle(Color.accentColor)
+            .frame(minWidth: 44, minHeight: 44)
         }
         .buttonStyle(.plain)
-        .contentShape(.circle)
-        .buttonBorderShape(.circle)
+        .contentShape(.rect)
         .accessibilityLabel("Terminals")
         .accessibilityValue("\(coordinator.sessions.count) open")
     }

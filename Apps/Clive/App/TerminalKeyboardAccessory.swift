@@ -117,13 +117,14 @@ final class TerminalKeyboardAccessory: UIInputView {
         row.arrangedSubviews.forEach { row.removeArrangedSubview($0); $0.removeFromSuperview() }
         buttons.removeAll()
         if showsShortcutMenu { row.addArrangedSubview(makeShortcutButton()) }
+        row.addArrangedSubview(makeButton(title: "⌨", action: "keyboard", label: "Special keys"))
         let keys: [(String, String, String)] = [
             ("⇥", "tab", "Tab"), ("⇧", "shift", "Shift"), ("⌃", "control", "Control"), ("⌥", "option", "Option"), ("⌘", "command", "Command")
         ]
         for (title, action, label) in keys { row.addArrangedSubview(makeButton(title: title, action: action, label: label)) }
         let remainingKeys = customKeys.map { ($0, "custom:\($0)", "Custom key \($0)") } + [
             ("←", "left", "Left arrow"), ("↓", "down", "Down arrow"), ("↑", "up", "Up arrow"), ("→", "right", "Right arrow"),
-            (".", ".", "Period"), ("/", "/", "Slash"), ("@", "@", "At sign"), ("$", "$", "Dollar"), ("⌨", "keyboard", "Special keys")
+            (".", ".", "Period"), ("/", "/", "Slash"), ("@", "@", "At sign"), ("$", "$", "Dollar")
         ]
         for (title, action, label) in remainingKeys { row.addArrangedSubview(makeButton(title: title, action: action, label: label)) }
         refreshModifierButtons()
