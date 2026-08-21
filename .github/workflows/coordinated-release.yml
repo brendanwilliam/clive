@@ -1,0 +1,73 @@
+name: Release macOS and iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Shared semantic version without a v prefix
+        required: true
+        default: "1.0.0"
+      prerelease:
+        description: Mark the macOS GitHub Release as a prerelease
+        required: true
+        type: boolean
+        default: true
+      cloudkit_production_schema_deployed:
+        description: Confirm the CloudKit schema is deployed to Production
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: coordinated-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  preflight:
+    name: Validate coordinated release
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate release request
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Version must look like 1.0.0"
+            exit 1
+          fi
+          if [[ "${{ inputs.cloudkit_production_schema_deployed }}" != true ]]; then
+            echo "::error::Deploy the CloudKit schema to Production before releasing"
+            exit 1
+          fi
+          if [[ "${GITHUB_REF_NAME}" != main ]]; then
+            echo "::error::Coordinated releases must run from main"
+            exit 1
+          fi
+          grep -Eq '^APS_ENVIRONMENT = production$' Apps/Clive/Config/Release.xcconfig
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.icloud-container-environment' Apps/CliveMac/Config/CliveMacRelease.entitlements | grep -qx Production
+
+      - name: Verify both platforms
+        run: ./scripts/verify-local.sh
+
+  macos:
+    name: Publish macOS package
+    needs: preflight
+    uses: ./.github/workflows/macos-release.yml
+    with:
+      tag: ${{ format('v{0}', inputs.version) }}
+      prerelease: ${{ inputs.prerelease }}
+    secrets: inherit
+
+  ios:
+    name: Upload iOS to TestFlight
+    needs: macos
+    uses: ./.github/workflows/testflight.yml
+    with:
+      marketing_version: ${{ inputs.version }}
+    secrets: inherit

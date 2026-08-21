@@ -18,6 +18,7 @@ The end-to-end prototype is implemented: the foreground daemon owns its authenti
 
 ```sh
 swift test
+./scripts/verify-local.sh
 ./scripts/test-macos-integration.sh
 swift run clive status
 cd Apps/Clive && xcodegen generate
@@ -25,7 +26,9 @@ xcodebuild -project Clive.xcodeproj -scheme Clive -destination 'platform=iOS Sim
 ./scripts/build-pkg.sh
 ```
 
-`swift test` runs shared protocol and pairing tests. Startup requires RFC1918 IPv4, IPv6 ULA/link-local, or loopback connectivity unless `--allow-non-private-network` is supplied. The packaging script creates an unsigned arm64 development PKG by default; set `DEVELOPER_ID_APPLICATION`, `DEVELOPER_ID_INSTALLER`, and optionally `NOTARY_PROFILE` for signing and notarization.
+`swift test` runs shared protocol and pairing tests. `verify-local.sh` runs those tests plus macOS and generic-iOS Debug builds in parallel; pass `--signed` when local development signing readiness matters. Startup requires RFC1918 IPv4, IPv6 ULA/link-local, or loopback connectivity unless `--allow-non-private-network` is supplied. The packaging script creates an unsigned arm64 development PKG by default; set `DEVELOPER_ID_APPLICATION`, `DEVELOPER_ID_INSTALLER`, and optionally `NOTARY_PROFILE` for signing and notarization.
+
+Pull requests and pushes to `main` run the same compatibility script in GitHub Actions. The coordinated release workflow reruns it before publishing either platform.
 
 The PKG installs `/Applications/Clive.app` and `/usr/local/bin/clive`, with no launch agent or privileged helper. Run `clive start`, then use `pair`, `status`, `cellular <on|off>`, `cellular setup`, `cellular test`, `revoke <device-id>`, and `stop`. `clive cellular setup` launches the signed companion, guides automatic or manual routing, and waits for a paired iPhone to verify the route over cellular. Scripted forms are `cellular setup --automatic` and `cellular setup --manual --host <host> --external-port <port>`. If an unsigned foreground daemon owns the control socket, stop it before retrying; the CLI never borrows the app's CloudKit entitlement. Cellular access is disabled by default and remains visibly indicated in the menu bar while enabled. State remains under `~/Library/Application Support/clive` so upgrades preserve identities and pairings; cryptographic identities remain device-local and owner protected.
 
@@ -34,6 +37,8 @@ TestFlight uploads are performed by the manually triggered `Deploy iOS to TestFl
 ### Publishing the macOS package
 
 The manually triggered `Publish macOS package` workflow builds the Apple-silicon CLI and menu-bar app, signs them with Developer ID, notarizes and staples the installer, and publishes `clive.pkg` plus its SHA-256 checksum to a new GitHub Release.
+
+For a coordinated tester release, run the manually triggered `Release macOS and iOS` workflow from `main`. It validates the shared version and Production CloudKit acknowledgement, runs the shared tests, publishes the notarized macOS package, and then uploads the same version and commit to TestFlight. The underlying platform workflows remain available for deliberate partial-release recovery.
 
 Create a protected GitHub environment named `macos-release` with these variables:
 

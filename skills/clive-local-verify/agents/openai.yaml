@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clive Local Verify"
+  short_description: "Test and repair Mac/iOS compatibility"
+  default_prompt: "Use $clive-local-verify to test my current changes across CliveCore, macOS, and iOS, correcting scoped compatibility problems."

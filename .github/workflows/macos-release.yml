@@ -12,6 +12,16 @@ on:
         required: true
         type: boolean
         default: true
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+        type: string
+      prerelease:
+        description: Mark the GitHub Release as a prerelease
+        required: true
+        type: boolean
 
 concurrency:
   group: macos-release
@@ -106,6 +116,14 @@ jobs:
 
           profile_plist="$RUNNER_TEMP/developer-id-profile.plist"
           security cms -D -i "$profile_path" > "$profile_plist"
+          if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.icloud-container-identifiers' "$profile_plist" | grep -Fq "$CLIVE_ICLOUD_CONTAINER"; then
+            echo "::error::Developer ID profile does not include iCloud container $CLIVE_ICLOUD_CONTAINER"
+            exit 1
+          fi
+          if [[ $(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.icloud-container-environment' "$profile_plist") != Production ]]; then
+            echo "::error::Developer ID profile does not use the Production CloudKit environment"
+            exit 1
+          fi
           profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"
           profile_directory="$HOME/Library/MobileDevice/Provisioning Profiles"
           mkdir -p "$profile_directory"
