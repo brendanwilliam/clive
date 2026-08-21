@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Select Xcode 26.5
         env:
@@ -34,7 +34,43 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Boot an iOS Simulator
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulator_id="$(xcrun simctl list devices available | awk '
+            /^-- iOS / { in_ios = 1; next }
+            /^-- / { if (in_ios) exit }
+            in_ios && /iPhone/ && match($0, /\([0-9A-F-]{36}\)/) {
+              print substr($0, RSTART + 1, RLENGTH - 2)
+              exit
+            }
+          ')"
+          [[ -n "$simulator_id" ]] || { echo "::error::No available iPhone Simulator was found"; exit 1; }
+          xcrun simctl boot "$simulator_id"
+          xcrun simctl bootstatus "$simulator_id" -b
+          echo "CLIVE_IOS_DESTINATION_ID=$simulator_id" >> "$GITHUB_ENV"
+
       - name: Verify both platforms
         env:
           DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
         run: ./scripts/verify-local.sh
+
+      - name: Verify localhost control socket
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/clive-integration.keychain-db"
+          keychain_password="$(uuidgen)"
+          cleanup() { security delete-keychain "$keychain_path" 2>/dev/null || true; }
+          trap cleanup EXIT
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 3600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security default-keychain -d user -s "$keychain_path"
+          ./scripts/test-macos-integration.sh
