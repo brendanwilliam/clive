@@ -86,6 +86,10 @@ if [[ -z ${IOS_DESTINATION_ID} ]]; then
     print_simulator_diagnostics "${raw_ios_destinations}"
     exit 69
 fi
+if [[ -n ${CLIVE_IOS_DESTINATION_ID:-} ]]; then
+    xcrun simctl boot "${IOS_DESTINATION_ID}" 2>/dev/null || true
+    xcrun simctl bootstatus "${IOS_DESTINATION_ID}" -b
+fi
 
 echo "Running shared, macOS, and iOS tests in parallel…"
 swift test --package-path "${ROOT_DIR}" >"${LOG_DIR}/swift-test.log" 2>&1 &
