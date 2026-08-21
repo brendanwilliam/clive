@@ -13,7 +13,9 @@ Clive combines a native SwiftUI terminal client with a user-started macOS menu b
 > [!WARNING]
 > Clive is prerelease software. It has not completed every physical-device release gate; do not rely on it for unattended or production access.
 
-![Clive on iPhone showing the biometric-cancellation recovery state](docs/assets/ios-authentication-cancelled.png)
+<p align="center">
+  <img src="docs/assets/ios-terminal.png" alt="Clive terminal on iPhone with its shortcut row and keyboard" width="330">
+</p>
 
 ![Clive macOS companion showing sanitized disconnected state](docs/assets/macos-companion.png)
 
