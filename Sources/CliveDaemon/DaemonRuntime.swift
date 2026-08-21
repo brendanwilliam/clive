@@ -12,13 +12,13 @@ final class DaemonRuntime: @unchecked Sendable {
     private let trustStore: TrustStore
     private let rendezvous: MacRendezvousController
     private let registry = SessionRegistry()
+    private lazy var terminalSessions = TerminalSessionManager(registry: registry)
     private let peerTrust = PeerTrustCache()
     private var sessionListener: SecureListener?
     private var configuredListenerPort: UInt16
     private var controlServer: ControlSocketServer?
     private var pairing: PairingOperation?
     private var handlers: [UUID: (deviceID: String, handler: SessionConnectionHandler)] = [:]
-    private var handlersByWorkspaceSession: [String: UUID] = [:]
     private var trustedDeviceIDs: Set<String> = []
     private var stopped = false
     private let onStopped: @Sendable () -> Void
@@ -79,6 +79,7 @@ final class DaemonRuntime: @unchecked Sendable {
                 await refreshTrust()
                 let owned = lock.withLock { handlers.values.filter { $0.deviceID == deviceID }.map(\.handler) }
                 owned.forEach { $0.revoke() }
+                terminalSessions.closeAll(deviceID: deviceID)
                 _ = await registry.closeAll(forDeviceID: deviceID)
                 try channel.send(ControlResponse(success: true, message: "Revoked \(deviceID)."))
             } catch { try? channel.send(ControlResponse(success: false, message: error.localizedDescription)) }
@@ -142,7 +143,7 @@ final class DaemonRuntime: @unchecked Sendable {
     }
 
     private func openSession(connection: NWConnection, queue: DispatchQueue, deviceID: String, certificate: Data?, requiresWANGate: Bool, localCapability: RendezvousCapability?) {
-        let handler = SessionConnectionHandler(deviceID: deviceID, peerCertificate: certificate, requiresWANGate: requiresWANGate, localCapability: localCapability, registry: registry, queue: queue, validateGate: { [weak rendezvous] deviceID, token in
+        let handler = SessionConnectionHandler(deviceID: deviceID, peerCertificate: certificate, requiresWANGate: requiresWANGate, localCapability: localCapability, sessions: terminalSessions, queue: queue, validateGate: { [weak rendezvous] deviceID, token in
             await rendezvous?.validateGate(deviceID: deviceID, token: token) == true
         }, upgradePeer: { [weak trustStore, weak rendezvous] deviceID, certificate, capability in
             guard let trustStore, (try? await trustStore.upgrade(id: deviceID, certificate: certificate, rendezvousCapability: capability)) == true else { return }
@@ -154,19 +155,7 @@ final class DaemonRuntime: @unchecked Sendable {
         }, onClosed: { [weak self] id in
             _ = self?.lock.withLock {
                 self?.handlers.removeValue(forKey: id)
-                self?.handlersByWorkspaceSession = self?.handlersByWorkspaceSession.filter { $0.value != id } ?? [:]
             }
-        }, replaceExisting: { [weak self] deviceID, clientSessionID, replacement in
-            guard let self else { return }
-            let key = "\(deviceID):\(clientSessionID.uuidString.lowercased())"
-            let previous = self.lock.withLock { () -> SessionConnectionHandler? in
-                let oldID = self.handlersByWorkspaceSession[key]
-                self.handlersByWorkspaceSession[key] = replacement.identifier
-                return oldID.flatMap { self.handlers[$0]?.handler }
-            }
-            // close sends SIGHUP to the process group and reaps it; replacement never leaves
-            // two handlers registered for the same phone/workspace session key.
-            if previous?.identifier != replacement.identifier { previous?.close() }
         })
         let accepted = lock.withLock { () -> Bool in
             guard trustedDeviceIDs.contains(deviceID), !stopped else { return false }
@@ -185,6 +174,7 @@ final class DaemonRuntime: @unchecked Sendable {
                 handlers.filter { $0.key != requestingHandlerID && $0.value.deviceID == deviceID }.map { $0.value.handler }
             }
             owned.forEach { $0.revoke() }
+            terminalSessions.closeAll(deviceID: deviceID)
             _ = await registry.closeAll(forDeviceID: deviceID)
             return true
         } catch {
@@ -199,6 +189,7 @@ final class DaemonRuntime: @unchecked Sendable {
         sessionListener?.cancel(); controlServer?.stop()
         let active = lock.withLock { handlers.values.map(\.handler) }
         active.forEach { $0.close() }
+        terminalSessions.shutdown()
         Task { [rendezvous, onStopped] in await rendezvous.shutdown(); onStopped() }
     }
 }

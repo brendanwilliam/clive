@@ -62,6 +62,7 @@ struct TerminalTabsView: View {
         case .connecting: ProgressView("Connecting…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12))
         case .disconnected: ContentUnavailableView("Disconnected", systemImage: "network.slash")
         case .revoked: ContentUnavailableView("Access revoked", systemImage: "lock.slash")
+        case .workingDirectoryUnavailable: ContentUnavailableView("Working directory unavailable", systemImage: "folder.badge.questionmark")
         case .certificateChanged: ContentUnavailableView("Certificate changed", systemImage: "exclamationmark.shield", description: Text("Pair this Mac again only after verifying it locally."))
         case .protocolError: ContentUnavailableView("Protocol error", systemImage: "exclamationmark.triangle")
         case .networkError(let message): ContentUnavailableView("Network error", systemImage: "wifi.exclamationmark", description: Text(message))

@@ -51,18 +51,32 @@ public struct SessionOpenRequest: Codable, Equatable, Sendable {
 }
 
 public struct SessionOpened: Codable, Equatable, Sendable {
+    public enum Disposition: String, Codable, Sendable { case created, resumed }
     /// Ephemeral ID allocated by the daemon for this particular PTY.
     public let serverSessionID: UUID
     public let rendezvousCapability: RendezvousCapability?
-    public init(serverSessionID: UUID, rendezvousCapability: RendezvousCapability? = nil) {
+    public let disposition: Disposition
+    public let replayTruncated: Bool
+    public init(serverSessionID: UUID, rendezvousCapability: RendezvousCapability? = nil, disposition: Disposition = .created, replayTruncated: Bool = false) {
         self.serverSessionID = serverSessionID
         self.rendezvousCapability = rendezvousCapability
+        self.disposition = disposition
+        self.replayTruncated = replayTruncated
+    }
+
+    private enum CodingKeys: String, CodingKey { case serverSessionID, rendezvousCapability, disposition, replayTruncated }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        serverSessionID = try values.decode(UUID.self, forKey: .serverSessionID)
+        rendezvousCapability = try values.decodeIfPresent(RendezvousCapability.self, forKey: .rendezvousCapability)
+        disposition = try values.decodeIfPresent(Disposition.self, forKey: .disposition) ?? .created
+        replayTruncated = try values.decodeIfPresent(Bool.self, forKey: .replayTruncated) ?? false
     }
 }
 
 public struct SessionError: Codable, Equatable, Sendable {
     public enum Code: String, Codable, Sendable {
-        case authenticationFailed, invalidFrameOrder, shellCreationFailed, revoked, protocolError
+        case authenticationFailed, invalidFrameOrder, shellCreationFailed, workingDirectoryUnavailable, revoked, protocolError
     }
     public let code: Code
     public let message: String

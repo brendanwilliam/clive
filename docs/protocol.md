@@ -22,7 +22,7 @@ The pairing endpoint accepts only one successful exchange. Expired, consumed, or
 - TCP is protected by TLS 1.3 with client and server certificate authentication.
 - The peer certificate must exactly match the stored fingerprint for the selected pairing record.
 - TLS errors, certificate changes, protocol-version incompatibility, or missing biometric authorization terminate the attempt before shell creation.
-- The app sends `session.open` only after mutual TLS completes. The Mac responds with `session.opened` containing an opaque session ID.
+- The app sends `session.open` only after mutual TLS completes. The Mac responds with `session.opened` containing an opaque session ID, a `created` or `resumed` disposition, and a replay-truncation flag. Older replies without those fields mean `created` and not truncated.
 - One TLS connection carries exactly one session and PTY. Multiple tabs use independent connections, so terminal frames need no session ID.
 
 ## Framing
@@ -43,6 +43,8 @@ Frames have a bounded maximum size and an explicit protocol version. The Mac rej
 
 ## Session lifecycle
 
-Each session maps to one PTY and one login shell. Network loss closes the TLS connection and sends SIGHUP to its child process; V1 does not preserve disconnected shell sessions. Stopping the CLI closes listeners and all active PTYs. Revoking a phone closes all sessions authenticated by its certificate.
+Each authenticated device ID and stable client session ID maps to one PTY and login shell. Network loss detaches transport and retains the shell for 30 minutes without extending that deadline; up to 1 MiB of output is replayed in order on reattachment, with oldest bytes discarded and reported on overflow. Explicit close, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY immediately. The iOS app persists only opaque session IDs, never terminal contents.
+
+Successful terminal input and produced output refresh one daemon-wide idle-system-sleep assertion for 30 minutes. Pairing, authentication, resize traffic, and idle connections do not. Display sleep, explicit Sleep, lid close, shutdown, and system policy remain unaffected.
 
 `session.open` may include a working directory. An omitted or empty value uses the Mac user's home directory; the daemon expands `~/`, rejects unavailable directories, and changes directory before starting the login shell. A phone-initiated `pairing.revoke` is bound to the mutual-TLS peer identity and cannot name or revoke another device. The iPhone removes its local pairing only after `pairing.revoked` is received.

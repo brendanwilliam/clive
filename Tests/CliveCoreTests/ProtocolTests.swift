@@ -92,6 +92,19 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(await registry.all().count == 2)
 }
 
+@Test func sessionOpenedRoundTripsResumeMetadata() throws {
+    let value = SessionOpened(serverSessionID: UUID(), disposition: .resumed, replayTruncated: true)
+    #expect(try ProtocolPayload.decode(SessionOpened.self, from: ProtocolPayload.encode(value)) == value)
+}
+
+@Test func legacySessionOpenedDefaultsToCreatedWithoutTruncation() throws {
+    let id = UUID()
+    let data = Data(#"{"serverSessionID":"\#(id.uuidString)"}"#.utf8)
+    let value = try ProtocolPayload.decode(SessionOpened.self, from: data)
+    #expect(value.disposition == .created)
+    #expect(value.replayTruncated == false)
+}
+
 @Test func previewSanitizesSplitControlSequencesAndBoundsOutput() {
     var preview = TerminalPreviewAccumulator(maximumLength: 8)
     preview.consume(Data("hello\u{1b}[31".utf8))

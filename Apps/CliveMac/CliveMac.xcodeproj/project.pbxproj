@@ -10,8 +10,10 @@
 		04EC09251334E65F2172B059 /* RouterPortMapperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 890F935BD95C5F530A2C09EE /* RouterPortMapperTests.swift */; };
 		0A8E269A6A73014FC087BEB9 /* TLSIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B313E66C117656DA2DE5B09D /* TLSIdentityStore.swift */; };
 		25E343CD42025A9D8DA65D94 /* DaemonRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18C99C57EC206EF177F4DE12 /* DaemonRuntime.swift */; };
+		2D1694EDDC49793FEFDCF4AC /* SleepActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92CB25B7BDA5E31175D64D78 /* SleepActivityCoordinator.swift */; };
 		396053332283B492826B2578 /* CliveCore in Frameworks */ = {isa = PBXBuildFile; productRef = AD86DDA4593CF8E09639B401 /* CliveCore */; };
 		3D8CB484C0770FF989E95D96 /* PrivateNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14F1B5D289F1CD03443BC423 /* PrivateNetwork.swift */; };
+		440526ADD77D5FD7BECCB7FE /* TerminalSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ADB5F3020B56DCE5D594ECD /* TerminalSessionManager.swift */; };
 		4A273BACE52B344372D1034A /* SessionConnectionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6026A212B5A49BF048A5E5 /* SessionConnectionHandler.swift */; };
 		4E5F9C9AB681A234079A8C35 /* CliveMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A7AD6C352410458758EE1AF /* CliveMacApp.swift */; };
 		4F84257196156BE658731677 /* CliveSecurity in Frameworks */ = {isa = PBXBuildFile; productRef = B1153053DBF0B84B6A1D49C5 /* CliveSecurity */; };
@@ -46,11 +48,13 @@
 		19ED034604541733F7FF5C01 /* PairingOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingOperation.swift; sourceTree = "<group>"; };
 		1D6026A212B5A49BF048A5E5 /* SessionConnectionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionConnectionHandler.swift; sourceTree = "<group>"; };
 		20E73BE94064626B198C223E /* MacRendezvousController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRendezvousController.swift; sourceTree = "<group>"; };
+		3ADB5F3020B56DCE5D594ECD /* TerminalSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSessionManager.swift; sourceTree = "<group>"; };
 		3E6F5B7F4A44D0E02F2491F1 /* PTYProcess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PTYProcess.swift; sourceTree = "<group>"; };
 		434F967B0B54B09488D75A9C /* PairingConnectionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingConnectionHandler.swift; sourceTree = "<group>"; };
 		5F07FA8A8BC51A16A770C37C /* DaemonState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonState.swift; sourceTree = "<group>"; };
 		75EC5A92E9B1309DCB3F1727 /* PublicNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicNetwork.swift; sourceTree = "<group>"; };
 		890F935BD95C5F530A2C09EE /* RouterPortMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterPortMapperTests.swift; sourceTree = "<group>"; };
+		92CB25B7BDA5E31175D64D78 /* SleepActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepActivityCoordinator.swift; sourceTree = "<group>"; };
 		9CA07D1DAE49FAD94729A772 /* TerminalQRCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalQRCode.swift; sourceTree = "<group>"; };
 		AF16C5B4A36564967CA5517D /* SecureListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureListener.swift; sourceTree = "<group>"; };
 		B313E66C117656DA2DE5B09D /* TLSIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TLSIdentityStore.swift; sourceTree = "<group>"; };
@@ -138,7 +142,9 @@
 				D4574D9F81A70AEE17EC35C1 /* RouterPortMapper.swift */,
 				AF16C5B4A36564967CA5517D /* SecureListener.swift */,
 				1D6026A212B5A49BF048A5E5 /* SessionConnectionHandler.swift */,
+				92CB25B7BDA5E31175D64D78 /* SleepActivityCoordinator.swift */,
 				9CA07D1DAE49FAD94729A772 /* TerminalQRCode.swift */,
+				3ADB5F3020B56DCE5D594ECD /* TerminalSessionManager.swift */,
 				B313E66C117656DA2DE5B09D /* TLSIdentityStore.swift */,
 			);
 			name = CliveDaemon;
@@ -256,8 +262,10 @@
 				81E9DC6FAD325B1D745DB8E9 /* RouterPortMapper.swift in Sources */,
 				67D9B44850939B2C59EE7B02 /* SecureListener.swift in Sources */,
 				4A273BACE52B344372D1034A /* SessionConnectionHandler.swift in Sources */,
+				2D1694EDDC49793FEFDCF4AC /* SleepActivityCoordinator.swift in Sources */,
 				0A8E269A6A73014FC087BEB9 /* TLSIdentityStore.swift in Sources */,
 				F24ABE5C0A8DD27DF5266CD0 /* TerminalQRCode.swift in Sources */,
+				440526ADD77D5FD7BECCB7FE /* TerminalSessionManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

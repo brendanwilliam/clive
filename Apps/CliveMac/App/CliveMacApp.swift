@@ -164,6 +164,7 @@ struct CliveMacApp: App {
                 Text("Clive — CLI for iOS").font(.headline)
                 Toggle("Allow connection over cellular", isOn: Binding(get: { model.status.enabled }, set: { model.setCellular($0) }))
                 Text(stateLabel).foregroundStyle(.secondary)
+                Text("Active terminal I/O keeps idle system sleep off for up to 30 minutes. Display sleep and explicit Sleep are unaffected.").font(.caption).foregroundStyle(.secondary)
                 if let message = model.status.diagnostic ?? model.errorMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
                 Divider()
                 if model.devices.isEmpty { Text("No paired iPhones").foregroundStyle(.secondary) }
