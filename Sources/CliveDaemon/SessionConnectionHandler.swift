@@ -43,7 +43,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
         guard !closed else { return }; closed = true
         framed?.cancel(); framed = nil
         if let clientSessionID {
-            if terminateSession { sessions.close(deviceID: deviceID, clientSessionID: clientSessionID) }
+            if terminateSession { sessions.close(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier) }
             else { sessions.detach(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier) }
         }
         onClosed(identifier)
@@ -121,9 +121,25 @@ final class SessionConnectionHandler: @unchecked Sendable {
         guard !closed else { return }
         do {
             opening = false
-            let attachment = try sessions.attach(deviceID: deviceID, clientSessionID: request.clientSessionID, size: request.initialSize, workingDirectory: request.workingDirectory, attachmentID: identifier) { [weak self] bytes in
-                self?.queue.async { self?.sendOutput(bytes) }
-            }
+            let attachment = try sessions.attach(
+                deviceID: deviceID,
+                clientSessionID: request.clientSessionID,
+                size: request.initialSize,
+                workingDirectory: request.workingDirectory,
+                attachmentID: identifier,
+                output: { [weak self] bytes, completion in
+                    guard let self else { completion(); return }
+                    self.queue.async { self.sendOutput(bytes, completion: completion) }
+                },
+                onSuperseded: { [weak self] in
+                    guard let self else { return }
+                    self.queue.async { self.close() }
+                },
+                onShellExit: { [weak self] in
+                    guard let self else { return }
+                    self.queue.async { self.shellExited() }
+                }
+            )
             clientSessionID = request.clientSessionID; sessionID = attachment.serverSessionID
             let data = try ProtocolPayload.encode(SessionOpened(serverSessionID: attachment.serverSessionID, rendezvousCapability: localCapability, disposition: attachment.disposition, replayTruncated: attachment.replayTruncated))
             framed?.send(ProtocolFrame(kind: .sessionOpened, payload: data))
@@ -137,9 +153,14 @@ final class SessionConnectionHandler: @unchecked Sendable {
         }
     }
 
-    private func sendOutput(_ bytes: Data) {
+    private func sendOutput(_ bytes: Data, completion: @escaping @Sendable () -> Void) {
+        guard !closed else { completion(); return }
+        framed?.send(ProtocolFrame(kind: .terminalOutput, payload: bytes)) { _ in completion() }
+    }
+
+    private func shellExited() {
         guard !closed else { return }
-        framed?.send(ProtocolFrame(kind: .terminalOutput, payload: bytes))
+        framed?.send(ProtocolFrame(kind: .sessionClose)) { [weak self] _ in self?.close() }
     }
 
     private func fail(_ code: SessionError.Code, _ message: String) {

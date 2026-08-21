@@ -19,7 +19,22 @@ enum PTYProcessError: LocalizedError {
 
 /// Owns one login shell and its pseudo-terminal. It deliberately has no persistence:
 /// closing the network session closes this object and sends SIGHUP to the shell process group.
-final class PTYProcess: @unchecked Sendable {
+protocol TerminalProcess: AnyObject, Sendable {
+    func write(_ bytes: Data) throws
+    func resize(to size: TerminalSize)
+    func suspendOutput()
+    func resumeOutput()
+    func terminate()
+}
+
+typealias TerminalProcessFactory = @Sendable (
+    _ size: TerminalSize,
+    _ workingDirectory: String?,
+    _ output: @escaping @Sendable (Data) -> Void,
+    _ onExit: @escaping @Sendable () -> Void
+) throws -> any TerminalProcess
+
+final class PTYProcess: TerminalProcess, @unchecked Sendable {
     let pid: pid_t
     private let masterFD: Int32
     private let readSource: DispatchSourceRead
