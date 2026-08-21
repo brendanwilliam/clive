@@ -55,7 +55,19 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Select Xcode 26.5
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+        run: |
+          test -x "${DEVELOPER_DIR}/usr/bin/xcodebuild" || {
+            echo "::error::Pinned Xcode is unavailable at ${DEVELOPER_DIR}"
+            exit 1
+          }
+          xcodebuild -version
+
       - name: Verify both platforms
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
         run: ./scripts/verify-local.sh
 
   macos:
