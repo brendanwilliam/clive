@@ -8,6 +8,8 @@ Terminal input, output, shell state, private keys, and PTYs never transit CloudK
 
 Configure the same CloudKit container and signing team in both apps' `Local.xcconfig` files. Deploy and promote the CloudKit schema before release. Existing pairs must connect once over LAN or their private VPN to exchange rendezvous keys and verify the same Apple Account.
 
-Phase 1 automatically advertises globally routable IPv6. Without one, the companion reports **Configuration required**; an explicitly forwarded hostname and port is a development/private-beta fallback. IPv4 NAT traversal, CGNAT bypass, reliable wake of a terminated app, and relays are not provided.
+The companion first advertises globally routable IPv6. With explicit owner consent it can instead request a leased TCP mapping using PCP, then NAT-PMP; UPnP is not used. Unsupported routers fall back to a guided manual TCP-forwarding rule and a public hostname or address. Private/shared external addresses are reported as possible double NAT or CGNAT; Clive does not bypass CGNAT and still provides no relay.
+
+Both the menu-bar **Set Up Cellular Access** window and `clive cellular setup` drive the same daemon-owned configuration. The listener defaults to stable port `64236`, while the router may allocate a different external port. A setup is not reported as available until a paired iPhone, with Wi-Fi off, completes a challenge-bound mutual-TLS probe through the advertised route. The probe validates the rotating WAN gate but never creates a PTY or shell.
 
 Disabling cellular access or revoking a phone invalidates local gate tokens before CloudKit deletion. Cached records cannot open a new WAN shell. Network loss always closes the PTY; retrying creates a new shell.

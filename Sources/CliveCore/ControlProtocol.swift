@@ -1,7 +1,20 @@
 import Foundation
 
 public enum ControlCommand: String, Codable, Sendable {
-    case pair, status, revoke, stop, approvePairing, cancelPairing, setCellularAccess
+    case pair, status, revoke, stop, approvePairing, cancelPairing, setCellularAccess, configureCellular, beginCellularVerification
+}
+
+public enum CellularEndpointMode: String, Codable, Equatable, Sendable { case automatic, manual }
+
+public struct CellularConfiguration: Codable, Equatable, Sendable {
+    public let listenerPort: UInt16
+    public let endpointMode: CellularEndpointMode
+    public let manualEndpoint: RemoteEndpoint?
+    public let allowsRouterMapping: Bool
+    public init(listenerPort: UInt16 = 64236, endpointMode: CellularEndpointMode = .automatic, manualEndpoint: RemoteEndpoint? = nil, allowsRouterMapping: Bool = false) {
+        self.listenerPort = listenerPort; self.endpointMode = endpointMode
+        self.manualEndpoint = manualEndpoint; self.allowsRouterMapping = allowsRouterMapping
+    }
 }
 
 public struct ControlRequest: Codable, Equatable, Sendable {
@@ -10,13 +23,15 @@ public struct ControlRequest: Codable, Equatable, Sendable {
     public let approved: Bool?
     public let cellularEnabled: Bool?
     public let manualEndpoint: RemoteEndpoint?
+    public let cellularConfiguration: CellularConfiguration?
 
-    public init(command: ControlCommand, deviceID: String? = nil, approved: Bool? = nil, cellularEnabled: Bool? = nil, manualEndpoint: RemoteEndpoint? = nil) {
+    public init(command: ControlCommand, deviceID: String? = nil, approved: Bool? = nil, cellularEnabled: Bool? = nil, manualEndpoint: RemoteEndpoint? = nil, cellularConfiguration: CellularConfiguration? = nil) {
         self.command = command
         self.deviceID = deviceID
         self.approved = approved
         self.cellularEnabled = cellularEnabled
         self.manualEndpoint = manualEndpoint
+        self.cellularConfiguration = cellularConfiguration
     }
 }
 
@@ -67,15 +82,21 @@ public struct ControlResponse: Codable, Equatable, Sendable {
     }
 }
 
-public enum CellularAccessState: String, Codable, Equatable, Sendable { case disabled, preparing, available, configurationRequired, blocked }
+public enum CellularAccessState: String, Codable, Equatable, Sendable { case disabled, preparing, verifying, available, configurationRequired, blocked }
 
 public struct CellularAccessStatus: Codable, Equatable, Sendable {
     public let enabled: Bool
     public let state: CellularAccessState
     public let diagnostic: String?
     public let publishedUntil: Date?
-    public init(enabled: Bool, state: CellularAccessState, diagnostic: String? = nil, publishedUntil: Date? = nil) {
+    public let configuration: CellularConfiguration?
+    public let advertisedEndpoint: RemoteEndpoint?
+    public let verifiedAt: Date?
+    public let mappingMethod: String?
+    public init(enabled: Bool, state: CellularAccessState, diagnostic: String? = nil, publishedUntil: Date? = nil, configuration: CellularConfiguration? = nil, advertisedEndpoint: RemoteEndpoint? = nil, verifiedAt: Date? = nil, mappingMethod: String? = nil) {
         self.enabled = enabled; self.state = state; self.diagnostic = diagnostic; self.publishedUntil = publishedUntil
+        self.configuration = configuration; self.advertisedEndpoint = advertisedEndpoint; self.verifiedAt = verifiedAt
+        self.mappingMethod = mappingMethod
     }
 }
 

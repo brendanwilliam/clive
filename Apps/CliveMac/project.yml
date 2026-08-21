@@ -42,3 +42,24 @@ targets:
         product: CliveSecurity
       - package: Clive
         product: CliveCloud
+  CliveMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources: [Tests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Clive.app/Contents/MacOS/Clive"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: CliveMac
+schemes:
+  CliveMac:
+    build:
+      targets:
+        CliveMac: all
+        CliveMacTests: [test]
+    test:
+      targets:
+        - CliveMacTests

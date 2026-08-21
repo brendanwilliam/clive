@@ -55,12 +55,25 @@ public struct RendezvousAdvertisement: Codable, Equatable, Sendable {
     public let generation: UUID
     public let gateToken: Data
     public let endpoints: [RendezvousEndpoint]
-    public init(generation: UUID, gateToken: Data, endpoints: [RendezvousEndpoint]) { self.generation = generation; self.gateToken = gateToken; self.endpoints = endpoints }
+    public let verificationChallenge: UUID?
+    public init(generation: UUID, gateToken: Data, endpoints: [RendezvousEndpoint], verificationChallenge: UUID? = nil) {
+        self.generation = generation; self.gateToken = gateToken; self.endpoints = endpoints
+        self.verificationChallenge = verificationChallenge
+    }
 }
 
 public struct RendezvousReachabilityHint: Codable, Equatable, Sendable {
     public let requestID: UUID
     public init(requestID: UUID = UUID()) { self.requestID = requestID }
+}
+
+public struct RendezvousReachabilityResult: Codable, Equatable, Sendable {
+    public let challenge: UUID
+    public let succeeded: Bool
+    public let diagnostic: String?
+    public init(challenge: UUID, succeeded: Bool, diagnostic: String? = nil) {
+        self.challenge = challenge; self.succeeded = succeeded; self.diagnostic = diagnostic
+    }
 }
 
 public struct WANGateRegistry: Sendable {

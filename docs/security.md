@@ -15,6 +15,8 @@ Bonjour and the LAN are untrusted. The QR code is an out-of-band authorization c
 
 WAN, CloudKit records, APNs hints, endpoint metadata, and Apple Account membership are untrusted for terminal authorization. Cellular advertisements are encrypted and signed per paired phone, expire after five minutes, and carry replay metadata plus a random WAN gate token. Non-private inbound connections require that token in addition to pinned mutual TLS; disable and revocation invalidate tokens locally before cloud cleanup.
 
+Automatic router configuration is owner-approved, TCP-only, limited to the configured listener port, and uses finite PCP or NAT-PMP leases. Clive removes the mapping on disable and attempts removal during clean shutdown; a crash can leave it present only until lease expiry. The open port alone grants no access because mutual certificate authentication and the current WAN gate remain mandatory.
+
 - TLS 1.3 and mutual certificate authentication protect every session.
 - Pairing QR codes are single-use, short-lived, and require a local Mac-user confirmation.
 - The iOS app requires biometrics before initiating or resuming a connection.

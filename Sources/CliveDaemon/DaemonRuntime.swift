@@ -6,6 +6,7 @@ import Security
 final class DaemonRuntime: @unchecked Sendable {
     private let lock = NSLock()
     private let identity: SecIdentity
+    private let paths: RuntimePaths
     private let identityStore: TLSIdentityStore
     private let state: DaemonState
     private let trustStore: TrustStore
@@ -13,6 +14,7 @@ final class DaemonRuntime: @unchecked Sendable {
     private let registry = SessionRegistry()
     private let peerTrust = PeerTrustCache()
     private var sessionListener: SecureListener?
+    private var configuredListenerPort: UInt16
     private var controlServer: ControlSocketServer?
     private var pairing: PairingOperation?
     private var handlers: [UUID: (deviceID: String, handler: SessionConnectionHandler)] = [:]
@@ -22,16 +24,22 @@ final class DaemonRuntime: @unchecked Sendable {
     private let onStopped: @Sendable () -> Void
 
     init(paths: RuntimePaths, onStopped: @escaping @Sendable () -> Void) throws {
+        self.paths = paths
         identityStore = TLSIdentityStore(baseURL: paths.baseURL)
         identity = try identityStore.loadOrCreate()
         state = try DaemonState.loadOrCreate(url: paths.stateURL)
         trustStore = try TrustStore(url: paths.pairingStoreURL)
         rendezvous = try MacRendezvousController(state: state, trustStore: trustStore, baseURL: paths.baseURL)
+        configuredListenerPort = state.effectiveListenerPort
         self.onStopped = onStopped
         controlServer = try ControlSocketServer(url: paths.controlSocketURL) { [weak self] request, channel in
             await self?.handle(request, channel: channel)
         }
-        sessionListener = try SecureListener(identity: identity, port: state.remoteEndpoint?.port, serviceID: state.serviceID, peerTrust: peerTrust, onReady: { [remoteEndpoint = state.remoteEndpoint, rendezvous] port in
+        sessionListener = try makeSessionListener(port: state.effectiveListenerPort)
+    }
+
+    private func makeSessionListener(port: UInt16) throws -> SecureListener {
+        try SecureListener(identity: identity, port: port, serviceID: state.serviceID, peerTrust: peerTrust, onReady: { [remoteEndpoint = state.remoteEndpoint, rendezvous] port in
             if let remoteEndpoint {
                 print("clive listening on private VPN port \(port) for \(remoteEndpoint.host).")
             } else {
@@ -100,7 +108,31 @@ final class DaemonRuntime: @unchecked Sendable {
                 try await rendezvous.setEnabled(enabled, manualEndpoint: request.manualEndpoint)
                 try channel.send(ControlResponse(success: true, cellularStatus: await rendezvous.status()))
             } catch { try? channel.send(ControlResponse(success: false, message: error.localizedDescription, cellularStatus: await rendezvous.status())) }
+        case .configureCellular:
+            guard let configuration = request.cellularConfiguration else { try? channel.send(ControlResponse(success: false, message: "Cellular configuration is required.")); return }
+            do {
+                try await applyCellularConfiguration(configuration)
+                try channel.send(ControlResponse(success: true, cellularStatus: await rendezvous.status()))
+            } catch { try? channel.send(ControlResponse(success: false, message: error.localizedDescription, cellularStatus: await rendezvous.status())) }
+        case .beginCellularVerification:
+            do {
+                try await rendezvous.beginVerification()
+                try channel.send(ControlResponse(success: true, cellularStatus: await rendezvous.status()))
+            } catch { try? channel.send(ControlResponse(success: false, message: error.localizedDescription, cellularStatus: await rendezvous.status())) }
         }
+    }
+
+    private func applyCellularConfiguration(_ configuration: CellularConfiguration) async throws {
+        try await rendezvous.configure(configuration)
+        guard configuredListenerPort != configuration.listenerPort else {
+            if await rendezvous.status().enabled { try await rendezvous.setEnabled(true, manualEndpoint: configuration.manualEndpoint) }
+            return
+        }
+        let replacement = try makeSessionListener(port: configuration.listenerPort)
+        try DaemonState.updateListenerPort(url: paths.stateURL, port: configuration.listenerPort)
+        let old = sessionListener; sessionListener = replacement
+        configuredListenerPort = configuration.listenerPort
+        replacement.start(); old?.cancel()
     }
 
     private func refreshTrust() async {
@@ -117,6 +149,8 @@ final class DaemonRuntime: @unchecked Sendable {
             await rendezvous?.pairingChanged()
         }, revokePeer: { [weak self] deviceID, requestingHandlerID in
             await self?.revokeFromPhone(deviceID: deviceID, requestingHandlerID: requestingHandlerID) == true
+        }, verifyReachability: { [weak rendezvous] deviceID, challenge, token in
+            await rendezvous?.validateVerification(deviceID: deviceID, challenge: challenge, token: token) == true
         }, onClosed: { [weak self] id in
             _ = self?.lock.withLock {
                 self?.handlers.removeValue(forKey: id)
@@ -165,7 +199,7 @@ final class DaemonRuntime: @unchecked Sendable {
         sessionListener?.cancel(); controlServer?.stop()
         let active = lock.withLock { handlers.values.map(\.handler) }
         active.forEach { $0.close() }
-        onStopped()
+        Task { [rendezvous, onStopped] in await rendezvous.shutdown(); onStopped() }
     }
 }
 

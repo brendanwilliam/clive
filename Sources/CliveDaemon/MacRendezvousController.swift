@@ -5,7 +5,22 @@ import CliveSecurity
 import Security
 
 actor MacRendezvousController {
-    private struct Settings: Codable { var enabled = false; var manualEndpoint: RemoteEndpoint? }
+    private struct Settings: Codable {
+        var enabled = false
+        var manualEndpoint: RemoteEndpoint?
+        var endpointMode = CellularEndpointMode.automatic
+        var allowsRouterMapping = false
+
+        enum CodingKeys: String, CodingKey { case enabled, manualEndpoint, endpointMode, allowsRouterMapping }
+        init() {}
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+            manualEndpoint = try values.decodeIfPresent(RemoteEndpoint.self, forKey: .manualEndpoint)
+            endpointMode = try values.decodeIfPresent(CellularEndpointMode.self, forKey: .endpointMode) ?? (manualEndpoint == nil ? .automatic : .manual)
+            allowsRouterMapping = try values.decodeIfPresent(Bool.self, forKey: .allowsRouterMapping) ?? false
+        }
+    }
 
     private let state: DaemonState
     private let trustStore: TrustStore
@@ -18,6 +33,12 @@ actor MacRendezvousController {
     private var gates = WANGateRegistry()
     private var hintSequences: [String: UInt64] = [:]
     private var currentStatus = CellularAccessStatus(enabled: false, state: .disabled)
+    private var verificationChallenge: UUID?
+    private var verifiedAt: Date?
+    private var activeEndpoint: RemoteEndpoint?
+    private let routerMapper = RouterPortMapper()
+    private var routerMapping: RouterMapping?
+    private var mappingRenewal: Task<Void, Never>?
 
     init(state: DaemonState, trustStore: TrustStore, baseURL: URL) throws {
         self.state = state; self.trustStore = trustStore
@@ -58,20 +79,51 @@ actor MacRendezvousController {
 
     func status() -> CellularAccessStatus { currentStatus }
 
+    func configuration() -> CellularConfiguration {
+        CellularConfiguration(listenerPort: listenerPort ?? state.effectiveListenerPort, endpointMode: settings.endpointMode, manualEndpoint: settings.manualEndpoint, allowsRouterMapping: settings.allowsRouterMapping)
+    }
+
+    func configure(_ configuration: CellularConfiguration) throws {
+        guard configuration.listenerPort > 0 else { throw CellularSetupError.invalidPort }
+        if configuration.endpointMode == .manual { try Self.validate(configuration.manualEndpoint) }
+        settings.endpointMode = configuration.endpointMode
+        settings.manualEndpoint = configuration.manualEndpoint
+        settings.allowsRouterMapping = configuration.allowsRouterMapping
+        removeRouterMapping()
+        verifiedAt = nil
+        try persistSettings()
+    }
+
+    func beginVerification() async throws {
+        guard settings.enabled else { throw CellularSetupError.notEnabled }
+        verificationChallenge = UUID(); verifiedAt = nil
+        currentStatus = makeStatus(state: .verifying, diagnostic: "Open Clive on the paired iPhone using cellular data to verify this connection.")
+        await publishAll()
+    }
+
+    func validateVerification(deviceID: String, challenge: UUID, token: Data?) -> Bool {
+        guard challenge == verificationChallenge, gates.validate(deviceID: deviceID, token: token) else { return false }
+        verificationChallenge = nil; verifiedAt = .now
+        currentStatus = makeStatus(state: .available, diagnostic: nil)
+        Task { await publishAll() }
+        return true
+    }
+
     func setEnabled(_ enabled: Bool, manualEndpoint: RemoteEndpoint?) async throws {
         if enabled && cloud == nil { throw CloudRendezvousError.entitlementUnavailable }
-        if !enabled { gates.invalidateAll() }
+        if !enabled { gates.invalidateAll(); removeRouterMapping() }
         settings.enabled = enabled
         if let manualEndpoint { settings.manualEndpoint = manualEndpoint }
         try persistSettings()
         if enabled { gates.invalidateAll() }
         if enabled {
             guard let cloud else { return }
-            currentStatus = CellularAccessStatus(enabled: true, state: .preparing)
+            currentStatus = makeStatus(state: .preparing)
             if accountBinding == nil { accountBinding = try await cloud.prepare() }
             await publishAll()
         } else {
-            currentStatus = CellularAccessStatus(enabled: false, state: .disabled)
+            verificationChallenge = nil; verifiedAt = nil; activeEndpoint = nil
+            currentStatus = makeStatus(state: .disabled)
             await deleteAllRecords()
         }
     }
@@ -96,6 +148,13 @@ actor MacRendezvousController {
                 hintSequences[device.id] = envelope.sequence; receivedValidHint = true
             }
             try? await cloud.delete(recordName: name)
+            let resultName = RendezvousCrypto.recordName(macID: state.macID, deviceID: device.id, purpose: "verification-result")
+            if let envelope = try? await cloud.fetch(recordName: resultName),
+               let result = try? RendezvousCrypto.open(envelope, as: RendezvousReachabilityResult.self, recipientID: state.macID, recipientAgreementKey: keys.agreementPrivateKey, senderSigningKey: peer.keys.signing),
+               result.challenge == verificationChallenge, !result.succeeded {
+                currentStatus = makeStatus(state: .configurationRequired, diagnostic: result.diagnostic ?? "The iPhone could not reach this Mac over cellular.")
+            }
+            try? await cloud.delete(recordName: resultName)
         }
         if receivedValidHint { await publishAll() }
     }
@@ -109,17 +168,33 @@ actor MacRendezvousController {
         currentStatus = CellularAccessStatus(enabled: settings.enabled, state: settings.enabled ? .blocked : .disabled, diagnostic: "The iCloud account changed. Connect locally to verify the same Apple Account.")
     }
 
+    func shutdown() { removeRouterMapping() }
+
     private func publishAll() async {
         guard settings.enabled, let cloud, let listenerPort, let accountBinding else { return }
         var endpoints = PublicNetwork.publicIPv6Addresses().map { RendezvousEndpoint(host: $0, port: listenerPort, kind: .publicIPv6) }
-        if let manual = settings.manualEndpoint ?? state.remoteEndpoint {
+        var mappingFailure: String?
+        if endpoints.isEmpty, settings.endpointMode == .automatic, settings.allowsRouterMapping {
+            do {
+                let mapping = try routerMapping ?? routerMapper.open(internalPort: listenerPort)
+                routerMapping = mapping; scheduleRenewal(mapping)
+                endpoints.append(.init(host: mapping.host, port: mapping.externalPort, kind: .manualPublicEndpoint))
+            } catch { mappingFailure = error.localizedDescription }
+        }
+        if settings.endpointMode == .manual, let manual = settings.manualEndpoint {
             endpoints.append(.init(host: manual.host, port: manual.port, kind: .manualPublicEndpoint))
+        } else if let remote = state.remoteEndpoint {
+            endpoints.append(.init(host: remote.host, port: remote.port, kind: .manualPublicEndpoint))
         }
         guard !endpoints.isEmpty else {
+            activeEndpoint = nil
             gates.invalidateAll()
-            currentStatus = CellularAccessStatus(enabled: true, state: .configurationRequired, diagnostic: "No public IPv6 address is available. Configure a private-beta public hostname and forwarded port.")
+            let local = PrivateNetwork.eligibleAddresses().first ?? "this Mac's LAN address"
+            let fallback = "Forward TCP port \(listenerPort) to \(local):\(listenerPort), then enter the public hostname or address."
+            currentStatus = makeStatus(state: .configurationRequired, diagnostic: [mappingFailure, fallback].compactMap { $0 }.joined(separator: " "))
             return
         }
+        if let first = endpoints.first { activeEndpoint = RemoteEndpoint(host: first.host, port: first.port) }
         let devices = await trustStore.all()
         let expiry = Date.now.addingTimeInterval(300)
         var published = 0
@@ -127,7 +202,7 @@ actor MacRendezvousController {
             guard let capability = device.rendezvousCapability, capability.accountBinding == accountBinding else { continue }
             do {
                 let token = randomToken(); let generation = UUID()
-                let advertisement = RendezvousAdvertisement(generation: generation, gateToken: token, endpoints: endpoints)
+                let advertisement = RendezvousAdvertisement(generation: generation, gateToken: token, endpoints: endpoints, verificationChallenge: verificationChallenge)
                 let sequence = UInt64(Date.now.timeIntervalSince1970 * 1_000)
                 let envelope = try RendezvousCrypto.seal(advertisement, senderID: state.macID, recipientID: device.id, sequence: sequence, expiresAt: expiry, recipientAgreementKey: capability.keys.agreement, senderSigningKey: keys.signingPrivateKey)
                 let name = RendezvousCrypto.recordName(macID: state.macID, deviceID: device.id, purpose: "endpoint")
@@ -136,11 +211,10 @@ actor MacRendezvousController {
             } catch { /* Other paired devices remain independently usable. */ }
         }
         if published > 0 {
-            currentStatus = CellularAccessStatus(enabled: true, state: .available, publishedUntil: expiry)
-        } else if state.remoteEndpoint != nil {
-            currentStatus = CellularAccessStatus(enabled: true, state: .available)
+            let state: CellularAccessState = verifiedAt == nil ? .configurationRequired : .available
+            currentStatus = makeStatus(state: state, diagnostic: verifiedAt == nil ? "Cellular route configured. Verify it from the paired iPhone." : nil, publishedUntil: expiry)
         } else {
-            currentStatus = CellularAccessStatus(enabled: true, state: .configurationRequired, diagnostic: "A paired iPhone must connect locally once to verify its iCloud account and upgrade rendezvous keys.")
+            currentStatus = makeStatus(state: .configurationRequired, diagnostic: "A paired iPhone must connect locally once to verify its iCloud account and upgrade rendezvous keys.")
         }
     }
 
@@ -158,6 +232,44 @@ actor MacRendezvousController {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsURL.path)
     }
 
+    private func scheduleRenewal(_ mapping: RouterMapping) {
+        mappingRenewal?.cancel()
+        guard mapping.lifetime > 0 else { return }
+        mappingRenewal = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(60, mapping.lifetime / 2)))
+            guard !Task.isCancelled, let self else { return }
+            await self.renewRouterMapping(mapping)
+        }
+    }
+
+    private func renewRouterMapping(_ previous: RouterMapping) async {
+        guard settings.enabled, settings.allowsRouterMapping else { return }
+        do {
+            let renewed = try routerMapper.open(internalPort: previous.internalPort, suggestedExternalPort: previous.externalPort)
+            routerMapping = renewed; scheduleRenewal(renewed); await publishAll()
+        } catch {
+            routerMapping = nil
+            currentStatus = makeStatus(state: .configurationRequired, diagnostic: "The automatic router mapping expired. \(error.localizedDescription)")
+        }
+    }
+
+    private func removeRouterMapping() {
+        mappingRenewal?.cancel(); mappingRenewal = nil
+        if let routerMapping { routerMapper.close(routerMapping) }
+        routerMapping = nil
+    }
+
+    private func makeStatus(state statusState: CellularAccessState, diagnostic: String? = nil, publishedUntil: Date? = nil) -> CellularAccessStatus {
+        let endpoint = activeEndpoint ?? settings.manualEndpoint ?? state.remoteEndpoint
+        return CellularAccessStatus(enabled: settings.enabled, state: statusState, diagnostic: diagnostic, publishedUntil: publishedUntil, configuration: configuration(), advertisedEndpoint: endpoint, verifiedAt: verifiedAt, mappingMethod: routerMapping?.method.rawValue)
+    }
+
+    private static func validate(_ endpoint: RemoteEndpoint?) throws {
+        guard let endpoint else { throw CellularSetupError.manualEndpointRequired }
+        let host = endpoint.host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, host.count <= 255, !host.contains(where: { $0.isWhitespace || $0 == "/" }) else { throw CellularSetupError.invalidHost }
+    }
+
     private func randomToken() -> Data {
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return Data(UUID().uuidString.utf8) }
@@ -169,5 +281,17 @@ actor MacRendezvousController {
               let services = SecTaskCopyValueForEntitlement(task, "com.apple.developer.icloud-services" as CFString, nil) as? [String]
         else { return false }
         return services.contains("CloudKit") || services.contains("CloudKit-Anonymous")
+    }
+}
+
+enum CellularSetupError: LocalizedError {
+    case invalidPort, manualEndpointRequired, invalidHost, notEnabled
+    var errorDescription: String? {
+        switch self {
+        case .invalidPort: "Choose a listener port between 1 and 65535."
+        case .manualEndpointRequired: "Enter the public hostname or address and forwarded port."
+        case .invalidHost: "The public hostname or address is invalid."
+        case .notEnabled: "Enable cellular access before testing it."
+        }
     }
 }

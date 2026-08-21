@@ -41,8 +41,14 @@ struct CliveDaemon {
             try runOneShot(.init(command: .revoke, deviceID: arguments[1]))
         case "stop": try runOneShot(.init(command: .stop))
         case "cellular":
-            guard arguments.count == 2, let enabled = ["on": true, "off": false][arguments[1]] else { throw CommandError.usage }
-            try runCellularCommand(enabled: enabled)
+            guard arguments.count >= 2 else { throw CommandError.usage }
+            switch arguments[1] {
+            case "on" where arguments.count == 2: try runCellularCommand(enabled: true)
+            case "off" where arguments.count == 2: try runCellularCommand(enabled: false)
+            case "setup": try runCellularSetup(arguments: Array(arguments.dropFirst(2)))
+            case "test" where arguments.count == 2: try runCellularTest()
+            default: throw CommandError.usage
+            }
         case "shell": try requireInteractiveTerminal(); try runLocalShell()
         case "help", "--help", "-h": print(usage)
         default: throw CommandError.usage
@@ -87,6 +93,69 @@ struct CliveDaemon {
             throw CommandError.remote("\(response.message!) Stop the foreground daemon with `clive stop`, then retry so the signed companion can start.")
         }
         try printResponse(response)
+        if enabled, response.cellularStatus?.state == .configurationRequired { print("Run `clive cellular setup` to finish configuration.") }
+    }
+
+    private static func runCellularSetup(arguments: [String]) throws {
+        let configuration: CellularConfiguration
+        if arguments.contains("--automatic") {
+            guard arguments.count == 1 else { throw CommandError.usage }
+            configuration = CellularConfiguration(endpointMode: .automatic, allowsRouterMapping: true)
+        } else if arguments.contains("--manual") {
+            guard let host = option("--host", in: arguments), let portText = option("--external-port", in: arguments), let port = UInt16(portText), port > 0 else { throw CommandError.usage }
+            let listenerPort = option("--listener-port", in: arguments).flatMap(UInt16.init) ?? 64236
+            configuration = CellularConfiguration(listenerPort: listenerPort, endpointMode: .manual, manualEndpoint: .init(host: host, port: port))
+        } else {
+            guard arguments.isEmpty else { throw CommandError.usage }
+            try requireInteractiveTerminal()
+            print("Clive can try a temporary TCP mapping using PCP or NAT-PMP. It will not use UPnP.")
+            print("Allow Clive to request this router mapping? [Y/n]: ", terminator: "")
+            let answer = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+            if answer.isEmpty || answer == "y" || answer == "yes" {
+                configuration = CellularConfiguration(endpointMode: .automatic, allowsRouterMapping: true)
+            } else {
+                print("Public hostname or address: ", terminator: ""); guard let host = readLine(), !host.isEmpty else { throw CommandError.usage }
+                print("External TCP port [64236]: ", terminator: ""); let port = UInt16(readLine() ?? "") ?? 64236
+                configuration = CellularConfiguration(endpointMode: .manual, manualEndpoint: .init(host: host, port: port))
+            }
+        }
+        _ = try sendThroughCompanion(.init(command: .configureCellular, cellularConfiguration: configuration))
+        let enabled = try sendThroughCompanion(.init(command: .setCellularAccess, cellularEnabled: true))
+        try printResponse(enabled)
+        guard enabled.cellularStatus?.advertisedEndpoint != nil || enabled.cellularStatus?.state != .configurationRequired else {
+            print(enabled.cellularStatus?.diagnostic ?? "Router configuration is required."); return
+        }
+        try runCellularTest()
+    }
+
+    private static func runCellularTest() throws {
+        let response = try sendThroughCompanion(.init(command: .beginCellularVerification))
+        try printResponse(response)
+        print("On the paired iPhone, turn off Wi-Fi and open Clive. Waiting up to 90 seconds…")
+        let deadline = Date.now.addingTimeInterval(90)
+        while Date.now < deadline {
+            Thread.sleep(forTimeInterval: 2)
+            let status = try sendOneShot(.init(command: .status))
+            if status.cellularStatus?.state == .available { try printResponse(status); return }
+            if status.cellularStatus?.state == .configurationRequired, let diagnostic = status.cellularStatus?.diagnostic, !diagnostic.contains("Verify") {
+                throw CommandError.remote(diagnostic)
+            }
+        }
+        throw CommandError.remote("Verification timed out. Confirm Wi-Fi is off on the iPhone, open Clive, and retry `clive cellular test`.")
+    }
+
+    private static func sendThroughCompanion(_ request: ControlRequest) throws -> ControlResponse {
+        try CompanionStartupPolicy.run(
+            companionIsInstalled: FileManager.default.fileExists(atPath: "/Applications/Clive.app"),
+            launch: launchCompanionApp,
+            request: { try sendOneShot(request) },
+            isUnavailable: { $0 is ControlSocketError }
+        )
+    }
+
+    private static func option(_ name: String, in arguments: [String]) -> String? {
+        guard let index = arguments.firstIndex(of: name), index + 1 < arguments.count else { return nil }
+        return arguments[index + 1]
     }
 
     private static func runOneShot(_ request: ControlRequest) throws {
@@ -107,6 +176,7 @@ struct CliveDaemon {
         }
         if let cellular = response.cellularStatus {
             print("cellular=\(cellular.enabled ? "on" : "off") state=\(cellular.state.rawValue)\(cellular.diagnostic.map { " diagnostic=\($0)" } ?? "")")
+            if let endpoint = cellular.advertisedEndpoint { print("endpoint=\(endpoint.host):\(endpoint.port)\(cellular.mappingMethod.map { " mapping=\($0)" } ?? "")") }
         } else if let message = response.message { print(message) }
     }
 
@@ -150,6 +220,9 @@ struct CliveDaemon {
       revoke <device-id>
       stop
       cellular <on|off>
+      cellular setup [--automatic]
+      cellular setup --manual --host <hostname-or-ip> --external-port <port> [--listener-port <port>]
+      cellular test
       shell
     """
 
