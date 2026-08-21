@@ -198,8 +198,11 @@ actor MacRendezvousController {
         let devices = await trustStore.all()
         let expiry = Date.now.addingTimeInterval(300)
         var published = 0
+        var eligible = 0
+        var publicationFailure: String?
         for device in devices {
             guard let capability = device.rendezvousCapability, capability.accountBinding == accountBinding else { continue }
+            eligible += 1
             do {
                 let token = randomToken(); let generation = UUID()
                 let advertisement = RendezvousAdvertisement(generation: generation, gateToken: token, endpoints: endpoints, verificationChallenge: verificationChallenge)
@@ -208,13 +211,16 @@ actor MacRendezvousController {
                 let name = RendezvousCrypto.recordName(macID: state.macID, deviceID: device.id, purpose: "endpoint")
                 try await cloud.save(envelope, recordName: name, recordType: "RendezvousV1")
                 gates.issue(deviceID: device.id, token: token, expiresAt: expiry); published += 1
-            } catch { /* Other paired devices remain independently usable. */ }
+            } catch { publicationFailure = error.localizedDescription }
         }
         if published > 0 {
             let state: CellularAccessState = verifiedAt == nil ? .configurationRequired : .available
             currentStatus = makeStatus(state: state, diagnostic: verifiedAt == nil ? "Cellular route configured. Verify it from the paired iPhone." : nil, publishedUntil: expiry)
         } else {
-            currentStatus = makeStatus(state: .configurationRequired, diagnostic: "A paired iPhone must connect locally once to verify its iCloud account and upgrade rendezvous keys.")
+            let diagnostic = eligible > 0
+                ? "Clive could not publish the cellular route to iCloud. \(publicationFailure ?? "Try again shortly.")"
+                : "A paired iPhone must connect locally once to verify its iCloud account and upgrade rendezvous keys."
+            currentStatus = makeStatus(state: .configurationRequired, diagnostic: diagnostic)
         }
     }
 

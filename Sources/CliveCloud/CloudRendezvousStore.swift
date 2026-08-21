@@ -69,7 +69,17 @@ public final class CloudRendezvousStore: @unchecked Sendable {
     private func userRecordID() async throws -> CKRecord.ID { try await withCheckedThrowingContinuation { continuation in container.fetchUserRecordID { value, error in continuation.resume(with: error.map(Result.failure) ?? value.map(Result.success) ?? .failure(CloudRendezvousError.accountUnavailable)) } } }
     private func saveZone(_ zone: CKRecordZone) async throws -> CKRecordZone { try await withCheckedThrowingContinuation { continuation in database.save(zone) { value, error in continuation.resume(with: error.map(Result.failure) ?? value.map(Result.success) ?? .failure(CloudRendezvousError.malformedRecord)) } } }
     private func saveSubscription(_ subscription: CKSubscription) async throws -> CKSubscription { try await withCheckedThrowingContinuation { continuation in database.save(subscription) { value, error in continuation.resume(with: error.map(Result.failure) ?? value.map(Result.success) ?? .failure(CloudRendezvousError.malformedRecord)) } } }
-    private func saveRecord(_ record: CKRecord) async throws -> CKRecord { try await withCheckedThrowingContinuation { continuation in database.save(record) { value, error in continuation.resume(with: error.map(Result.failure) ?? value.map(Result.success) ?? .failure(CloudRendezvousError.malformedRecord)) } } }
+    private func saveRecord(_ record: CKRecord) async throws -> CKRecord {
+        try await withCheckedThrowingContinuation { continuation in
+            let operation = CKModifyRecordsOperation(recordsToSave: [record])
+            operation.savePolicy = .allKeys
+            operation.isAtomic = true
+            operation.modifyRecordsResultBlock = { result in
+                continuation.resume(with: result.map { record })
+            }
+            database.add(operation)
+        }
+    }
     private func fetchRecord(_ id: CKRecord.ID) async throws -> CKRecord { try await withCheckedThrowingContinuation { continuation in database.fetch(withRecordID: id) { value, error in continuation.resume(with: error.map(Result.failure) ?? value.map(Result.success) ?? .failure(CloudRendezvousError.malformedRecord)) } } }
     private func deleteRecord(_ id: CKRecord.ID) async throws -> CKRecord.ID { try await withCheckedThrowingContinuation { continuation in database.delete(withRecordID: id) { value, error in continuation.resume(with: error.map(Result.failure) ?? value.map(Result.success) ?? .failure(CloudRendezvousError.malformedRecord)) } } }
 }
