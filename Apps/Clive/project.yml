@@ -12,7 +12,10 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
-    sources: [App]
+    sources:
+      - App
+      - path: ../../Resources/AppIcon.icon
+        buildPhase: resources
     configFiles:
       Debug: Config/Base.xcconfig
       Release: Config/Release.xcconfig

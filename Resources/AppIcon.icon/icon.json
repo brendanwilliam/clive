@@ -1,0 +1,44 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.16114,0.23820,0.22630,1.00000",
+      "display-p3:0.00000,0.13033,0.11025,1.00000"
+    ]
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "blend-mode" : "normal",
+          "fill" : {
+            "solid" : "extended-srgb:0.00000,0.78431,0.70196,1.00000"
+          },
+          "image-name" : "clive-icon.svg",
+          "name" : "Clive",
+          "position" : {
+            "scale" : 1.41,
+            "translation-in-points" : [
+              283,
+              237
+            ]
+          }
+        }
+      ],
+      "name" : "Group",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
