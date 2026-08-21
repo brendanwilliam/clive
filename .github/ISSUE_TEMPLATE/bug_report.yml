@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a reproducible problem in Clive.
+title: "[Bug]: "
+labels: [triage]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include pairing secrets, hostnames, fingerprints, credentials, or terminal contents. Report security vulnerabilities privately.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options: [iOS app, macOS companion or CLI, protocol, other]
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include clear reproduction steps and the expected result.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Clive version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS/iOS versions, Mac/iPhone models, and connection type.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized diagnostics
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed sensitive and personally identifying data.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

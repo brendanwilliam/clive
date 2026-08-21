@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an improvement to Clive.
+title: "[Feature]: "
+labels: [triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user need or limitation should this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Security impact
+      options:
+        - label: I described any effect on pairing, trust, permissions, logging, CloudKit, cellular routing, or LAN exposure.
+          required: true

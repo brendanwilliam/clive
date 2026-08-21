@@ -1,100 +1,87 @@
 # Clive
 
-**Clive - CLI for iOS** is a lightweight, security-first way for developers and coding-agent users to access their Mac terminal from an iPhone.
+[![CI](https://github.com/brendanwilliam/clive/actions/workflows/verify.yml/badge.svg)](https://github.com/brendanwilliam/clive/actions/workflows/verify.yml)
+[![Release](https://img.shields.io/github/v/release/brendanwilliam/clive?include_prereleases)](https://github.com/brendanwilliam/clive/releases)
+![Platforms](https://img.shields.io/badge/platforms-iOS%2017%2B%20%7C%20macOS%2014%2B-0a84ff)
+![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
+[![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-The default is local-network only. An opt-in same-Apple-Account cellular mode publishes encrypted, short-lived direct-WAN rendezvous metadata through CloudKit; terminal traffic remains direct, mutually authenticated, and available only while the Mac companion is running.
+Securely access your Mac terminal from your iPhone, over your LAN or direct cellular connections.
 
-## Product shape
+Clive combines a native SwiftUI terminal client with a user-started macOS menu bar companion and CLI. Pair with a short-lived QR code, approve the Mac's displayed fingerprint, and open independently isolated terminal tabs over mutually authenticated TLS.
 
-- **iOS app:** SwiftUI terminal client with a touch-friendly terminal view, saved paired Macs, and Face ID/Touch ID protection.
-- **macOS companion:** a signed, user-started menu bar app that owns listeners and PTYs; `clive` is its local control client.
-- **Pairing:** the menu-bar app displays a short-lived QR code; scanning it creates a mutually authenticated device relationship.
+> [!WARNING]
+> Clive is prerelease software. It has not completed every physical-device release gate; do not rely on it for unattended or production access.
 
-## Prototype status
+![Clive on iPhone showing the biometric-cancellation recovery state](docs/assets/ios-authentication-cancelled.png)
 
-The end-to-end prototype is implemented: the foreground daemon owns its authenticated listeners and control socket, pairing is QR-pinned and locally approved, each iOS tab owns an independent mutually authenticated TLS/PTY session, and app backgrounding closes and obscures every terminal. Physical-device acceptance remains a required release gate.
+![Clive macOS companion showing sanitized disconnected state](docs/assets/macos-companion.png)
 
-## Development
+## Requirements
 
-The macOS menu bar companion owns resumable shells. Closing the window or losing a phone transport detaches it; **Stop Clive**, device revocation, explicit terminal close, shell exit, or the 30-minute detached-session expiry ends it. Active terminal input or output delays idle system sleep for up to 30 minutes, but never blocks explicit Sleep, lid close, or shutdown.
+- Apple-silicon Mac running macOS 14 or later
+- iPhone running iOS 17 or later
+- Both devices on the same LAN, or the optional direct cellular mode configured
+- For source builds: Xcode 26.5 or later, Swift 6, and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+
+## Install and pair
+
+macOS prerelease packages are available from [GitHub Releases](https://github.com/brendanwilliam/clive/releases). Download `clive.pkg` and `clive.pkg.sha256`, verify the checksum, and open the installer:
 
 ```sh
-swift test
+shasum -a 256 -c clive.pkg.sha256
+```
+
+The iOS app is currently distributed through TestFlight only; there is no public invitation link. Contributors and testers can also build it from source.
+
+1. Open `/Applications/Clive.app` on the Mac.
+2. Choose **Pair iPhone** in the menu bar app. `clive pair` is the terminal-only fallback.
+3. In the iOS app, choose **Pair a Mac**, scan the short-lived QR code, and approve the displayed device fingerprint on the Mac.
+4. Select the paired Mac and open a terminal.
+
+The macOS companion owns resumable shells. Closing a window or briefly losing transport detaches a session; stopping Clive, revoking the device, closing the terminal, shell exit, or the 30-minute detached-session expiry ends it.
+
+## Build from source
+
+```sh
+git clone https://github.com/brendanwilliam/clive.git
+cd clive
+brew install xcodegen
 ./scripts/verify-local.sh
 ./scripts/test-macos-integration.sh
 swift run clive status
-cd Apps/Clive && xcodegen generate
-xcodebuild -project Clive.xcodeproj -scheme Clive -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
-./scripts/build-pkg.sh
 ```
 
-`swift test` runs shared protocol and pairing tests. `verify-local.sh` runs those tests plus macOS and generic-iOS Debug builds in parallel; pass `--signed` when local development signing readiness matters. Startup requires RFC1918 IPv4, IPv6 ULA/link-local, or loopback connectivity unless `--allow-non-private-network` is supplied. The packaging script creates an unsigned arm64 development PKG by default; set `DEVELOPER_ID_APPLICATION`, `DEVELOPER_ID_INSTALLER`, and optionally `NOTARY_PROFILE` for signing and notarization.
+`verify-local.sh` runs shared Swift tests plus macOS and iOS tests/builds. Pass `--signed` only when checking local signing readiness. To open the iOS project, run `cd Apps/Clive && xcodegen generate`, then open `Clive.xcodeproj`. Local bundle identifiers and signing settings belong in an ignored `Local.xcconfig`; see the example files in each app's `Config` directory.
 
-Pull requests and pushes to `main` run the same compatibility script in GitHub Actions. The coordinated release workflow reruns it before publishing either platform.
+## Architecture and security
 
-The PKG installs `/Applications/Clive.app` and `/usr/local/bin/clive`, with no launch agent or privileged helper. Run `clive start`, then use `pair`, `status`, `cellular <on|off>`, `cellular setup`, `cellular test`, `revoke <device-id>`, and `stop`. `clive cellular setup` launches the signed companion, guides automatic or manual routing, and waits for a paired iPhone to verify the route over cellular. Scripted forms are `cellular setup --automatic` and `cellular setup --manual --host <host> --external-port <port>`. If an unsigned foreground daemon owns the control socket, stop it before retrying; the CLI never borrows the app's CloudKit entitlement. Cellular access is disabled by default and remains visibly indicated in the menu bar while enabled. State remains under `~/Library/Application Support/clive` so upgrades preserve identities and pairings; cryptographic identities remain device-local and owner protected.
+The shared Swift package defines frames, pairing, trust, backpressure, rendezvous, and security primitives. The macOS app owns authenticated listeners and PTYs; the `clive` executable controls it over a user-only local socket. The iOS app stores paired Macs and opens one mutually authenticated TLS/PTY session per terminal tab.
 
-TestFlight uploads are performed by the manually triggered `Deploy iOS to TestFlight` GitHub Actions workflow. Signing and App Store Connect credentials live only in the protected `testflight` GitHub environment; see [the iPhone app release instructions](Apps/Clive/README.md#testflight-deployment) for setup.
+Local-network access is the default. Optional cellular access publishes encrypted, short-lived rendezvous metadata in the user's private CloudKit account; terminal traffic stays direct and CloudKit never transports terminal input or output. Cryptographic identities remain device-local and owner protected. Backgrounding the iOS app closes and obscures terminals.
 
-### Publishing the macOS package
+Read the [architecture](docs/architecture.md), [wire protocol](docs/protocol.md), and [security model](docs/security.md) before changing trust boundaries.
 
-The manually triggered `Publish macOS package` workflow builds the Apple-silicon CLI and menu-bar app, signs them with Developer ID, notarizes and staples the installer, and publishes `clive.pkg` plus its SHA-256 checksum to a new GitHub Release.
+## Troubleshooting
 
-For a coordinated tester release, run the manually triggered `Release macOS and iOS` workflow from `main`. It validates the shared version and Production CloudKit acknowledgement, runs the shared tests, publishes the notarized macOS package, and then uploads the same version and commit to TestFlight. The underlying platform workflows remain available for deliberate partial-release recovery.
+- **No Mac appears:** confirm the companion is running and both devices are on a LAN that permits Bonjour and peer connections.
+- **Startup rejects the network:** Clive requires RFC1918 IPv4, IPv6 ULA/link-local, or loopback by default. `--allow-non-private-network` is for deliberate development testing only.
+- **The CLI cannot reach the companion:** stop any separately launched foreground daemon that owns the control socket, then reopen the app.
+- **Pairing expired:** generate a new QR code; secrets expire after five minutes and cannot be reused.
+- **A certificate changed:** do not bypass the warning. Revoke the device and pair again only after verifying why its identity changed.
 
-Create a protected GitHub environment named `macos-release` with these variables:
+Please use the [bug form](https://github.com/brendanwilliam/clive/issues/new?template=bug_report.yml) for reproducible problems and [report vulnerabilities privately](SECURITY.md).
 
-- `APPLE_TEAM_ID`
-- `CLIVE_MAC_BUNDLE_ID` (for example, `com.brendanwilliam.clive.mac`)
-- `CLIVE_ICLOUD_CONTAINER` (the same production CloudKit container used by the iOS app)
+## Project
 
-Add these environment secrets:
+- [Contributing](CONTRIBUTING.md)
+- [Roadmap](docs/roadmap.md)
+- [Changelog](CHANGELOG.md)
+- [Releases and versioning](docs/releases.md)
+- [Privacy](PRIVACY.md)
+- [Governance](GOVERNANCE.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 
-- `APP_STORE_CONNECT_API_KEY_ID`
-- `APP_STORE_CONNECT_API_ISSUER_ID`
-- `APP_STORE_CONNECT_API_PRIVATE_KEY`
-- `DEVELOPER_ID_APPLICATION_CERTIFICATE_BASE64`
-- `DEVELOPER_ID_APPLICATION_CERTIFICATE_PASSWORD`
-- `DEVELOPER_ID_INSTALLER_CERTIFICATE_BASE64`
-- `DEVELOPER_ID_INSTALLER_CERTIFICATE_PASSWORD`
-- `DEVELOPER_ID_PROVISIONING_PROFILE_BASE64`
+## License and trademarks
 
-The two certificate values are base64-encoded, password-protected PKCS#12 exports. The provisioning profile must be a **Developer ID** profile for the explicit Mac App ID and include its production iCloud and push-notification entitlements. Base64-encode binary inputs with `base64 -i <file> | pbcopy` on macOS. The App Store Connect API key must have permission to submit software for notarization.
-
-Run the workflow from `main` with a new semantic version tag such as `v0.1.0`. Keep the first release marked as a prerelease until the package passes the physical-device acceptance checks below. A tag is created only after signing and notarization succeed; an existing release tag is never overwritten.
-
-To remove the prototype, delete `/usr/local/bin/clive`. Remove the Application Support directory separately only when you also intend to erase the companion identity and every pairing.
-
-## Get started
-
-1. Install and open the Clive macOS companion.
-2. Install **Clive - CLI for iOS** from the App Store.
-3. Choose **Pair iPhone** from the Clive menu bar app. `clive pair` remains available when you need a terminal-only fallback.
-4. In the iOS app, choose **Pair a Mac**, scan the terminal's short-lived pairing QR code, and approve the displayed device fingerprint on the Mac.
-5. Select the paired Mac and open a terminal.
-
-An App Store discovery QR code only opens Clive's store listing. The secure pairing QR code is generated by **Pair iPhone**, expires after five minutes, and authorizes exactly one pairing attempt. Neither QR code contains terminal content, credentials, or private keys.
-
-## Migration notes
-
-The product and repository are named Clive. Existing clones continue to work after GitHub's repository redirect; update remotes to `https://github.com/brendanwilliam/clive.git` when the repository rename is complete. New instructions and scripts use `clive` throughout.
-
-## Physical-device acceptance
-
-Before calling a build complete, install the PKG on an Apple-silicon Mac and the app on an iOS 17+ iPhone, pair and approve the displayed fingerprint, open three tabs, and verify command/resize isolation. Then exercise Wi-Fi loss, app backgrounding, Mac sleep/wake, daemon exit, and revocation. Confirm logs and stored files contain no QR secret or terminal input/output.
-
-## Documentation
-
-- [Architecture](docs/architecture.md)
-- [Protocol and lifecycle](docs/protocol.md)
-- [Security model](docs/security.md)
-- [Brand and product voice](docs/brand.md)
-- [Implementation roadmap](docs/roadmap.md)
-
-## Non-goals for version 1
-
-- Automatic IPv4 NAT traversal, CGNAT bypass, or relays
-- Background launch daemons and unattended persistent access
-- Multi-user shells or privilege escalation beyond the macOS user that started the companion
-
-Secure internet access may be added later using a separately designed mesh VPN or relay architecture; it must not weaken the V1 pairing and mutual-authentication guarantees.
+Copyright © 2026 Brendan Keane. Source code and documentation are licensed under [GPL-3.0-or-later](LICENSE). The Clive name, logo, app icons, and branded launch artwork are not licensed under the GPL; see the [trademark and brand policy](TRADEMARKS.md).
