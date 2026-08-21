@@ -53,6 +53,7 @@ struct AppPreferences: Codable, Equatable {
         self.allowsCellularConnections = allowsCellularConnections
         self.shortcuts = shortcuts; self.newTerminalDefaultShortcutID = newTerminalDefaultShortcutID
         migrateLegacyDirectory(defaultDirectoryPath)
+        normalizeDefaultSelection()
         self.connectionIndicators = connectionIndicators
         self.connectionIndicatorColors = connectionIndicatorColors
     }
@@ -65,6 +66,7 @@ struct AppPreferences: Codable, Equatable {
         connectionIndicators = try values.decodeIfPresent([String: String].self, forKey: .connectionIndicators) ?? [:]
         connectionIndicatorColors = try values.decodeIfPresent([String: String].self, forKey: .connectionIndicatorColors) ?? [:]
         migrateLegacyDirectory(try values.decodeIfPresent(String.self, forKey: .defaultDirectoryPath) ?? "")
+        normalizeDefaultSelection()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -83,6 +85,11 @@ struct AppPreferences: Codable, Equatable {
         while shortcuts.contains(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) { name = "Previous default \(suffix)"; suffix += 1 }
         let shortcut = CLIShortcut(name: name, workingDirectory: path)
         shortcuts.append(shortcut); newTerminalDefaultShortcutID = shortcut.id
+    }
+
+    private mutating func normalizeDefaultSelection() {
+        guard let selected = newTerminalDefaultShortcutID else { return }
+        if !shortcuts.contains(where: { $0.id == selected }) { newTerminalDefaultShortcutID = nil }
     }
 }
 

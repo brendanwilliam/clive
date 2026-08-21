@@ -25,6 +25,7 @@ Automatic router configuration is owner-approved, TCP-only, limited to the confi
 - Device revocation deletes the trust record and ends active connections immediately.
 - An authenticated iPhone may revoke only its own pairing. The Mac persists that removal and invalidates rendezvous access before acknowledging it; an offline or unacknowledged request leaves the iPhone's local pairing intact.
 - Logs contain lifecycle metadata only—timestamps, opaque device IDs, and failure codes—not shell commands, output, QR payloads, secrets, or private keys.
+- Persisted iOS restoration state contains only Mac and opaque session identifiers plus user-assigned labels. Terminal bytes, commands, paths, replay buffers, and biometric results remain memory-only.
 
 ## Explicit limitations
 

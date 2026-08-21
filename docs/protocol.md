@@ -43,7 +43,7 @@ Frames have a bounded maximum size and an explicit protocol version. The Mac rej
 
 ## Session lifecycle
 
-Each authenticated device ID and stable client session ID maps to one PTY and login shell. Network loss detaches transport and retains the shell for 30 minutes without extending that deadline; up to 1 MiB of output is replayed in order on reattachment, with oldest bytes discarded and reported on overflow. Explicit close, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY immediately. The iOS app persists only opaque session IDs, never terminal contents.
+Each authenticated device ID and stable client session ID maps to one PTY and login shell. Network loss detaches only the transport and retains the shell for 30 minutes; detached output does not extend that retention timer. Up to 1 MiB of output is replayed in order on reattachment, with oldest bytes discarded and reported on overflow. A replacement TLS attachment supersedes the prior attachment, whose later input, resize, close, or disconnect events have no effect. Explicit close by the current attachment, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY immediately. Shell exit sends `session.close` to the current iOS attachment. The iOS app persists only opaque session IDs, never terminal contents.
 
 Successful terminal input and produced output refresh one daemon-wide idle-system-sleep assertion for 30 minutes. Pairing, authentication, resize traffic, and idle connections do not. Display sleep, explicit Sleep, lid close, shutdown, and system policy remain unaffected.
 

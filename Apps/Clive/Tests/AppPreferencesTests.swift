@@ -65,6 +65,16 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.connectionIndicatorColors.isEmpty)
     }
 
+    func testDeletedDefaultSelectionNormalizesToHome() throws {
+        let missing = UUID()
+        let data = Data(#"{"shortcuts":[],"newTerminalDefaultShortcutID":"\#(missing.uuidString)"}"#.utf8)
+
+        let preferences = try JSONDecoder().decode(AppPreferences.self, from: data)
+
+        XCTAssertNil(preferences.newTerminalDefaultShortcutID)
+        XCTAssertEqual(preferences.defaultDirectoryPath, "")
+    }
+
     @MainActor
     func testConnectionIndicatorDefaultsToInitialsAndCanUseEmoji() {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)

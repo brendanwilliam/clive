@@ -26,5 +26,6 @@ let package = Package(
         .target(name: "CliveCloud", dependencies: ["CliveCore"]),
         .executableTarget(name: "CliveDaemon", dependencies: ["CliveCore", "CliveSecurity", "CliveCloud"]),
         .testTarget(name: "CliveCoreTests", dependencies: ["CliveCore", "CliveSecurity"]),
+        .testTarget(name: "CliveDaemonTests", dependencies: ["CliveDaemon", "CliveCore"]),
     ]
 )

@@ -16,6 +16,8 @@ The end-to-end prototype is implemented: the foreground daemon owns its authenti
 
 ## Development
 
+The macOS menu bar companion owns resumable shells. Closing the window or losing a phone transport detaches it; **Stop Clive**, device revocation, explicit terminal close, shell exit, or the 30-minute detached-session expiry ends it. Active terminal input or output delays idle system sleep for up to 30 minutes, but never blocks explicit Sleep, lid close, or shutdown.
+
 ```sh
 swift test
 ./scripts/verify-local.sh

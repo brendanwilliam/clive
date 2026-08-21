@@ -182,6 +182,16 @@ struct InitialCommandBuffer {
     private var identity: IPhoneIdentity?
     private var suppressDestinationUpdates = false
     private var pendingExternalAction: ExternalLaunchURL.Action?
+    private let authenticate: @Sendable () async throws -> Void
+    private let provideIdentity: @MainActor () throws -> IPhoneIdentity
+
+    init(
+        authenticate: @escaping @Sendable () async throws -> Void = { try await LocalAuthenticator.authorizeConnection() },
+        provideIdentity: @escaping @MainActor () throws -> IPhoneIdentity = { try IPhoneIdentityProvider().loadOrCreate() }
+    ) {
+        self.authenticate = authenticate
+        self.provideIdentity = provideIdentity
+    }
 
     func start() {
         macs.start()
@@ -196,8 +206,8 @@ struct InitialCommandBuffer {
     func authorize() async {
         state = .authenticating
         do {
-            try await LocalAuthenticator.authorizeConnection()
-            identity = try IPhoneIdentityProvider().loadOrCreate()
+            try await authenticate()
+            identity = try provideIdentity()
             state = .active
             if let action = pendingExternalAction {
                 pendingExternalAction = nil
