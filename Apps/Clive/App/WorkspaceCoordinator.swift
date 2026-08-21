@@ -183,6 +183,7 @@ struct AuthenticationGracePolicy: Equatable {
     }
 
     func noteInput() { lastActivityAt = .now }
+    func run(command: String) { client.sendInput(ShortcutExecutionPolicy.payload(for: command)); noteInput() }
     func clearTransientActivity() { accumulator.clear(); preview = nil; lastActivityAt = nil }
     func close() { retryTask?.cancel(); clearTransientActivity(); client.close() }
     func terminate() { retryTask?.cancel(); clearTransientActivity(); client.terminate() }
@@ -267,7 +268,7 @@ struct AuthenticationGracePolicy: Equatable {
 
 @MainActor @Observable final class WorkspaceCoordinator {
     enum State: Equatable { case locked, authenticating, active, authenticationCancelled, failed(String) }
-    enum PresentedScreen: Equatable { case terminalList, connectionMenu, settings }
+    enum PresentedScreen: Equatable { case terminalList, settings }
     enum Recovery: Equatable { case unavailableMac(String), noPairedMac, disconnected }
 
     let macs = PairedMacsModel()
@@ -317,6 +318,7 @@ struct AuthenticationGracePolicy: Equatable {
 
     func stop() { detachLiveSessions(); macs.stop() }
     var selectedMac: PairedMac? { macs.devices.first { $0.id == selectedMacID } }
+    var selectedSession: WorkspaceSession? { sessions.first { $0.id == selectedSessionID } }
 
     func authorize() async {
         guard !authenticationInFlight else { return }
@@ -385,7 +387,7 @@ struct AuthenticationGracePolicy: Equatable {
     }
 
     func showSettings() { presentedScreen = .settings }
-    func showConnections() { presentedScreen = .connectionMenu }
+    func showConnections() { showTerminalList() }
 
     func dismissPresentedScreen() {
         presentedScreen = nil
@@ -403,6 +405,15 @@ struct AuthenticationGracePolicy: Equatable {
         let configuration = WorkspaceTerminalLaunchResolver.resolve(action: .newTerminal, preferences: preferences.value)
         let session = makeSession(descriptor: descriptor, mac: mac, routes: routes, identity: identity, workingDirectory: configuration.workingDirectory, initialCommand: configuration.initialCommand)
         sessions.append(session); selectSession(session.id); saveCurrentDescriptors(); persist()
+    }
+
+    @discardableResult
+    func runShortcut(_ shortcut: CLIShortcut) -> Bool {
+        let command = shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty,
+              let session = sessions.first(where: { $0.id == selectedSessionID }) else { return false }
+        session.run(command: command)
+        return true
     }
 
     func close(_ session: WorkspaceSession) {
@@ -482,7 +493,7 @@ struct AuthenticationGracePolicy: Equatable {
             selectedMacID = mac.id; snapshot.selectedMacID = mac.id
             startFreshTerminal(on: mac)
         case .connectionSetup:
-            closeLiveSessions(); recovery = .noPairedMac; presentedScreen = .connectionMenu
+            closeLiveSessions(); recovery = .noPairedMac; presentedScreen = .terminalList
         }
     }
 
@@ -531,7 +542,7 @@ struct AuthenticationGracePolicy: Equatable {
     private func performExternalLaunch(_ action: ExternalLaunchURL.Action) {
         guard action != .resumeOrStart else { resolveExternalLaunch(); return }
         guard let mac = selectedMac ?? macs.devices.first else {
-            recovery = .noPairedMac; presentedScreen = .connectionMenu; return
+            recovery = .noPairedMac; presentedScreen = .terminalList; return
         }
         switch action {
         case .resumeOrStart: resolveExternalLaunch()
