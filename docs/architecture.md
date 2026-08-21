@@ -39,3 +39,5 @@ The running process owns a mode-`0600` Unix control socket. All other commands u
 ## iOS UX boundaries
 
 The app requires biometric authentication when opening a saved Mac or resuming after it becomes inactive. It must clearly distinguish a disconnected state, an unpaired Mac, a pairing-in-progress state, and an active shell. Terminal rendering follows standard VT behavior; clipboard and file-transfer capabilities are out of scope for V1.
+
+When iOS becomes inactive, Clive immediately detaches every live transport and removes terminal previews from memory. After foreground biometric authorization, it recreates connections from opaque workspace descriptors. A matching daemon PTY resumes; an expired, exited, revoked, or daemon-restarted PTY creates a fresh shell. Authentication cancellation leaves the workspace locked and opens no connection.

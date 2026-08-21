@@ -31,7 +31,13 @@ if [[ ${SIGNED} == false ]]; then
     signing_arguments+=(CODE_SIGNING_ALLOWED=NO)
 fi
 
-echo "Running shared tests and both platform builds in parallel…"
+IOS_DESTINATION_ID=$(xcodebuild -project "${ROOT_DIR}/Apps/Clive/Clive.xcodeproj" -scheme Clive -showdestinations 2>/dev/null | sed -n 's/.*platform:iOS Simulator, arch:[^,]*, id:\([^,}]*\).*/\1/p' | sed -n '1p' | xargs)
+if [[ -z ${IOS_DESTINATION_ID} ]]; then
+    echo "No iOS Simulator destination is installed." >&2
+    exit 69
+fi
+
+echo "Running shared, macOS, and iOS tests in parallel…"
 swift test --package-path "${ROOT_DIR}" >"${LOG_DIR}/swift-test.log" 2>&1 &
 swift_pid=$!
 xcodebuild -quiet \
@@ -41,20 +47,19 @@ xcodebuild -quiet \
     -destination platform=macOS \
     -derivedDataPath "${VERIFY_DIR}/mac-derived-data" \
     "${signing_arguments[@]}" \
-    build >"${LOG_DIR}/mac-build.log" 2>&1 &
+    test >"${LOG_DIR}/mac-test.log" 2>&1 &
 mac_pid=$!
 xcodebuild -quiet \
     -project "${ROOT_DIR}/Apps/Clive/Clive.xcodeproj" \
     -scheme Clive \
     -configuration Debug \
-    -destination generic/platform=iOS \
+    -destination "id=${IOS_DESTINATION_ID}" \
     -derivedDataPath "${VERIFY_DIR}/ios-derived-data" \
-    "${signing_arguments[@]}" \
-    build >"${LOG_DIR}/ios-build.log" 2>&1 &
+    test >"${LOG_DIR}/ios-test.log" 2>&1 &
 ios_pid=$!
 
 failed=0
-for check in "swift:${swift_pid}:swift-test.log" "macOS:${mac_pid}:mac-build.log" "iOS:${ios_pid}:ios-build.log"; do
+for check in "swift:${swift_pid}:swift-test.log" "macOS:${mac_pid}:mac-test.log" "iOS:${ios_pid}:ios-test.log"; do
     parts=(${(s/:/)check})
     if wait ${parts[2]}; then
         echo "✓ ${parts[1]}"
@@ -70,4 +75,4 @@ if (( failed )); then
     exit 1
 fi
 
-echo "CliveCore tests and both app builds are compatible."
+echo "Shared, macOS, and iOS tests passed."
