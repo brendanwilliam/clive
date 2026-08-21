@@ -61,4 +61,16 @@ jobs:
       - name: Verify localhost control socket
         env:
           DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
-        run: ./scripts/test-macos-integration.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/clive-integration.keychain-db"
+          keychain_password="$(uuidgen)"
+          cleanup() { security delete-keychain "$keychain_path" 2>/dev/null || true; }
+          trap cleanup EXIT
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 3600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security default-keychain -d user -s "$keychain_path"
+          ./scripts/test-macos-integration.sh
