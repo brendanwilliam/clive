@@ -4,6 +4,70 @@ import Security
 @testable import CliveCore
 @testable import CliveSecurity
 
+private enum StartupTestError: Error, Equatable { case unavailable, failed }
+
+@Test func companionStartupReturnsWithoutLaunchingWhenDaemonIsAvailable() throws {
+    var launches = 0
+    let result = try CompanionStartupPolicy.run(
+        companionIsInstalled: true,
+        launch: { launches += 1 },
+        request: { "ready" },
+        isUnavailable: { _ in true }
+    )
+
+    #expect(result == "ready")
+    #expect(launches == 0)
+}
+
+@Test func companionStartupLaunchesAndRetriesUntilAvailable() throws {
+    var attempts = 0
+    var launches = 0
+    var time = Date(timeIntervalSince1970: 0)
+    let result = try CompanionStartupPolicy.run(
+        companionIsInstalled: true,
+        now: { time },
+        sleep: { time.addTimeInterval($0) },
+        launch: { launches += 1 },
+        request: {
+            attempts += 1
+            if attempts < 3 { throw StartupTestError.unavailable }
+            return "ready"
+        },
+        isUnavailable: { ($0 as? StartupTestError) == .unavailable }
+    )
+
+    #expect(result == "ready")
+    #expect(launches == 1)
+    #expect(attempts == 3)
+}
+
+@Test func companionStartupDoesNotLaunchWhenAppIsMissing() {
+    #expect(throws: StartupTestError.unavailable) {
+        try CompanionStartupPolicy.run(
+            companionIsInstalled: false,
+            launch: {},
+            request: { throw StartupTestError.unavailable },
+            isUnavailable: { ($0 as? StartupTestError) == .unavailable }
+        ) as String
+    }
+}
+
+@Test func companionStartupStopsRetryingAtDeadline() {
+    var time = Date(timeIntervalSince1970: 0)
+    #expect(throws: StartupTestError.unavailable) {
+        try CompanionStartupPolicy.run(
+            companionIsInstalled: true,
+            timeout: 0.2,
+            retryInterval: 0.1,
+            now: { time },
+            sleep: { time.addTimeInterval($0) },
+            launch: {},
+            request: { throw StartupTestError.unavailable },
+            isUnavailable: { ($0 as? StartupTestError) == .unavailable }
+        ) as String
+    }
+}
+
 @Test func frameRoundTripAcrossPartialReads() throws {
     let frame = ProtocolFrame(kind: .terminalInput, payload: Data("echo hello\n".utf8))
     let encoded = try frame.encoded()

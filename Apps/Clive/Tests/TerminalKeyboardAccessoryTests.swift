@@ -4,6 +4,16 @@ import XCTest
 
 @MainActor
 final class TerminalKeyboardAccessoryTests: XCTestCase {
+    func testAdditionalKeysButtonIsSecondAfterShortcuts() throws {
+        let accessory = TerminalKeyboardAccessory(shortcuts: [], send: { _ in }, command: { _ in })
+        let shortcuts = try XCTUnwrap(accessory.descendant(withIdentifier: "shortcuts"))
+        let additionalKeys = try XCTUnwrap(accessory.descendant(withIdentifier: "keyboard"))
+        let row = try XCTUnwrap(shortcuts.superview as? UIStackView)
+
+        XCTAssertEqual(row.arrangedSubviews.first, shortcuts)
+        XCTAssertEqual(row.arrangedSubviews.dropFirst().first, additionalKeys)
+    }
+
     func testAdditionalKeysButtonTogglesInlinePanel() throws {
         let accessory = TerminalKeyboardAccessory(
             shortcuts: [],

@@ -34,6 +34,26 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(try store.load(), preferences)
     }
 
+    func testWidgetProjectionSharesOnlyOrderedNamesAndOpaqueIDs() {
+        let first = CLIShortcut(name: " Status ", command: " git status ")
+        let second = CLIShortcut(name: "Tests", command: "swift test")
+
+        let choices = WidgetShortcutStore.choices(for: [first, second])
+
+        XCTAssertEqual(choices.map { $0["id"] }, [first.id.uuidString, second.id.uuidString])
+        XCTAssertEqual(choices.map { $0["name"] }, ["Status", "Tests"])
+        XCTAssertFalse(choices.description.contains("git status"))
+        XCTAssertFalse(choices.description.contains("swift test"))
+    }
+
+    func testWidgetProjectionRejectsIncompleteShortcuts() {
+        let valid = CLIShortcut(name: "Status", command: "git status")
+        let emptyName = CLIShortcut(name: "  ", command: "pwd")
+        let emptyCommand = CLIShortcut(name: "Home", command: "  ")
+
+        XCTAssertEqual(WidgetShortcutStore.choices(for: [emptyName, valid, emptyCommand]).map { $0["id"] }, [valid.id.uuidString])
+    }
+
     func testLegacyPreferencesDecodeWithoutConnectionIndicators() throws {
         let data = Data(#"{"allowsCellularConnections":true,"defaultDirectoryPath":"~/Code","shortcuts":[]}"#.utf8)
 
