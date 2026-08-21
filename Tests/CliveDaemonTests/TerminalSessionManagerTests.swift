@@ -119,6 +119,33 @@ final class TerminalSessionManagerTests: XCTestCase {
         XCTAssertEqual(process.terminateCount, 1)
     }
 
+    func testRepeatedRouteRacesKeepOnePTYAndOneLogicalSession() throws {
+        let process = FakeTerminalProcess()
+        let creations = Box(0)
+        let manager = TerminalSessionManager(registry: SessionRegistry(), processFactory: { _, _, output, exit in
+            creations.value += 1; process.output = output; process.exit = exit; return process
+        })
+        let clientID = UUID()
+        var attachmentID = UUID()
+        let original = try attach(manager, clientID: clientID, attachmentID: attachmentID)
+
+        for _ in 0..<20 {
+            let staleID = attachmentID
+            attachmentID = UUID()
+            let resumed = try attach(manager, clientID: clientID, attachmentID: attachmentID)
+            XCTAssertEqual(resumed.serverSessionID, original.serverSessionID)
+            XCTAssertEqual(resumed.disposition, .resumed)
+            manager.close(deviceID: "phone", clientSessionID: clientID, attachmentID: staleID)
+        }
+        manager.synchronize()
+
+        XCTAssertEqual(creations.value, 1)
+        XCTAssertEqual(process.terminateCount, 0)
+        manager.close(deviceID: "phone", clientSessionID: clientID, attachmentID: attachmentID)
+        manager.synchronize()
+        XCTAssertEqual(process.terminateCount, 1)
+    }
+
     private func makeManager(_ process: FakeTerminalProcess, replayLimit: Int = 1_048_576) -> TerminalSessionManager {
         TerminalSessionManager(registry: SessionRegistry(), replayLimit: replayLimit, processFactory: { _, _, output, exit in
             process.output = output; process.exit = exit; return process

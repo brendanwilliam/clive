@@ -164,4 +164,27 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertEqual(buffer.take(), "swift test")
         XCTAssertNil(buffer.take())
     }
+
+    func testReconnectBackoffIsImmediateThenBoundedAtFifteenSeconds() {
+        let policy = SessionReconnectPolicy.standard
+
+        XCTAssertEqual((0...7).map(policy.retryDelay(afterCycle:)), [1, 2, 4, 8, 15, 15, 15, 15])
+    }
+
+    func testReconnectDeadlineIsThirtyMinutes() {
+        let policy = SessionReconnectPolicy.standard
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertFalse(policy.isExpired(startedAt: start, now: start.addingTimeInterval(1_799)))
+        XCTAssertTrue(policy.isExpired(startedAt: start, now: start.addingTimeInterval(1_800)))
+    }
+
+    func testCloudRoutesRefreshNoMoreThanEveryThirtySeconds() {
+        let policy = SessionReconnectPolicy.standard
+        let now = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertTrue(policy.shouldRefreshCloud(lastRefresh: nil, now: now))
+        XCTAssertFalse(policy.shouldRefreshCloud(lastRefresh: now.addingTimeInterval(-29), now: now))
+        XCTAssertTrue(policy.shouldRefreshCloud(lastRefresh: now.addingTimeInterval(-30), now: now))
+    }
 }

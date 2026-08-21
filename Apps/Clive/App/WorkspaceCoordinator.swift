@@ -98,6 +98,26 @@ struct InitialCommandBuffer {
     }
 }
 
+struct SessionReconnectPolicy: Equatable {
+    static let standard = SessionReconnectPolicy()
+    let retryDelays: [TimeInterval]
+    let detachmentDeadline: TimeInterval
+    let cloudRefreshInterval: TimeInterval
+
+    init(retryDelays: [TimeInterval] = [1, 2, 4, 8, 15], detachmentDeadline: TimeInterval = 30 * 60, cloudRefreshInterval: TimeInterval = 30) {
+        self.retryDelays = retryDelays
+        self.detachmentDeadline = detachmentDeadline
+        self.cloudRefreshInterval = cloudRefreshInterval
+    }
+
+    func retryDelay(afterCycle cycle: Int) -> TimeInterval {
+        retryDelays[min(max(cycle, 0), retryDelays.count - 1)]
+    }
+
+    func isExpired(startedAt: Date, now: Date) -> Bool { now.timeIntervalSince(startedAt) >= detachmentDeadline }
+    func shouldRefreshCloud(lastRefresh: Date?, now: Date) -> Bool { lastRefresh.map { now.timeIntervalSince($0) >= cloudRefreshInterval } ?? true }
+}
+
 @MainActor @Observable final class WorkspaceSession: Identifiable {
     var descriptor: SessionDescriptor
     nonisolated let id: UUID
@@ -107,7 +127,7 @@ struct InitialCommandBuffer {
     var lastActivityAt: Date?
     private var accumulator = TerminalPreviewAccumulator()
 
-    private let routes: [MacRoute]
+    private var routes: [MacRoute]
     private let device: PairedMac
     private let identity: IPhoneIdentity
     private var routeIndex = 0
@@ -116,8 +136,18 @@ struct InitialCommandBuffer {
     private let localRendezvousCapability: RendezvousCapability?
     private let onUpgrade: (Data, RendezvousCapability) -> Void
     private(set) var activeRouteKind: MacRouteKind?
+    private var hasOpened = false
+    private var reconnecting = false
+    private var reconnectStartedAt: Date?
+    private var retryIndex = 0
+    private var retryTask: Task<Void, Never>?
+    private var lastRouteRefresh: Date?
+    private let refreshRoutes: @MainActor () async -> Void
+    private let reconnectPolicy = SessionReconnectPolicy.standard
+    private let now: () -> Date
+    private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never>
 
-    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String?, initialCommand: String? = nil, localRendezvousCapability: RendezvousCapability?, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
+    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String?, initialCommand: String? = nil, localRendezvousCapability: RendezvousCapability?, refreshRoutes: @escaping @MainActor () async -> Void = {}, now: @escaping () -> Date = Date.init, schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never> = { delay, action in Task { try? await Task.sleep(for: .seconds(delay)); guard !Task.isCancelled else { return }; await action() } }, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
         self.descriptor = descriptor
         self.id = descriptor.id
         self.routes = routes
@@ -125,6 +155,8 @@ struct InitialCommandBuffer {
         self.identity = identity
         self.workingDirectory = workingDirectory
         self.initialCommand = InitialCommandBuffer(initialCommand)
+        self.refreshRoutes = refreshRoutes
+        self.now = now; self.schedule = schedule
         self.localRendezvousCapability = localRendezvousCapability; self.onUpgrade = onUpgrade
         client.onState = { [weak self] value in DispatchQueue.main.async { self?.handleState(value) } }
         client.onActivityOutput = { [weak self] bytes in DispatchQueue.main.async {
@@ -136,28 +168,82 @@ struct InitialCommandBuffer {
 
     func noteInput() { lastActivityAt = .now }
     func clearTransientActivity() { accumulator.clear(); preview = nil; lastActivityAt = nil }
-    func close() { clearTransientActivity(); client.close() }
-    func detach() { clearTransientActivity(); client.detach() }
+    func close() { retryTask?.cancel(); clearTransientActivity(); client.close() }
+    func detach() { retryTask?.cancel(); client.detach() }
+
+    func updateRoutes(_ newRoutes: [MacRoute]) {
+        let changed = newRoutes != routes
+        routes = newRoutes
+        guard changed else { return }
+        retryTask?.cancel()
+        if reconnecting { routeIndex = 0; attemptReconnect() }
+        else if hasOpened {
+            let activeDirectWAN = activeRouteKind == .publicIPv6 || activeRouteKind == .manualPublicEndpoint
+            let directWANWasRemoved = activeDirectWAN && !routes.contains { $0.kind == activeRouteKind }
+            if directWANWasRemoved || (activeRouteKind != .lan && routes.first?.kind == .lan) { beginReconnect() }
+        }
+    }
 
     private func handleState(_ value: SessionClient.State) {
         state = value
         if case .active(_, let disposition, _) = value {
+            retryTask?.cancel(); reconnecting = false; reconnectStartedAt = nil; retryIndex = 0; hasOpened = true
             activeRouteKind = routes[routeIndex].kind
             if disposition == .created, let command = initialCommand.take() {
                 client.sendInput(Data((command + "\r").utf8))
                 noteInput()
             }
         }
-        guard case .networkError = value, routeIndex + 1 < routes.count else { return }
-        routeIndex += 1
-        clearTransientActivity()
-        state = .connecting
-        connectCurrentRoute()
+        switch value {
+        case .networkError, .disconnected:
+            if hasOpened {
+                if reconnecting { advanceReconnect() } else { beginReconnect() }
+            } else if routeIndex + 1 < routes.count {
+                routeIndex += 1; connectCurrentRoute()
+            }
+        case .certificateChanged, .revoked, .protocolError, .resumeUnavailable, .workingDirectoryUnavailable:
+            retryTask?.cancel(); reconnecting = false
+        default: break
+        }
     }
 
-    private func connectCurrentRoute() {
+    private func beginReconnect() {
+        reconnecting = true; reconnectStartedAt = now(); retryIndex = 0; routeIndex = 0
+        attemptReconnect()
+    }
+
+    private func advanceReconnect() {
+        guard reconnecting else { return }
+        if routeIndex + 1 < routes.count { routeIndex += 1; attemptReconnect(); return }
+        scheduleRetry()
+    }
+
+    private func attemptReconnect() {
+        guard reconnecting else { return }
+        guard let started = reconnectStartedAt, !reconnectPolicy.isExpired(startedAt: started, now: now()) else {
+            reconnecting = false; state = .resumeUnavailable; return
+        }
+        guard !routes.isEmpty else { state = .reconnecting(waitingForWiFi: true); scheduleRetry(); return }
+        routeIndex = min(routeIndex, routes.count - 1)
+        connectCurrentRoute(expectsResumption: true)
+    }
+
+    private func scheduleRetry() {
+        guard reconnecting else { return }
+        routeIndex = 0
+        let delay = reconnectPolicy.retryDelay(afterCycle: retryIndex)
+        retryIndex += 1
+        if reconnectPolicy.shouldRefreshCloud(lastRefresh: lastRouteRefresh, now: now()) {
+            lastRouteRefresh = now()
+            Task { await refreshRoutes() }
+        }
+        retryTask?.cancel()
+        retryTask = schedule(delay) { [weak self] in self?.attemptReconnect() }
+    }
+
+    private func connectCurrentRoute(expectsResumption: Bool = false) {
         let route = routes[routeIndex]
-        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, workingDirectory: workingDirectory)
+        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, workingDirectory: workingDirectory, expectsResumption: expectsResumption)
     }
 }
 
@@ -195,6 +281,7 @@ struct InitialCommandBuffer {
 
     func start() {
         macs.start()
+        macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
         snapshot = (try? WorkspaceStore().load()) ?? snapshot
         restorableDestination = try? RestorableDestinationStore().load()
         selectedMacID = snapshot.selectedMacID
@@ -308,6 +395,8 @@ struct InitialCommandBuffer {
 
     func sceneDidBackground() { saveCurrentDescriptors(); persist(); detachLiveSessions(); state = .locked }
 
+    func cellularPreferenceChanged() { updateLiveSessionRoutes() }
+
     private func resolveExternalLaunch() {
         let resolution = WorkspaceLaunchResolver.resolve(
             destination: restorableDestination,
@@ -397,9 +486,15 @@ struct InitialCommandBuffer {
     }
 
     private func makeSession(descriptor: SessionDescriptor, mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String? = nil, initialCommand: String? = nil) -> WorkspaceSession {
-        return WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, workingDirectory: workingDirectory, initialCommand: initialCommand, localRendezvousCapability: macs.localRendezvousCapability) { [weak self] certificate, capability in
+        return WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, workingDirectory: workingDirectory, initialCommand: initialCommand, localRendezvousCapability: macs.localRendezvousCapability, refreshRoutes: { [weak self] in await self?.macs.refreshRendezvous() }) { [weak self] certificate, capability in
             self?.macs.upgrade(macID: mac.id, certificate: certificate, capability: capability)
         }
+    }
+
+    private func updateLiveSessionRoutes() {
+        guard let mac = selectedMac else { return }
+        let current = routes(for: mac)
+        sessions.forEach { $0.updateRoutes(current) }
     }
 
     private func recordDestination(_ destination: RestorableDestination) {

@@ -16,6 +16,7 @@ final class PairedMacsModel {
     private let rendezvous = try? IPhoneRendezvousService()
     private(set) var localRendezvousCapability: RendezvousCapability?
     private var cloudObserver: NSObjectProtocol?
+    var onRoutesChanged: (() -> Void)?
 
     func start() {
         do { records = try store.load() } catch { state = .failed("Paired Mac records could not be read.") }
@@ -60,11 +61,12 @@ final class PairedMacsModel {
             let result = await rendezvous.routes(for: mac, deviceID: identity.deviceID)
             newRoutes[mac.id] = result.routes; diagnostics[mac.id] = result.diagnostic
         }
-        wanRoutes = newRoutes; rendezvousDiagnostics = diagnostics
+        wanRoutes = newRoutes; rendezvousDiagnostics = diagnostics; onRoutesChanged?()
     }
     private func update(_ routes: [String: MacRoute]) {
         self.routes = routes
         devices = records.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        onRoutesChanged?()
     }
     private func pairingMessage(_ error: Error) -> String {
         switch error {

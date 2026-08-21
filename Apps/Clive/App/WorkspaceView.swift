@@ -32,6 +32,7 @@ struct WorkspaceView: View {
         .task { coordinator.start(); ExternalLaunchRequestStore().consumePending(); await coordinator.authorize() }
         .onOpenURL { url in if let action = ExternalLaunchURL.action(for: url) { coordinator.handleExternalLaunch(action) } }
         .onReceive(NotificationCenter.default.publisher(for: .externalTerminalLaunchRequested)) { _ in coordinator.handleExternalLaunch() }
+        .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { coordinator.sceneDidBackground() }
             else if coordinator.state == .locked { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.authorize() } }
@@ -332,7 +333,11 @@ struct WorkspaceView: View {
                 if replayTruncated { Text("Some output produced while disconnected was discarded.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
             }
         case .connecting: ProgressView("Connecting…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12))
+        case .reconnecting(let waitingForWiFi):
+            ProgressView(waitingForWiFi ? "Waiting for Wi-Fi…" : "Reconnecting…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12))
         case .disconnected: ContentUnavailableView("Disconnected", systemImage: "network.slash")
+        case .resumeUnavailable:
+            ContentUnavailableView { Label("Session no longer available", systemImage: "terminal.fill") } description: { Text("The detached shell could not be resumed.") } actions: { Button("Start New Terminal") { coordinator.addShell() } }
         case .revoked:
             ContentUnavailableView { Label("Access revoked", systemImage: "lock.slash") } description: { Text("Pair this iPhone with the Mac again.") } actions: { Button("Pair Again") { showingScanner = true } }
         case .workingDirectoryUnavailable:

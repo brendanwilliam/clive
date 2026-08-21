@@ -11,7 +11,7 @@ final class SessionClient: @unchecked Sendable {
     var onState: ((State) -> Void)?
     var onRendezvousUpgrade: ((Data, RendezvousCapability) -> Void)?
     enum State: Equatable {
-        case connecting, active(UUID, SessionOpened.Disposition, Bool), disconnected, revoked, workingDirectoryUnavailable, certificateChanged, protocolError, networkError(String)
+        case connecting, reconnecting(waitingForWiFi: Bool), active(UUID, SessionOpened.Disposition, Bool), disconnected, resumeUnavailable, revoked, workingDirectoryUnavailable, certificateChanged, protocolError, networkError(String)
     }
     private let queue = DispatchQueue(label: "com.clive.session")
     private var connection: NWConnection?
@@ -24,12 +24,20 @@ final class SessionClient: @unchecked Sendable {
     private var rendezvousCapability: RendezvousCapability?
     private var wanGateToken: Data?
     private var timeout: DispatchWorkItem?
+    private var generation = 0
+    private var lastSize: TerminalSize?
 
-    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, size: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil) {
+    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, size: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil, expectsResumption: Bool = false) {
+        generation += 1
+        let attempt = generation
+        let requestedSize = lastSize ?? size
+        lastSize = requestedSize
+        timeout?.cancel(); connection?.stateUpdateHandler = nil; connection?.cancel()
         opened = false
         terminalStateReported = false
-        pendingResize = nil
-        peerCertificate = nil; self.rendezvousCapability = rendezvousCapability; self.wanGateToken = wanGateToken
+        decoder = FrameDecoder(); certificateMismatch = false
+        peerCertificate = nil
+        self.rendezvousCapability = rendezvousCapability; self.wanGateToken = wanGateToken
         let tls = NWProtocolTLS.Options(); sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv13)
         if let localIdentity = sec_identity_create(identity) { sec_protocol_options_set_local_identity(tls.securityProtocolOptions, localIdentity) }
         sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { metadata, trust, complete in
@@ -37,18 +45,19 @@ final class SessionClient: @unchecked Sendable {
             guard let chain = SecTrustCopyCertificateChain(secTrust) as? [SecCertificate], let certificate = chain.first else { complete(false); return }
             let fingerprint = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
             let matches = fingerprint == pinnedFingerprint.lowercased()
+            guard self.generation == attempt else { complete(false); return }
             if matches { self.peerCertificate = SecCertificateCopyData(certificate) as Data }
             if !matches { self.certificateMismatch = true }
             complete(matches)
         }, queue)
         let connection = NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: NWParameters(tls: tls, tcp: NWProtocolTCP.Options()))
-        self.connection = connection; onState?(.connecting)
+        self.connection = connection; onState?(expectsResumption ? .reconnecting(waitingForWiFi: false) : .connecting)
         connection.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
+            guard let self, self.generation == attempt else { return }
             switch state {
             case .ready:
                 self.timeout?.cancel()
-                self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(clientSessionID: clientSessionID, initialSize: size, rendezvousCapability: self.rendezvousCapability, wanGateToken: self.wanGateToken, workingDirectory: workingDirectory))) ?? Data())); self.receive()
+                self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(clientSessionID: clientSessionID, initialSize: requestedSize, rendezvousCapability: self.rendezvousCapability, wanGateToken: self.wanGateToken, workingDirectory: workingDirectory))) ?? Data()), on: connection); self.receive(on: connection, generation: attempt, expectsResumption: expectsResumption)
             case .failed(let error):
                 self.timeout?.cancel()
                 self.terminalStateReported = true
@@ -60,7 +69,7 @@ final class SessionClient: @unchecked Sendable {
         }
         connection.start(queue: queue)
         let timeout = DispatchWorkItem { [weak self, weak connection] in
-            guard let self, !self.opened else { return }
+            guard let self, self.generation == attempt, !self.opened else { return }
             self.terminalStateReported = true; self.onState?(.networkError("Connection attempt timed out.")); connection?.cancel()
         }
         self.timeout = timeout; queue.asyncAfter(deadline: .now() + 5, execute: timeout)
@@ -70,35 +79,54 @@ final class SessionClient: @unchecked Sendable {
         send(ProtocolFrame(kind: .terminalInput, payload: data))
     }
     func resize(_ size: TerminalSize) {
+        lastSize = size
         guard opened else { pendingResize = size; return }
         sendResize(size)
     }
-    func close() { send(ProtocolFrame(kind: .sessionClose)); connection?.cancel(); connection = nil }
-    func detach() { terminalStateReported = true; connection?.cancel(); connection = nil; opened = false }
-    private func send(_ frame: ProtocolFrame) { guard let data = try? frame.encoded() else { return }; connection?.send(content: data, completion: .idempotent) }
-    private func receive() {
-        connection?.receive(minimumIncompleteLength: 1, maximumLength: ProtocolFrame.defaultMaximumPayloadSize + 7) { [weak self] data, _, complete, error in
-            guard let self else { return }
-            do { for frame in try self.decoder.append(data ?? Data()) { try self.handle(frame) } }
+    func close() { generation += 1; timeout?.cancel(); send(ProtocolFrame(kind: .sessionClose)); connection?.cancel(); connection = nil; opened = false }
+    func detach() { generation += 1; timeout?.cancel(); terminalStateReported = true; connection?.cancel(); connection = nil; opened = false }
+    private func send(_ frame: ProtocolFrame, on target: NWConnection? = nil) { guard let data = try? frame.encoded() else { return }; (target ?? connection)?.send(content: data, completion: .idempotent) }
+    private func receive(on target: NWConnection, generation attempt: Int, expectsResumption: Bool) {
+        target.receive(minimumIncompleteLength: 1, maximumLength: ProtocolFrame.defaultMaximumPayloadSize + 7) { [weak self, weak target] data, _, complete, error in
+            guard let self, let target, self.generation == attempt else { return }
+            do { for frame in try self.decoder.append(data ?? Data()) { try self.handle(frame, expectsResumption: expectsResumption) } }
             catch { self.reportTerminalState(.protocolError); self.connection?.cancel(); return }
-            if complete || error != nil { self.connection?.cancel() } else { self.receive() }
+            if complete || error != nil { target.cancel() } else { self.receive(on: target, generation: attempt, expectsResumption: expectsResumption) }
         }
     }
-    private func handle(_ frame: ProtocolFrame) throws {
+    private func handle(_ frame: ProtocolFrame, expectsResumption: Bool) throws {
         if !opened {
             if frame.kind == .sessionError { return try handleError(frame) }
             guard frame.kind == .sessionOpened else { throw ClientError.protocolViolation }
             let reply = try ProtocolPayload.decode(SessionOpened.self, from: frame.payload)
+            if expectsResumption && reply.disposition != .resumed {
+                terminalStateReported = true
+                onState?(.resumeUnavailable)
+                if let data = try? ProtocolFrame(kind: .sessionClose).encoded(), let connection {
+                    connection.send(content: data, completion: .contentProcessed { _ in connection.cancel() })
+                } else { connection?.cancel() }
+                return
+            }
             opened = true
             if let certificate = peerCertificate, let capability = reply.rendezvousCapability { onRendezvousUpgrade?(certificate, capability) }
             if let pendingResize { self.pendingResize = nil; sendResize(pendingResize) }
             onState?(.active(reply.serverSessionID, reply.disposition, reply.replayTruncated)); return
         }
-        switch frame.kind { case .terminalOutput: onActivityOutput?(frame.payload); onOutput?(frame.payload); case .sessionClose: connection?.cancel(); case .sessionError: try handleError(frame); default: throw ClientError.protocolViolation }
+        switch frame.kind {
+        case .terminalOutput: onActivityOutput?(frame.payload); onOutput?(frame.payload)
+        case .sessionClose: reportTerminalState(.resumeUnavailable); connection?.cancel()
+        case .sessionError: try handleError(frame)
+        default: throw ClientError.protocolViolation
+        }
     }
     private func handleError(_ frame: ProtocolFrame) throws {
         let error = try ProtocolPayload.decode(SessionError.self, from: frame.payload)
-        let state: State = switch error.code { case .revoked: .revoked; case .workingDirectoryUnavailable: .workingDirectoryUnavailable; default: .protocolError }
+        let state: State = switch error.code {
+        case .revoked: .revoked
+        case .workingDirectoryUnavailable: .workingDirectoryUnavailable
+        case .authenticationFailed: .networkError("The route could not be authenticated.")
+        default: .protocolError
+        }
         reportTerminalState(state); connection?.cancel()
     }
     private func reportTerminalState(_ state: State) { terminalStateReported = true; onState?(state) }
