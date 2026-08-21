@@ -16,8 +16,8 @@ final class TerminalKeyboardAccessory: UIInputView {
     private var shortcuts: [CLIShortcut]
     private let showsShortcutMenu: Bool
     private var lastCommand: String?
-    private weak var scrollView: UIScrollView?
     private weak var keyRow: UIStackView?
+    private weak var keyCapsule: UIVisualEffectView?
     private var palette: UIView?
     private var expandedPanel: ExpandedPanel?
     private var savedCommand: String?
@@ -33,17 +33,45 @@ final class TerminalKeyboardAccessory: UIInputView {
         super.init(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 48), inputViewStyle: .keyboard)
         allowsSelfSizing = true
         autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        backgroundColor = .secondarySystemBackground
+        backgroundColor = .systemGroupedBackground
+        let capsule = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        capsule.translatesAutoresizingMaskIntoConstraints = false
+        capsule.accessibilityIdentifier = "terminalKeyCapsule"
+        capsule.layer.cornerRadius = 20
+        capsule.layer.cornerCurve = .continuous
+        capsule.layer.borderWidth = 1 / UIScreen.main.scale
+        capsule.layer.borderColor = UIColor.separator.cgColor
+        capsule.clipsToBounds = true
         let scroll = UIScrollView(); scroll.showsHorizontalScrollIndicator = false; scroll.alwaysBounceHorizontal = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
         let row = UIStackView(); row.axis = .horizontal; row.spacing = 7; row.distribution = .fill
         row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(scroll); scroll.addSubview(row)
+        addSubview(capsule); capsule.contentView.addSubview(scroll); scroll.addSubview(row)
         let height = heightAnchor.constraint(equalToConstant: 48); heightConstraint = height
-        NSLayoutConstraint.activate([scroll.leadingAnchor.constraint(equalTo: leadingAnchor), scroll.trailingAnchor.constraint(equalTo: trailingAnchor), scroll.bottomAnchor.constraint(equalTo: bottomAnchor), scroll.heightAnchor.constraint(equalToConstant: 48), row.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 8), row.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -8), row.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 4), row.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -4), row.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor, constant: -8), height])
-        scrollView = scroll; keyRow = row; rebuildRow()
+        NSLayoutConstraint.activate([
+            capsule.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            capsule.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            capsule.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            capsule.heightAnchor.constraint(equalToConstant: 40),
+            scroll.leadingAnchor.constraint(equalTo: capsule.contentView.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: capsule.contentView.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: capsule.contentView.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: capsule.contentView.bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 8),
+            row.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -8),
+            row.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            row.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            row.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+            height
+        ])
+        keyCapsule = capsule; keyRow = row; rebuildRow()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        keyCapsule?.layer.borderColor = UIColor.separator.resolvedColor(with: traitCollection).cgColor
+    }
 
     func updateShortcuts(_ shortcuts: [CLIShortcut]) {
         guard shortcuts != self.shortcuts else { return }
@@ -91,6 +119,7 @@ final class TerminalKeyboardAccessory: UIInputView {
             send(Data(value.utf8)); consumeOneShot(); return
         }
         if let modifier = modifier(named: action) { toggle(modifier, locked: false); return }
+        if action == "escape" { send(Data([0x1b])); consumeOneShot(); return }
         let keys = ["left": "\u{1b}[D", "down": "\u{1b}[B", "up": "\u{1b}[A", "right": "\u{1b}[C", "tab": "\t"]
         var value = keys[action] ?? action
         if active(.command) { command(value); consumeOneShot(); return }
@@ -119,7 +148,7 @@ final class TerminalKeyboardAccessory: UIInputView {
         if showsShortcutMenu { row.addArrangedSubview(makeShortcutButton()) }
         row.addArrangedSubview(makeButton(title: "⌨", action: "keyboard", label: "Special keys"))
         let keys: [(String, String, String)] = [
-            ("⇥", "tab", "Tab"), ("⇧", "shift", "Shift"), ("⌃", "control", "Control"), ("⌥", "option", "Option"), ("⌘", "command", "Command")
+            ("Esc", "escape", "Escape"), ("⇥", "tab", "Tab"), ("⇧", "shift", "Shift"), ("⌃", "control", "Control"), ("⌥", "option", "Option"), ("⌘", "command", "Command")
         ]
         for (title, action, label) in keys { row.addArrangedSubview(makeButton(title: title, action: action, label: label)) }
         let remainingKeys = customKeys.map { ($0, "custom:\($0)", "Custom key \($0)") } + [
@@ -141,7 +170,9 @@ final class TerminalKeyboardAccessory: UIInputView {
         return button
     }
     private func makeButton(title: String, action: String, label: String) -> UIButton {
-        let button = TerminalKeyButton(type: .system); button.setTitle(title, for: .normal); button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        let button = TerminalKeyButton(type: .system); button.setTitle(title, for: .normal)
+        button.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17), maximumPointSize: 24)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
         button.accessibilityLabel = label; button.accessibilityIdentifier = action; button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
         button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
         if action == "keyboard" { button.isSelected = expandedPanel == .additionalKeys }
@@ -154,6 +185,7 @@ final class TerminalKeyboardAccessory: UIInputView {
     }
 
     private func showPanel(_ panelType: ExpandedPanel) {
+        guard let keyCapsule else { return }
         palette?.removeFromSuperview()
         expandedPanel = panelType
         let panel = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial)); panel.translatesAutoresizingMaskIntoConstraints = false
@@ -162,8 +194,8 @@ final class TerminalKeyboardAccessory: UIInputView {
         content.addArrangedSubview(makePanelHeader(title: panelType == .shortcuts ? "CLI shortcuts" : "Additional keys"))
         if panelType == .shortcuts { content.addArrangedSubview(makeShortcutsPanel()) }
         else { content.addArrangedSubview(makeAdditionalKeysGrid()) }
-        panel.contentView.addSubview(content); insertSubview(panel, belowSubview: scrollView!)
-        NSLayoutConstraint.activate([panel.leadingAnchor.constraint(equalTo: leadingAnchor), panel.trailingAnchor.constraint(equalTo: trailingAnchor), panel.topAnchor.constraint(equalTo: topAnchor), panel.bottomAnchor.constraint(equalTo: scrollView!.topAnchor), content.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 14), content.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -14), content.topAnchor.constraint(equalTo: panel.contentView.topAnchor, constant: 8), content.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -8)])
+        panel.contentView.addSubview(content); insertSubview(panel, at: 0)
+        NSLayoutConstraint.activate([panel.leadingAnchor.constraint(equalTo: leadingAnchor), panel.trailingAnchor.constraint(equalTo: trailingAnchor), panel.topAnchor.constraint(equalTo: topAnchor), panel.bottomAnchor.constraint(equalTo: keyCapsule.topAnchor), content.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 14), content.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -14), content.topAnchor.constraint(equalTo: panel.contentView.topAnchor, constant: 8), content.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -8)])
         palette = panel
         heightConstraint?.constant = 226
         rebuildRow()
@@ -350,7 +382,7 @@ final class TerminalKeyButton: UIButton {
 
     private func updateKeyAppearance(animated: Bool) {
         let changes = {
-            self.backgroundColor = !self.isEnabled ? .quaternarySystemFill : (self.isHighlighted ? .systemFill : (self.isSelected ? UIColor.systemBlue.withAlphaComponent(0.22) : .tertiarySystemFill))
+            self.backgroundColor = !self.isEnabled ? .clear : (self.isHighlighted ? .systemFill : (self.isSelected ? UIColor.systemBlue.withAlphaComponent(0.22) : .clear))
             self.tintColor = !self.isEnabled ? .tertiaryLabel : (self.isSelected ? .systemBlue : .label)
             self.setTitleColor(!self.isEnabled ? .tertiaryLabel : (self.isSelected ? .systemBlue : .label), for: .normal)
             self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.94, y: 0.94) : .identity

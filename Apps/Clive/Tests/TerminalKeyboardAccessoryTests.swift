@@ -4,6 +4,54 @@ import XCTest
 
 @MainActor
 final class TerminalKeyboardAccessoryTests: XCTestCase {
+    func testEscapeAppearsImmediatelyBeforeTabAndSendsEscapeByteOnce() throws {
+        var sent: [Data] = []
+        let accessory = TerminalKeyboardAccessory(shortcuts: [], send: { sent.append($0) }, command: { _ in })
+        let escape = try XCTUnwrap(accessory.descendant(withIdentifier: "escape") as? UIButton)
+        let tab = try XCTUnwrap(accessory.descendant(withIdentifier: "tab"))
+        let row = try XCTUnwrap(escape.superview as? UIStackView)
+        let escapeIndex = try XCTUnwrap(row.arrangedSubviews.firstIndex(of: escape))
+
+        XCTAssertEqual(row.arrangedSubviews[escapeIndex + 1], tab)
+
+        let shift = try XCTUnwrap(accessory.descendant(withIdentifier: "shift") as? UIButton)
+        shift.sendActions(for: .touchUpInside)
+        escape.sendActions(for: .touchUpInside)
+
+        XCTAssertEqual(sent, [Data([0x1b])])
+    }
+
+    func testKeyRowUsesInsetCapsuleWithPlainRestingKeys() throws {
+        let accessory = TerminalKeyboardAccessory(shortcuts: [], send: { _ in }, command: { _ in })
+        accessory.frame = CGRect(x: 0, y: 0, width: 320, height: 48)
+        accessory.layoutIfNeeded()
+        let capsule = try XCTUnwrap(accessory.descendant(withIdentifier: "terminalKeyCapsule") as? UIVisualEffectView)
+        let escape = try XCTUnwrap(accessory.descendant(withIdentifier: "escape") as? UIButton)
+
+        XCTAssertEqual(capsule.frame.minX, 8, accuracy: 0.5)
+        XCTAssertEqual(capsule.frame.maxX, 312, accuracy: 0.5)
+        XCTAssertEqual(capsule.layer.cornerRadius, 20)
+        XCTAssertEqual(escape.backgroundColor, .clear)
+
+        escape.isHighlighted = true
+
+        XCTAssertNotEqual(escape.backgroundColor, .clear)
+    }
+
+    func testNarrowKeyRowKeepsAllKeysReachableByScrolling() throws {
+        let accessory = TerminalKeyboardAccessory(shortcuts: [], send: { _ in }, command: { _ in })
+        accessory.frame = CGRect(x: 0, y: 0, width: 320, height: 48)
+        accessory.layoutIfNeeded()
+        let escape = try XCTUnwrap(accessory.descendant(withIdentifier: "escape"))
+        let dollar = try XCTUnwrap(accessory.descendant(withIdentifier: "$"))
+        let row = try XCTUnwrap(escape.superview as? UIStackView)
+        let scroll = try XCTUnwrap(row.superview as? UIScrollView)
+
+        XCTAssertGreaterThan(scroll.contentSize.width, scroll.bounds.width)
+        XCTAssertGreaterThanOrEqual(escape.frame.minX, 0)
+        XCTAssertLessThanOrEqual(dollar.frame.maxX, scroll.contentSize.width)
+    }
+
     func testAdditionalKeysButtonIsSecondAfterShortcuts() throws {
         let accessory = TerminalKeyboardAccessory(shortcuts: [], send: { _ in }, command: { _ in })
         let shortcuts = try XCTUnwrap(accessory.descendant(withIdentifier: "shortcuts"))
