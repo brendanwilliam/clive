@@ -13,7 +13,7 @@ When implementation begins, place shared protocol and cryptography code in a Swi
 
 ## Build, Test, and Development Commands
 
-There are no build or test commands yet because this is a documentation-only repository. As Swift targets are introduced, document the authoritative commands here and in the README—for example, `swift test` for the shared package and `xcodebuild test` for platform targets. Do not commit Xcode `DerivedData/`, SwiftPM `.build/`, provisioning files, or local pairing state; these are ignored already.
+Run `./scripts/verify-local.sh` for the authoritative quick compatibility check: it executes `swift test` and builds both app targets. Use `./scripts/verify-local.sh --signed` only when local signing readiness matters. `./scripts/test-macos-integration.sh` covers localhost TLS/PTY behavior, and `./scripts/build-pkg.sh` builds the macOS installer. Do not commit Xcode `DerivedData/`, SwiftPM `.build/`, provisioning files, or local pairing state; these are ignored already.
 
 ## Coding Style & Naming Conventions
 

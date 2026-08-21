@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clive Release"
+  short_description: "Coordinate macOS and TestFlight releases"
+  default_prompt: "Use $clive-release to check readiness and coordinate a Clive release for macOS and TestFlight."

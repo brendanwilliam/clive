@@ -7,6 +7,12 @@ on:
         description: App version shown in TestFlight
         required: true
         default: "1.0"
+  workflow_call:
+    inputs:
+      marketing_version:
+        description: App version shown in TestFlight
+        required: true
+        type: string
 
 concurrency:
   group: testflight
@@ -115,12 +121,21 @@ jobs:
           security cms -D -i "$app_profile_path" > "$RUNNER_TEMP/app-profile.plist"
           security cms -D -i "$widget_profile_path" > "$RUNNER_TEMP/widget-profile.plist"
           app_group="group.$CLIVE_BUNDLE_ID"
+          icloud_container="iCloud.$CLIVE_BUNDLE_ID"
           for profile in "$RUNNER_TEMP/app-profile.plist" "$RUNNER_TEMP/widget-profile.plist"; do
             if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$profile" | grep -Fq "$app_group"; then
               echo "::error::Provisioning profile $(basename "$profile") does not include app group $app_group"
               exit 1
             fi
           done
+          if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.icloud-container-identifiers' "$RUNNER_TEMP/app-profile.plist" | grep -Fq "$icloud_container"; then
+            echo "::error::App provisioning profile does not include iCloud container $icloud_container"
+            exit 1
+          fi
+          if [[ $(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$RUNNER_TEMP/app-profile.plist") != production ]]; then
+            echo "::error::App provisioning profile does not use the production APNs environment"
+            exit 1
+          fi
           app_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/app-profile.plist")"
           widget_profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/widget-profile.plist")"
           cp "$app_profile_path" "$profile_directory/$app_profile_uuid.mobileprovision"
