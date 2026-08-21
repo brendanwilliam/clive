@@ -60,7 +60,9 @@ struct TerminalTabsView: View {
         switch state {
         case .active: EmptyView()
         case .connecting: ProgressView("Connecting…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12))
+        case .reconnecting(let waitingForWiFi): ProgressView(waitingForWiFi ? "Waiting for Wi-Fi…" : "Reconnecting…")
         case .disconnected: ContentUnavailableView("Disconnected", systemImage: "network.slash")
+        case .resumeUnavailable: ContentUnavailableView("Session no longer available", systemImage: "terminal.fill")
         case .revoked: ContentUnavailableView("Access revoked", systemImage: "lock.slash")
         case .workingDirectoryUnavailable: ContentUnavailableView("Working directory unavailable", systemImage: "folder.badge.questionmark")
         case .certificateChanged: ContentUnavailableView("Certificate changed", systemImage: "exclamationmark.shield", description: Text("Pair this Mac again only after verifying it locally."))
