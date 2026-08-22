@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clive macOS Integration"
+  short_description: "Test daemon, TLS, control-socket, and PTY flows"
+  default_prompt: "Use $clive-macos-integration to implement and test this daemon, localhost TLS, control-socket, or PTY lifecycle change."
