@@ -76,10 +76,19 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(try decoder.append(Data(encoded.dropFirst(5))) == [frame])
 }
 
-@Test func versionOneFramesAreRejectedByVersionTwoDecoder() throws {
-    var bytes = Data(); bytes.appendUInt32(3); bytes.appendUInt16(1); bytes.append(FrameKind.sessionClose.rawValue)
+@Test func versionTwoFramesAreRejectedByVersionThreeDecoder() throws {
+    var bytes = Data(); bytes.appendUInt32(3); bytes.appendUInt16(2); bytes.append(FrameKind.sessionClose.rawValue)
     var decoder = FrameDecoder()
-    #expect(throws: ProtocolError.unsupportedVersion(1)) { try decoder.append(bytes) }
+    #expect(throws: ProtocolError.unsupportedVersion(2)) { try decoder.append(bytes) }
+}
+
+@Test func v3SessionAndOutputDescriptorsRoundTrip() throws {
+    let id = UUID()
+    let descriptor = SessionDescriptor(id: id, label: "build", attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 42)
+    #expect(try ProtocolPayload.decode(SessionDescriptor.self, from: ProtocolPayload.encode(descriptor)) == descriptor)
+    let chunk = TerminalOutputChunk(offset: 42, bytes: Data("ok".utf8))
+    #expect(try ProtocolPayload.decode(TerminalOutputChunk.self, from: ProtocolPayload.encode(chunk)) == chunk)
+    #expect(chunk.endOffset == 44)
 }
 
 @Test func workspaceSessionIDReplacesOnlyMatchingPhoneSession() async {

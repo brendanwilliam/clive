@@ -100,6 +100,8 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 return fail(.protocolError, "Invalid terminal size")
             }
             if let clientSessionID { sessions.resize(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier, size: size) }
+        case .resizeClaim:
+            if let clientSessionID { sessions.claimResize(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier) }
         case .sessionClose: close(terminateSession: true)
         default: fail(.invalidFrameOrder, "Frame is not valid in an open session")
         }
@@ -127,9 +129,11 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 size: request.initialSize,
                 workingDirectory: request.workingDirectory,
                 attachmentID: identifier,
-                output: { [weak self] bytes, completion in
+                attachmentKind: request.attachmentKind,
+                lastReceivedOffset: request.lastReceivedOffset,
+                output: { [weak self] chunk, completion in
                     guard let self else { completion(); return }
-                    self.queue.async { self.sendOutput(bytes, completion: completion) }
+                    self.queue.async { self.sendOutput(chunk, completion: completion) }
                 },
                 onSuperseded: { [weak self] in
                     guard let self else { return }
@@ -143,7 +147,10 @@ final class SessionConnectionHandler: @unchecked Sendable {
             clientSessionID = request.clientSessionID; sessionID = attachment.serverSessionID
             let data = try ProtocolPayload.encode(SessionOpened(serverSessionID: attachment.serverSessionID, rendezvousCapability: localCapability, disposition: attachment.disposition, replayTruncated: attachment.replayTruncated))
             framed?.send(ProtocolFrame(kind: .sessionOpened, payload: data))
-            if !attachment.replay.isEmpty { framed?.send(ProtocolFrame(kind: .terminalOutput, payload: attachment.replay)) }
+            if !attachment.replay.isEmpty {
+                let chunk = TerminalOutputChunk(offset: attachment.replayOffset, bytes: attachment.replay)
+                framed?.send(ProtocolFrame(kind: .terminalOutput, payload: try ProtocolPayload.encode(chunk)))
+            }
             print("Session: shell opened.")
         } catch PTYProcessError.invalidWorkingDirectory {
             fail(.workingDirectoryUnavailable, "The configured working directory is unavailable. Choose another directory in Settings.")
@@ -153,9 +160,10 @@ final class SessionConnectionHandler: @unchecked Sendable {
         }
     }
 
-    private func sendOutput(_ bytes: Data, completion: @escaping @Sendable () -> Void) {
+    private func sendOutput(_ chunk: TerminalOutputChunk, completion: @escaping @Sendable () -> Void) {
         guard !closed else { completion(); return }
-        framed?.send(ProtocolFrame(kind: .terminalOutput, payload: bytes)) { _ in completion() }
+        guard let payload = try? ProtocolPayload.encode(chunk) else { completion(); return }
+        framed?.send(ProtocolFrame(kind: .terminalOutput, payload: payload)) { _ in completion() }
     }
 
     private func shellExited() {

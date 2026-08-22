@@ -1,5 +1,7 @@
 # Architecture
 
+The macOS daemon owns shared PTYs. Authenticated iOS connections and the owner-only local control socket attach to them; `clive sessions`, `clive attach`, and `clive shell` switch to framed terminal traffic after the control response. The final detach starts expiry, while explicit termination, shell exit, revocation, and shutdown close every attachment.
+
 ## Components
 
 | Component | Responsibility |

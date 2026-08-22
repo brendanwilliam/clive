@@ -21,6 +21,46 @@ public enum FrameKind: UInt8, Sendable, CaseIterable {
     case pairingRevoked = 0x14
     case reachabilityProbe = 0x15
     case reachabilityVerified = 0x16
+    case sessionList = 0x20
+    case sessionListResult = 0x21
+    case sessionAttach = 0x22
+    case attachmentState = 0x23
+    case resizeClaim = 0x24
+    case sessionTerminate = 0x25
+}
+
+public enum AttachmentKind: String, Codable, Equatable, Sendable { case iPhone, macCLI }
+
+public struct SessionDescriptor: Codable, Equatable, Identifiable, Sendable {
+    public let id: UUID
+    public let label: String?
+    public let attachmentCount: Int
+    public let resizeOwner: AttachmentKind?
+    public let outputOffset: UInt64
+    public init(id: UUID, label: String? = nil, attachmentCount: Int, resizeOwner: AttachmentKind?, outputOffset: UInt64) {
+        self.id = id; self.label = label; self.attachmentCount = attachmentCount
+        self.resizeOwner = resizeOwner; self.outputOffset = outputOffset
+    }
+}
+
+public struct SessionListRequest: Codable, Equatable, Sendable { public init() {} }
+public struct SessionListResult: Codable, Equatable, Sendable {
+    public let sessions: [SessionDescriptor]
+    public init(sessions: [SessionDescriptor]) { self.sessions = sessions }
+}
+public struct SessionAttachRequest: Codable, Equatable, Sendable {
+    public let serverSessionID: UUID
+    public let lastReceivedOffset: UInt64
+    public let attachmentKind: AttachmentKind
+    public init(serverSessionID: UUID, lastReceivedOffset: UInt64 = 0, attachmentKind: AttachmentKind) {
+        self.serverSessionID = serverSessionID; self.lastReceivedOffset = lastReceivedOffset; self.attachmentKind = attachmentKind
+    }
+}
+public struct TerminalOutputChunk: Codable, Equatable, Sendable {
+    public let offset: UInt64
+    public let bytes: Data
+    public init(offset: UInt64, bytes: Data) { self.offset = offset; self.bytes = bytes }
+    public var endOffset: UInt64 { offset + UInt64(bytes.count) }
 }
 
 public struct ReachabilityProbe: Codable, Equatable, Sendable {
@@ -41,12 +81,27 @@ public struct SessionOpenRequest: Codable, Equatable, Sendable {
     public let rendezvousCapability: RendezvousCapability?
     public let wanGateToken: Data?
     public let workingDirectory: String?
-    public init(clientSessionID: UUID, initialSize: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil) {
+    public let lastReceivedOffset: UInt64
+    public let attachmentKind: AttachmentKind
+    public init(clientSessionID: UUID, initialSize: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil, lastReceivedOffset: UInt64 = 0, attachmentKind: AttachmentKind = .iPhone) {
         self.clientSessionID = clientSessionID
         self.initialSize = initialSize
         self.rendezvousCapability = rendezvousCapability
         self.wanGateToken = wanGateToken
         self.workingDirectory = workingDirectory
+        self.lastReceivedOffset = lastReceivedOffset; self.attachmentKind = attachmentKind
+    }
+
+    private enum CodingKeys: String, CodingKey { case clientSessionID, initialSize, rendezvousCapability, wanGateToken, workingDirectory, lastReceivedOffset, attachmentKind }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        clientSessionID = try values.decode(UUID.self, forKey: .clientSessionID)
+        initialSize = try values.decode(TerminalSize.self, forKey: .initialSize)
+        rendezvousCapability = try values.decodeIfPresent(RendezvousCapability.self, forKey: .rendezvousCapability)
+        wanGateToken = try values.decodeIfPresent(Data.self, forKey: .wanGateToken)
+        workingDirectory = try values.decodeIfPresent(String.self, forKey: .workingDirectory)
+        lastReceivedOffset = try values.decodeIfPresent(UInt64.self, forKey: .lastReceivedOffset) ?? 0
+        attachmentKind = try values.decodeIfPresent(AttachmentKind.self, forKey: .attachmentKind) ?? .iPhone
     }
 }
 
@@ -96,7 +151,7 @@ public struct TerminalSize: Codable, Equatable, Sendable {
 }
 
 public struct ProtocolFrame: Equatable, Sendable {
-    public static let version: UInt16 = 2
+    public static let version: UInt16 = 3
     public static let defaultMaximumPayloadSize = 1_048_576
 
     public let version: UInt16

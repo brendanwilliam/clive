@@ -1,5 +1,9 @@
 # Protocol and lifecycle
 
+Protocol v3 is a coordinated Mac and iOS/TestFlight upgrade. Existing pairing records remain valid, but v2 frames are rejected before `session.open` can allocate a PTY. Sessions use stable server IDs and support iPhone and Mac CLI attachments through session list, attach, attachment-state, resize-claim, and explicit-termination frames.
+
+Terminal output carries a monotonically increasing byte offset. Reconnecting clients supply their last received offset; the daemon returns bounded replay and reports truncation when that offset predates the replay ring. Sessions are scoped to one paired certificate. Resize ownership follows the latest accepted input or explicit claim, and slow attachments are evicted independently.
+
 ## Discovery
 
 The Mac advertises `_iphone-term._tcp` with a non-secret service identifier, protocol version, and TLS port in Bonjour TXT records. Discovery is a convenience only; trust never comes from the service name, hostname, IP address, or Bonjour metadata.
