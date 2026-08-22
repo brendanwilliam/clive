@@ -3,6 +3,44 @@ import XCTest
 @testable import Clive
 
 final class WorkspaceRestorationTests: XCTestCase {
+    func testInitialOpeningRequiresAuthentication() {
+        let policy = AuthenticationGracePolicy.standard
+
+        XCTAssertFalse(policy.permitsAccess(lastSuccessfulAuthentication: nil, now: Date()))
+    }
+
+    func testBiometricGraceIncludesExactlyFiveMinutes() {
+        let policy = AuthenticationGracePolicy.standard
+        let verified = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertTrue(policy.permitsAccess(lastSuccessfulAuthentication: verified, now: verified.addingTimeInterval(299)))
+        XCTAssertTrue(policy.permitsAccess(lastSuccessfulAuthentication: verified, now: verified.addingTimeInterval(300)))
+        XCTAssertFalse(policy.permitsAccess(lastSuccessfulAuthentication: verified, now: verified.addingTimeInterval(300.001)))
+    }
+
+    func testClockRollbackRequiresAuthentication() {
+        let policy = AuthenticationGracePolicy.standard
+        let verified = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertFalse(policy.permitsAccess(lastSuccessfulAuthentication: verified, now: verified.addingTimeInterval(-1)))
+    }
+
+    func testWorkspaceRestorationContainsNoAuthenticationOrTerminalContent() throws {
+        let sessionID = UUID()
+        let snapshot = WorkspaceSnapshot(
+            selectedMacID: "mac-1",
+            sessionsByMac: ["mac-1": [SessionDescriptor(id: sessionID, label: "Shell 1")]]
+        )
+
+        let json = String(decoding: try JSONEncoder().encode(snapshot), as: UTF8.self)
+
+        XCTAssertTrue(json.contains(sessionID.uuidString))
+        XCTAssertFalse(json.localizedCaseInsensitiveContains("biometric"))
+        XCTAssertFalse(json.localizedCaseInsensitiveContains("preview"))
+        XCTAssertFalse(json.localizedCaseInsensitiveContains("terminalContent"))
+        XCTAssertFalse(json.localizedCaseInsensitiveContains("authentication"))
+    }
+
     func testValidTerminalDestinationRestoresDescriptor() {
         let descriptor = SessionDescriptor(label: "Shell 1")
         let destination = RestorableDestination(screen: .terminal, macID: "mac-1", sessionID: descriptor.id)
