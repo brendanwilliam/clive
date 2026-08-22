@@ -79,6 +79,7 @@ Please use the [bug form](https://github.com/brendanwilliam/clive/issues/new?tem
 ## Project
 
 - [Contributing](CONTRIBUTING.md)
+- [Development branch policy](docs/development-branch-policy.md)
 - [Roadmap](docs/roadmap.md)
 - [Changelog](CHANGELOG.md)
 - [Releases and versioning](docs/releases.md)
