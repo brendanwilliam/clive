@@ -118,6 +118,17 @@ struct SessionReconnectPolicy: Equatable {
     func shouldRefreshCloud(lastRefresh: Date?, now: Date) -> Bool { lastRefresh.map { now.timeIntervalSince($0) >= cloudRefreshInterval } ?? true }
 }
 
+struct AuthenticationGracePolicy: Equatable {
+    static let standard = AuthenticationGracePolicy(duration: 5 * 60)
+    let duration: TimeInterval
+
+    func permitsAccess(lastSuccessfulAuthentication: Date?, now: Date) -> Bool {
+        guard let lastSuccessfulAuthentication else { return false }
+        let elapsed = now.timeIntervalSince(lastSuccessfulAuthentication)
+        return elapsed >= 0 && elapsed <= duration
+    }
+}
+
 @MainActor @Observable final class WorkspaceSession: Identifiable {
     var descriptor: SessionDescriptor
     nonisolated let id: UUID
@@ -270,13 +281,23 @@ struct SessionReconnectPolicy: Equatable {
     private var pendingExternalAction: ExternalLaunchURL.Action?
     private let authenticate: @Sendable () async throws -> Void
     private let provideIdentity: @MainActor () throws -> IPhoneIdentity
+    private let authenticationGracePolicy: AuthenticationGracePolicy
+    private let now: () -> Date
+    private var lastSuccessfulAuthentication: Date?
+    private var isSceneActive = false
+    private var hasCapturedForeground = false
+    private var authenticationInFlight = false
 
     init(
         authenticate: @escaping @Sendable () async throws -> Void = { try await LocalAuthenticator.authorizeConnection() },
-        provideIdentity: @escaping @MainActor () throws -> IPhoneIdentity = { try IPhoneIdentityProvider().loadOrCreate() }
+        provideIdentity: @escaping @MainActor () throws -> IPhoneIdentity = { try IPhoneIdentityProvider().loadOrCreate() },
+        authenticationGracePolicy: AuthenticationGracePolicy = .standard,
+        now: @escaping () -> Date = Date.init
     ) {
         self.authenticate = authenticate
         self.provideIdentity = provideIdentity
+        self.authenticationGracePolicy = authenticationGracePolicy
+        self.now = now
     }
 
     func start() {
@@ -291,10 +312,15 @@ struct SessionReconnectPolicy: Equatable {
     var selectedMac: PairedMac? { macs.devices.first { $0.id == selectedMacID } }
 
     func authorize() async {
+        guard !authenticationInFlight else { return }
+        authenticationInFlight = true
+        defer { authenticationInFlight = false }
         state = .authenticating
         do {
             try await authenticate()
             identity = try provideIdentity()
+            lastSuccessfulAuthentication = now()
+            guard isSceneActive else { state = .locked; return }
             state = .active
             if let action = pendingExternalAction {
                 pendingExternalAction = nil
@@ -302,7 +328,21 @@ struct SessionReconnectPolicy: Equatable {
             } else {
                 resolveExternalLaunch()
             }
-        } catch { state = .authenticationCancelled }
+        } catch { state = isSceneActive ? .authenticationCancelled : .locked }
+    }
+
+    func sceneDidBecomeActive() async {
+        guard !isSceneActive else { return }
+        isSceneActive = true
+        hasCapturedForeground = false
+        guard !authenticationInFlight else { return }
+        if authenticationGracePolicy.permitsAccess(lastSuccessfulAuthentication: lastSuccessfulAuthentication, now: now()) {
+            guard identity != nil else { await authorize(); return }
+            state = .active
+            resolveExternalLaunch()
+        } else {
+            await authorize()
+        }
     }
 
     func handleExternalLaunch() {
@@ -393,7 +433,16 @@ struct SessionReconnectPolicy: Equatable {
         Task { await macs.refreshRendezvous(); startFreshTerminal(on: mac) }
     }
 
-    func sceneDidBackground() { saveCurrentDescriptors(); persist(); detachLiveSessions(); state = .locked }
+    func sceneWillLeaveForeground() {
+        guard isSceneActive, !hasCapturedForeground else { return }
+        isSceneActive = false
+        hasCapturedForeground = true
+        if !sessions.isEmpty { saveCurrentDescriptors(); persist() }
+        sessions.forEach { $0.clearTransientActivity() }
+        detachLiveSessions()
+        presentedScreen = nil
+        state = .locked
+    }
 
     func cellularPreferenceChanged() { updateLiveSessionRoutes() }
 

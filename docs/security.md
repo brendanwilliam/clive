@@ -19,7 +19,7 @@ Automatic router configuration is owner-approved, TCP-only, limited to the confi
 
 - TLS 1.3 and mutual certificate authentication protect every session.
 - Pairing QR codes are single-use, short-lived, and require a local Mac-user confirmation.
-- The iOS app requires biometrics before initiating or resuming a connection.
+- The iOS app requires biometrics on initial launch and before initiating or resuming a connection when more than five minutes have elapsed since the last successful in-process verification. The grace period is not persisted or extended by foreground events.
 - Certificate pinning binds each saved Mac and iPhone to the pairing established over the QR flow.
 - The macOS service is foreground and user-scoped; it never runs as root and never elevates privileges.
 - Device revocation deletes the trust record and ends active connections immediately.

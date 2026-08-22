@@ -29,13 +29,13 @@ struct WorkspaceView: View {
             }
             .animation(.snappy(duration: 0.28), value: coordinator.presentedScreen)
         }
-        .task { coordinator.start(); ExternalLaunchRequestStore().consumePending(); await coordinator.authorize() }
+        .task { coordinator.start(); ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() }
         .onOpenURL { url in if let action = ExternalLaunchURL.action(for: url) { coordinator.handleExternalLaunch(action) } }
         .onReceive(NotificationCenter.default.publisher(for: .externalTerminalLaunchRequested)) { _ in coordinator.handleExternalLaunch() }
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { coordinator.sceneDidBackground() }
-            else if coordinator.state == .locked { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.authorize() } }
+            if phase != .active { coordinator.sceneWillLeaveForeground() }
+            else if coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
             else if ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
         }
         .fullScreenCover(isPresented: settingsBinding) {

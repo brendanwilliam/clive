@@ -2,7 +2,7 @@
 
 Install [XcodeGen](https://github.com/yonaskolb/XcodeGen), copy `Config/Local.xcconfig.example` to the ignored `Config/Local.xcconfig`, and set the bundle identifier and development team. Run `xcodegen generate` to create the iOS 17+ project from `project.yml`. Package versions are committed in the repository `Package.resolved`.
 
-The app source is intentionally separate from the SwiftPM macOS service so the iOS target owns signing, camera, LocalAuthentication, Bonjour, and Keychain entitlements. Terminal bytes pass directly between Network.framework and SwiftTerm and are never persisted or logged. Moving the app inactive detaches its TLS connections; returning requires biometrics and can reattach to Mac-owned shells for up to 30 minutes.
+The app source is intentionally separate from the SwiftPM macOS service so the iOS target owns signing, camera, LocalAuthentication, Bonjour, and Keychain entitlements. Terminal bytes pass directly between Network.framework and SwiftTerm and are never persisted or logged. Moving the app inactive immediately detaches its TLS connections. Returning within five minutes of the last successful biometric verification resumes without another prompt; later returns require biometrics before reattaching to Mac-owned shells. The grace timestamp is memory-only and foregrounding does not extend it.
 
 The terminal menu manages active shells, while the connection menu switches paired Macs and performs acknowledged two-sided unpairing. App settings are stored with complete file protection and include an iPhone-side cellular-route opt-in, a default Mac working directory, and ordered named CLI shortcuts. Shortcut commands are explicit user configuration and are never inferred from or captured from terminal traffic.
 
