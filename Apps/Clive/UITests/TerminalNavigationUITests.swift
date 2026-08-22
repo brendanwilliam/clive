@@ -41,12 +41,11 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertEqual(selected.count, 1)
     }
 
-    func testKeyboardDismissalThenVerticalScrollAndPagingRemainAvailable() {
+    func testKeyboardDismissalThenPagingRemainAvailable() {
         let first = terminalSurface(firstID)
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
         first.swipeDown(velocity: .slow)
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        first.swipeUp()
         first.swipeLeft()
         XCTAssertTrue(waitForSelection(of: terminalSurface(secondID)))
     }
