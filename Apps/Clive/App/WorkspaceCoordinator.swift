@@ -117,6 +117,8 @@ struct SessionReconnectPolicy: Equatable {
         retryDelays[min(max(cycle, 0), retryDelays.count - 1)]
     }
 
+    func shouldBeginRetryAfterRouteChange(hasOpened: Bool, reconnecting: Bool) -> Bool { !hasOpened && !reconnecting }
+    func expectsResumption(hasOpened: Bool) -> Bool { hasOpened }
     func isExpired(startedAt: Date, now: Date) -> Bool { now.timeIntervalSince(startedAt) >= detachmentDeadline }
     func shouldRefreshCloud(lastRefresh: Date?, now: Date) -> Bool { lastRefresh.map { now.timeIntervalSince($0) >= cloudRefreshInterval } ?? true }
 }
@@ -206,6 +208,7 @@ struct AuthenticationGracePolicy: Equatable {
         guard changed else { return }
         retryTask?.cancel()
         if reconnecting { routeIndex = 0; attemptReconnect() }
+        else if reconnectPolicy.shouldBeginRetryAfterRouteChange(hasOpened: hasOpened, reconnecting: reconnecting) { beginReconnect() }
         else if hasOpened {
             let activeDirectWAN = activeRouteKind == .publicIPv6 || activeRouteKind == .manualPublicEndpoint
             let directWANWasRemoved = activeDirectWAN && !routes.contains { $0.kind == activeRouteKind }
@@ -226,11 +229,10 @@ struct AuthenticationGracePolicy: Equatable {
         }
         switch value {
         case .networkError, .disconnected:
-            if hasOpened {
-                if reconnecting { advanceReconnect() } else { beginReconnect() }
-            } else if routeIndex + 1 < routes.count {
+            if reconnecting { advanceReconnect() }
+            else if routeIndex + 1 < routes.count {
                 routeIndex += 1; connectCurrentRoute()
-            }
+            } else { beginReconnect() }
         case .certificateChanged, .revoked, .protocolError, .resumeUnavailable, .workingDirectoryUnavailable:
             retryTask?.cancel(); reconnecting = false
         default: break
@@ -255,7 +257,7 @@ struct AuthenticationGracePolicy: Equatable {
         }
         guard !routes.isEmpty else { state = .reconnecting(waitingForWiFi: true); scheduleRetry(); return }
         routeIndex = min(routeIndex, routes.count - 1)
-        connectCurrentRoute(expectsResumption: true)
+        connectCurrentRoute(expectsResumption: reconnectPolicy.expectsResumption(hasOpened: hasOpened))
     }
 
     private func scheduleRetry() {
@@ -598,7 +600,18 @@ struct AuthenticationGracePolicy: Equatable {
     private func updateLiveSessionRoutes() {
         guard let mac = selectedMac else { return }
         let current = routes(for: mac)
+        if Self.shouldRetryUnavailableMac(recovery: recovery, state: state, routesAvailable: !current.isEmpty) {
+            recovery = nil
+            resolveExternalLaunch()
+            return
+        }
         sessions.forEach { $0.updateRoutes(current) }
+    }
+
+    nonisolated static func shouldRetryUnavailableMac(recovery: Recovery?, state: State, routesAvailable: Bool) -> Bool {
+        guard state == .active, routesAvailable else { return false }
+        if case .unavailableMac = recovery { return true }
+        return false
     }
 
     private func recordDestination(_ destination: RestorableDestination) {
