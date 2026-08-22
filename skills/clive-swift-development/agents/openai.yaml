@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clive Swift Development"
+  short_description: "Implement focused, reliable Clive Swift changes"
+  default_prompt: "Use $clive-swift-development to implement this Swift change with focused tests and lifecycle-safe cleanup."

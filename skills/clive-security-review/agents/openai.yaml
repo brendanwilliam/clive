@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clive Security Review"
+  short_description: "Threat-model sensitive Clive changes"
+  default_prompt: "Use $clive-security-review to threat-model this change, verify required controls, and identify missing negative tests."

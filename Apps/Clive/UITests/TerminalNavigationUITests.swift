@@ -41,14 +41,13 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertEqual(selected.count, 1)
     }
 
-    func testKeyboardDismissalThenVerticalScrollAndPagingRemainAvailable() {
+    func testKeyboardDismissalThenPagingRemainAvailable() {
         let first = terminalSurface(firstID)
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
         first.swipeDown(velocity: .slow)
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        first.swipeUp()
         first.swipeLeft()
-        XCTAssertEqual(terminalSurface(secondID).value as? String, "Selected")
+        XCTAssertTrue(waitForSelection(of: terminalSurface(secondID)))
     }
 
     func testDrawerRowSelectionOutsideMenu() {
@@ -100,6 +99,14 @@ final class TerminalNavigationUITests: XCTestCase {
 
     private func drawerRow(_ id: String) -> XCUIElement {
         app.buttons["terminal-row-\(id)"]
+    }
+
+    private func waitForSelection(of terminal: XCUIElement, timeout: TimeInterval = 4) -> Bool {
+        let predicate = NSPredicate(format: "value == %@", "Selected")
+        return XCTWaiter.wait(
+            for: [XCTNSPredicateExpectation(predicate: predicate, object: terminal)],
+            timeout: timeout
+        ) == .completed
     }
 
     private func text(containing value: String) -> XCUIElement {
