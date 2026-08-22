@@ -100,6 +100,7 @@ enum ShortcutExecutionPolicy {
 enum DrawerRowRevealPolicy {
     static let actionWidth: CGFloat = 56
     static let revealWidth = actionWidth * 2
+    static let minimumRowHeight: CGFloat = 56
 
     static func toggle(current: UUID?, row: UUID) -> UUID? { current == row ? nil : row }
 

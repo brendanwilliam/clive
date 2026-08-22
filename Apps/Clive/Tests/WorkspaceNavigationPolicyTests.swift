@@ -3,18 +3,28 @@ import XCTest
 @testable import Clive
 
 final class WorkspaceNavigationPolicyTests: XCTestCase {
-    func testPagerSelectsNormalPagesAndBothBoundaryActions() {
+    func testPagerSelectsNormalPagesBidirectionally() {
         let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
         XCTAssertEqual(policy.transition(to: .terminal(last), terminalIDs: [first, last]), .select(last))
+        XCTAssertEqual(policy.transition(to: .terminal(first), terminalIDs: [first, last]), .select(first))
+    }
+
+    func testPagerRestoresFirstPageBeforeOpeningDrawer() {
+        let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
         XCTAssertEqual(policy.transition(to: .leading, terminalIDs: [first, last]), .openDrawer(restoring: first))
+        XCTAssertEqual(policy.transition(to: .leading, terminalIDs: [first, last]), .restore(first))
+    }
+
+    func testPagerCreatesAtTrailingBoundary() {
+        let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
         XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)
     }
 
     func testPagerPreventsDuplicateSentinelEventsAndCreatesOnlyOnce() {
         let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
         XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)
-        XCTAssertEqual(policy.transition(to: .terminal(last), terminalIDs: [first, last]), .select(last))
-        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .restore(last))
+        let created = UUID()
+        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last, created]), .restore(created))
     }
 
     func testHorizontalDirectionRequiresDistanceAndHorizontalDominance() {
@@ -34,6 +44,7 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
         XCTAssertEqual(DrawerRowRevealPolicy.toggle(current: first, row: second), second)
         XCTAssertNil(DrawerRowRevealPolicy.revealedRow(current: first, row: first, translation: 31))
         XCTAssertEqual(DrawerRowRevealPolicy.revealWidth, DrawerRowRevealPolicy.actionWidth * 2)
+        XCTAssertEqual(DrawerRowRevealPolicy.minimumRowHeight, 56)
     }
 
     func testConnectionStatusAndRoutesHaveStablePresentation() {

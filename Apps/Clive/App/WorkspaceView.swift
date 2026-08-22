@@ -9,6 +9,7 @@ struct WorkspaceView: View {
     @State private var renameTarget: WorkspaceSession?
     @State private var renameText = ""
     @State private var deleteTarget: WorkspaceSession?
+    @State private var endTarget: WorkspaceSession?
     @State private var showingDisconnectConfirmation = false
     @State private var showingConnectionDetails = false
     @State private var showingShortcuts = false
@@ -57,7 +58,13 @@ struct WorkspaceView: View {
             Button("Cancel", role: .cancel) { deleteTarget = nil }
             Button("Close Terminal", role: .destructive) { coordinator.close(session); deleteTarget = nil }
         } message: { session in
-            Text("Closing \(session.descriptor.label) ends its shell and any running processes.")
+            Text("Closing \(session.descriptor.label) only detaches this iPhone. The shared shell remains available on the Mac.")
+        }
+        .alert("End shared session?", isPresented: Binding(get: { endTarget != nil }, set: { if !$0 { endTarget = nil } }), presenting: endTarget) { session in
+            Button("Cancel", role: .cancel) { endTarget = nil }
+            Button("End Shared Session", role: .destructive) { coordinator.end(session); endTarget = nil }
+        } message: { session in
+            Text("This ends \(session.descriptor.label), its running processes, and every attached client.")
         }
         .alert("Disconnect and unpair?", isPresented: $showingDisconnectConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -114,9 +121,16 @@ struct WorkspaceView: View {
     private var connectionStatusButton: some View {
         let presentation = connectionPresentation
         return Button { showingConnectionDetails = true } label: {
-            HStack(spacing: 7) {
-                Image(systemName: presentation.icon).foregroundStyle(connectionHealthColor)
-                Text(presentation.text).font(.subheadline.weight(.semibold)).lineLimit(1)
+            VStack(spacing: 1) {
+                Text(coordinator.selectedMac?.displayName ?? "No Mac")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Image(systemName: presentation.icon)
+                    Text(presentation.text)
+                }
+                .font(.caption)
+                .foregroundStyle(connectionHealthColor)
             }
         }
         .buttonStyle(.plain)
@@ -154,22 +168,25 @@ struct WorkspaceView: View {
             } else {
                 TabView(selection: $pagerSelection) {
                     Color.clear
-                        .tag(Optional(TerminalPagerPage.leading))
+                        .tag(TerminalPagerPage.leading)
                         .accessibilityHidden(true)
                     ForEach(coordinator.sessions) { session in
                         ZStack {
                             TerminalSurfaceView(
                                 session: session.client,
                                 shortcuts: coordinator.preferences.value.shortcuts,
-                                saveShortcut: coordinator.preferences.saveShortcut(name:command:)
+                                saveShortcut: coordinator.preferences.saveShortcut(name:command:),
+                                accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
+                                isSelected: session.id == coordinator.selectedSessionID
                             )
                             sessionOverlay(session)
                         }
-                        .tag(Optional(TerminalPagerPage.terminal(session.id)))
+                        .tag(TerminalPagerPage.terminal(session.id))
                         .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
+                        .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
                     }
                     Color.clear
-                        .tag(Optional(TerminalPagerPage.trailing))
+                        .tag(TerminalPagerPage.trailing)
                         .accessibilityHidden(true)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -252,26 +269,41 @@ struct WorkspaceView: View {
 
     private func terminalRow(_ session: WorkspaceSession) -> some View {
         HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(session.descriptor.label).fontWeight(session.id == coordinator.selectedSessionID ? .semibold : .regular)
-                if let preview = session.preview { Text(preview).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary) }
+            Button {
+                coordinator.selectSession(session.id)
+                coordinator.dismissPresentedScreen()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(session.descriptor.label).fontWeight(session.id == coordinator.selectedSessionID ? .semibold : .regular)
+                        if let attachment = session.attachmentState {
+                            Text("\(attachment.attachmentCount) attached · resize: \(attachment.resizeOwner?.rawValue ?? "none")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let preview = session.preview { Text(preview).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary) }
+                    }
+                    Spacer(minLength: 4)
+                }
             }
-            Spacer(minLength: 4)
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(.rect)
+            .accessibilityIdentifier("terminal-row-\(session.id.uuidString)")
+            .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
             Menu {
                 Button("Edit", systemImage: "pencil") { beginRename(session) }
                 Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
+                Button("End Shared Session…", systemImage: "xmark.octagon", role: .destructive) { endTarget = session }
             } label: {
-                Image(systemName: "ellipsis").frame(width: 44, height: 44)
+                Image(systemName: "ellipsis").rotationEffect(.degrees(90)).frame(width: 44, height: 44)
             }
             .accessibilityLabel("Actions for \(session.descriptor.label)")
             .accessibilityIdentifier("terminal-actions-\(session.id.uuidString)")
         }
         .padding(12)
-        .frame(minHeight: 56)
-        .contentShape(.rect)
-        .onTapGesture { coordinator.selectSession(session.id); coordinator.dismissPresentedScreen() }
+        .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
         .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08), in: .rect(cornerRadius: 12))
-        .accessibilityIdentifier("terminal-row-\(session.id.uuidString)")
     }
 
     private func beginRename(_ session: WorkspaceSession) {
@@ -303,6 +335,8 @@ struct WorkspaceView: View {
                         LabeledContent("Session health", value: ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
                         LabeledContent("Route", value: ConnectionPresentation.routeLabel(for: coordinator.selectedSession?.activeRouteKind))
                         LabeledContent("Session", value: connectionPresentation.activity)
+                        LabeledContent("Attachments", value: coordinator.selectedSession?.attachmentState.map { "\($0.attachmentCount) connected" } ?? "Unavailable")
+                        LabeledContent("Resize owner", value: coordinator.selectedSession?.attachmentState?.resizeOwner?.rawValue ?? "None")
                         if let warning = connectionPresentation.replayWarning { Text(warning).foregroundStyle(.orange) }
                     }
                     Section("Security") {
@@ -319,6 +353,7 @@ struct WorkspaceView: View {
                     }
                 }
             }
+            .accessibilityIdentifier("connection-details-list")
             .navigationTitle("Connection Details")
             .accessibilityIdentifier("connection-details-sheet")
             .presentationDetents([.medium, .large])
