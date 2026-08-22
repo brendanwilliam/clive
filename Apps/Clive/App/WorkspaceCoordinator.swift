@@ -16,10 +16,10 @@ struct SessionDescriptor: Codable, Identifiable, Equatable {
     }
 }
 
-struct RestorableDestination: Codable, Equatable {
+struct RestorableDestination: Codable, Equatable, Sendable {
     static let currentVersion = 1
 
-    enum Screen: String, Codable { case terminal, terminalList }
+    enum Screen: String, Codable, Sendable { case terminal, terminalList }
 
     let version: Int
     let screen: Screen
@@ -618,12 +618,12 @@ struct AuthenticationGracePolicy: Equatable {
 
     private func recordDestination(_ destination: RestorableDestination) {
         restorableDestination = destination
-        try? RestorableDestinationStore().save(destination)
+        Task { await RestorableDestinationPersistence.shared.save(destination) }
     }
 
     private func clearDestination() {
         restorableDestination = nil
-        try? RestorableDestinationStore().remove()
+        Task { await RestorableDestinationPersistence.shared.remove() }
     }
 
     private func closeLiveSessions() { sessions.forEach { $0.close() }; sessions.removeAll(); selectedSessionID = nil }
@@ -684,4 +684,17 @@ struct RestorableDestinationStore {
         try JSONEncoder().encode(destination).write(to: url, options: [.atomic, .completeFileProtection])
     }
     func remove() throws { if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) } }
+}
+
+/// Keeps restoration-file I/O out of navigation actions while preserving write order.
+actor RestorableDestinationPersistence {
+    static let shared = RestorableDestinationPersistence()
+
+    func save(_ destination: RestorableDestination) {
+        try? RestorableDestinationStore().save(destination)
+    }
+
+    func remove() {
+        try? RestorableDestinationStore().remove()
+    }
 }

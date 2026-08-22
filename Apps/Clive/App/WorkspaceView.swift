@@ -29,7 +29,7 @@ struct WorkspaceView: View {
                     terminalDrawer.frame(width: drawerWidth).transition(.move(edge: .leading))
                 }
             }
-            .animation(.snappy(duration: 0.28), value: coordinator.presentedScreen)
+            .animation(.snappy(duration: 0.18, extraBounce: 0), value: coordinator.presentedScreen)
         }
         .task { coordinator.start(); ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() }
         .onOpenURL { url in if let action = ExternalLaunchURL.action(for: url) { coordinator.handleExternalLaunch(action) } }
@@ -228,6 +228,7 @@ struct WorkspaceView: View {
                 }
             }
             .listStyle(.plain)
+            .listRowSpacing(DrawerRowRevealPolicy.rowSpacing)
             .scrollContentBackground(.hidden)
             if let current = coordinator.selectedMac {
                 Divider()
@@ -272,7 +273,7 @@ struct WorkspaceView: View {
                 coordinator.dismissPresentedScreen()
             } label: {
                 HStack {
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(session.descriptor.label).fontWeight(session.id == coordinator.selectedSessionID ? .semibold : .regular)
                         if let attachment = session.attachmentState {
                             Text("\(attachment.attachmentCount) attached · resize: \(attachment.resizeOwner?.rawValue ?? "none")")
@@ -299,7 +300,8 @@ struct WorkspaceView: View {
             .accessibilityLabel("Actions for \(session.descriptor.label)")
             .accessibilityIdentifier("terminal-actions-\(session.id.uuidString)")
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
         .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08), in: .rect(cornerRadius: 12))
     }

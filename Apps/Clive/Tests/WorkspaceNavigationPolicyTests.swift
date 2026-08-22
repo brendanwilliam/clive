@@ -44,7 +44,8 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
         XCTAssertEqual(DrawerRowRevealPolicy.toggle(current: first, row: second), second)
         XCTAssertNil(DrawerRowRevealPolicy.revealedRow(current: first, row: first, translation: 31))
         XCTAssertEqual(DrawerRowRevealPolicy.revealWidth, DrawerRowRevealPolicy.actionWidth * 2)
-        XCTAssertEqual(DrawerRowRevealPolicy.minimumRowHeight, 56)
+        XCTAssertEqual(DrawerRowRevealPolicy.minimumRowHeight, 52)
+        XCTAssertEqual(DrawerRowRevealPolicy.rowSpacing, 3)
     }
 
     func testConnectionStatusAndRoutesHaveStablePresentation() {
