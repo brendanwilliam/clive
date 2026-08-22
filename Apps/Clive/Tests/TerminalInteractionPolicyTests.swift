@@ -24,11 +24,4 @@ final class TerminalInteractionPolicyTests: XCTestCase {
         let frame = TerminalKeyPreviewLayout.frame(source: CGRect(x: 0, y: 25, width: 20, height: 20), contentSize: CGSize(width: 100, height: 40), safeBounds: safe)
         XCTAssertTrue(safe.contains(frame))
     }
-
-    func testBoundaryDragOnlyCommitsAtOuterPagesWithHorizontalDominance() {
-        XCTAssertNotNil(TerminalBoundaryDragPolicy.action(translation: CGSize(width: 80, height: 10), selectedIndex: 0, count: 2))
-        XCTAssertNotNil(TerminalBoundaryDragPolicy.action(translation: CGSize(width: -80, height: 10), selectedIndex: 1, count: 2))
-        XCTAssertNil(TerminalBoundaryDragPolicy.action(translation: CGSize(width: 80, height: 10), selectedIndex: 1, count: 3))
-        XCTAssertNil(TerminalBoundaryDragPolicy.action(translation: CGSize(width: 80, height: 70), selectedIndex: 0, count: 2))
-    }
 }

@@ -10,7 +10,6 @@ struct WorkspaceView: View {
     @State private var deleteTarget: WorkspaceSession?
     @State private var endTarget: WorkspaceSession?
     @State private var showingDisconnectConfirmation = false
-    @State private var showingConnectionGuide = false
     @State private var showingConnectionDetails = false
 
     var body: some View {
@@ -45,7 +44,6 @@ struct WorkspaceView: View {
             SettingsView(preferences: coordinator.preferences, connection: coordinator.selectedMac)
         }
         .fullScreenCover(isPresented: $showingScanner) { scanner }
-        .sheet(isPresented: $showingConnectionGuide) { ConnectionGuideView { showingScanner = true } }
         .sheet(isPresented: $showingConnectionDetails) { connectionDetails }
         .alert("Rename terminal", isPresented: renameBinding) {
             TextField("Terminal name", text: $renameText)
@@ -158,7 +156,6 @@ struct WorkspaceView: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                .simultaneousGesture(boundaryDrag)
             }
         }
     }
@@ -244,17 +241,6 @@ struct WorkspaceView: View {
         .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08), in: .rect(cornerRadius: 12))
     }
 
-    private var boundaryDrag: some Gesture {
-        DragGesture(minimumDistance: 24).onEnded { value in
-            guard TerminalBoundaryDragPolicy.action(translation: value.translation, selectedIndex: coordinator.sessions.firstIndex { $0.id == coordinator.selectedSessionID } ?? 0, count: coordinator.sessions.count) != nil else { return }
-            switch TerminalBoundaryDragPolicy.action(translation: value.translation, selectedIndex: coordinator.sessions.firstIndex { $0.id == coordinator.selectedSessionID } ?? 0, count: coordinator.sessions.count) {
-            case .openDrawer: coordinator.showTerminalList()
-            case .newTerminal: coordinator.addShell()
-            case nil: break
-            }
-        }
-    }
-
     private var connectionStatusText: String { coordinator.selectedMac == nil ? "Not connected" : (coordinator.recovery == nil ? "Secure" : "Needs attention") }
     private var connectionStatusIcon: String { coordinator.recovery == nil && coordinator.selectedMac != nil ? "lock.shield.fill" : "exclamationmark.triangle.fill" }
     private var connectionStatusColor: Color { coordinator.recovery == nil && coordinator.selectedMac != nil ? .green : .orange }
@@ -304,7 +290,6 @@ struct WorkspaceView: View {
 
                 Divider().padding(.vertical, 6)
                 Button { coordinator.dismissPresentedScreen(); showingScanner = true } label: { Label("Add connection", systemImage: "qrcode.viewfinder") }.padding(.vertical, 8)
-                Button { coordinator.dismissPresentedScreen(); showingConnectionGuide = true } label: { Label("Connection Guide", systemImage: "list.number") }.padding(.vertical, 8)
                 if coordinator.selectedMac != nil {
                     Button(role: .destructive) { showingDisconnectConfirmation = true } label: {
                         HStack {
@@ -363,8 +348,7 @@ struct WorkspaceView: View {
             } description: {
                 Text("Pair a Mac before starting a terminal.")
             } actions: {
-                Button("Connection Guide") { showingConnectionGuide = true }
-                Button("Pair a Mac") { showingScanner = true }
+                Button("Add Connection") { showingScanner = true }
             }
         case .disconnected:
             ContentUnavailableView {

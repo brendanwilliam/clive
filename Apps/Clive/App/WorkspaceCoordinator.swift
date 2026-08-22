@@ -10,7 +10,10 @@ struct WorkspaceSnapshot: Codable {
 struct SessionDescriptor: Codable, Identifiable, Equatable {
     let id: UUID
     var label: String
-    init(id: UUID = UUID(), label: String) { self.id = id; self.label = label }
+    var serverSessionID: UUID?
+    init(id: UUID = UUID(), label: String, serverSessionID: UUID? = nil) {
+        self.id = id; self.label = label; self.serverSessionID = serverSessionID
+    }
 }
 
 struct RestorableDestination: Codable, Equatable {
@@ -200,7 +203,8 @@ struct AuthenticationGracePolicy: Equatable {
 
     private func handleState(_ value: SessionClient.State) {
         state = value
-        if case .active(_, let disposition, _) = value {
+        if case .active(let serverSessionID, let disposition, _) = value {
+            descriptor.serverSessionID = serverSessionID
             retryTask?.cancel(); reconnecting = false; reconnectStartedAt = nil; retryIndex = 0; hasOpened = true
             activeRouteKind = routes[routeIndex].kind
             if disposition == .created, let command = initialCommand.take() {
@@ -257,7 +261,7 @@ struct AuthenticationGracePolicy: Equatable {
 
     private func connectCurrentRoute(expectsResumption: Bool = false) {
         let route = routes[routeIndex]
-        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, workingDirectory: workingDirectory, expectsResumption: expectsResumption)
+        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, serverSessionID: descriptor.serverSessionID, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, workingDirectory: workingDirectory, expectsResumption: expectsResumption)
     }
 }
 

@@ -93,17 +93,14 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
 
 @Test func sessionAttachAndAttachmentStateRoundTrip() throws {
     let id = UUID(), size = TerminalSize(columns: 132, rows: 40)
-    let request = SessionAttachRequest(serverSessionID: id, lastReceivedOffset: 19, attachmentKind: .iPhone, initialSize: size)
+    let gate = Data("wan-gate".utf8)
+    let request = SessionAttachRequest(serverSessionID: id, lastReceivedOffset: 19, attachmentKind: .iPhone, initialSize: size, wanGateToken: gate)
     #expect(try ProtocolPayload.decode(SessionAttachRequest.self, from: ProtocolPayload.encode(request)) == request)
+    let list = SessionListRequest(wanGateToken: gate)
+    #expect(try ProtocolPayload.decode(SessionListRequest.self, from: ProtocolPayload.encode(list)) == list)
     let state = AttachmentState(sessionID: id, attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 41)
     #expect(try ProtocolPayload.decode(AttachmentState.self, from: ProtocolPayload.encode(state)) == state)
     #expect(SessionError.Code.sessionUnavailable != .slowConsumer)
-}
-
-@Test func testFlightDestinationRequiresOfficialPublicInvitation() {
-    #expect(DownloadDestination.testFlightURL("https://testflight.apple.com/join/AbC123") != nil)
-    #expect(DownloadDestination.testFlightURL("http://testflight.apple.com/join/AbC123") == nil)
-    #expect(DownloadDestination.testFlightURL("https://example.com/join/AbC123") == nil)
 }
 
 @Test func workspaceSessionIDReplacesOnlyMatchingPhoneSession() async {

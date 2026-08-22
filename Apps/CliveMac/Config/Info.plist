@@ -12,5 +12,4 @@
     <key>LSMinimumSystemVersion</key><string>$(MACOSX_DEPLOYMENT_TARGET)</string>
     <key>LSUIElement</key><true/>
     <key>CliveCloudContainer</key><string>$(CLIVE_ICLOUD_CONTAINER)</string>
-    <key>CliveTestFlightInvitationURL</key><string>$(TESTFLIGHT_INVITATION_URL)</string>
 </dict></plist>

@@ -193,8 +193,6 @@ struct CliveMacApp: App {
                 Button("Refresh") { Task { await model.refresh() } }
                 CellularSetupMenuButton(model: model)
                 PairMenuButton(model: model)
-                ConnectionGuideMenuButton()
-                FirstLaunchGuidePresenter(model: model)
                 Button("Pair from Terminal…") {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clive pair", forType: .string)
                     model.errorMessage = "Copied ‘clive pair’. Run it in Terminal to approve the new iPhone."
@@ -221,9 +219,6 @@ struct CliveMacApp: App {
         WindowGroup("Set Up Cellular Access", id: "cellular-setup") {
             CellularSetupWindow(model: model).frame(minWidth: 520, minHeight: 460)
         }
-        WindowGroup("Connection Guide", id: "connection-guide") {
-            MacConnectionGuide(model: model).frame(minWidth: 520, minHeight: 560)
-        }
         Settings { EmptyView() }
     }
 
@@ -240,39 +235,6 @@ struct CliveMacApp: App {
         case .configurationRequired: "Cellular configuration required"
         case .blocked: "Cellular access is blocked"
         }
-    }
-}
-
-private struct ConnectionGuideMenuButton: View {
-    @Environment(\.openWindow) private var openWindow
-    var body: some View { Button("Connection Guide…") { openWindow(id: "connection-guide"); NSApp.activate(ignoringOtherApps: true) } }
-}
-
-private struct FirstLaunchGuidePresenter: View {
-    @ObservedObject var model: CompanionModel
-    @AppStorage("connectionGuideCompleted") private var completed = false
-    @Environment(\.openWindow) private var openWindow
-    var body: some View { EmptyView().onChange(of: model.devices.count) { _, count in if count == 0 && !completed { openWindow(id: "connection-guide"); NSApp.activate(ignoringOtherApps: true) } } }
-}
-
-private struct MacConnectionGuide: View {
-    @ObservedObject var model: CompanionModel
-    @AppStorage("connectionGuideCompleted") private var completed = false
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismiss) private var dismiss
-    private var invitation: URL? { DownloadDestination.testFlightURL(Bundle.main.object(forInfoDictionaryKey: "CliveTestFlightInvitationURL") as? String) }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Connection Guide").font(.largeTitle.bold())
-            Text("1. Get Clive for iPhone").font(.title2.bold())
-            if let invitation, let image = qrImage(invitation.absoluteString) {
-                HStack { Image(nsImage: image).interpolation(.none).resizable().scaledToFit().frame(width: 220, height: 220).padding(10).background(.blue.opacity(0.12), in: .rect(cornerRadius: 16)); VStack(alignment: .leading) { Label("TestFlight download QR", systemImage: "arrow.down.app").font(.headline); Text("This blue download code opens the official public TestFlight invitation. It contains no pairing data.").foregroundStyle(.secondary); Link("Get Clive for iPhone", destination: invitation) } }
-            } else { ContentUnavailableView("TestFlight invitation unavailable", systemImage: "exclamationmark.triangle", description: Text("Release configuration must provide an official public invitation.")) }
-            Divider()
-            Text("2. Pair iPhone").font(.title2.bold())
-            Text("The secure pairing QR is shown in a separate window, expires after five minutes, and accepts only one attempt.").foregroundStyle(.secondary)
-            HStack { Spacer(); Button("Pair iPhone") { completed = true; model.beginPairing(); openWindow(id: "pair-iphone") }; Button("Done") { completed = true; dismiss() }.keyboardShortcut(.defaultAction) }
-        }.padding(28)
     }
 }
 

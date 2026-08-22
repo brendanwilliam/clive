@@ -56,17 +56,28 @@ final class SessionConnectionHandler: @unchecked Sendable {
     private func handle(_ frame: ProtocolFrame) {
         if sessionID == nil {
             if !opening, frame.kind == .sessionList,
-               (try? ProtocolPayload.decode(SessionListRequest.self, from: frame.payload)) != nil {
-                subscribed = true
-                sessions.subscribe(deviceID: deviceID, identifier: identifier) { [weak self] descriptors in
+               let request = try? ProtocolPayload.decode(SessionListRequest.self, from: frame.payload) {
+                opening = true
+                Task { [weak self] in
                     guard let self else { return }
-                    self.queue.async { self.sendList(descriptors) }
+                    let allowed = requiresWANGate ? await validateGate(deviceID, request.wanGateToken) : true
+                    queue.async { [weak self] in self?.finishListSubscription(allowed: allowed) }
                 }
                 return
             }
             if !opening, frame.kind == .sessionAttach,
                let request = try? ProtocolPayload.decode(SessionAttachRequest.self, from: frame.payload), request.initialSize.isValid {
-                opening = true; finishAttach(request: request); return
+                opening = true
+                Task { [weak self] in
+                    guard let self else { return }
+                    let allowed = requiresWANGate ? await validateGate(deviceID, request.wanGateToken) : true
+                    queue.async { [weak self] in
+                        guard let self else { return }
+                        if allowed { self.finishAttach(request: request) }
+                        else { self.fail(.authenticationFailed, "Cellular access is disabled or the rendezvous record expired") }
+                    }
+                }
+                return
             }
             if !opening, frame.kind == .reachabilityProbe,
                let probe = try? ProtocolPayload.decode(ReachabilityProbe.self, from: frame.payload) {
@@ -193,6 +204,15 @@ final class SessionConnectionHandler: @unchecked Sendable {
         } catch { fail(.protocolError, "Unable to attach to the shared session.") }
     }
 
+    private func finishListSubscription(allowed: Bool) {
+        guard allowed else { return fail(.authenticationFailed, "Cellular access is disabled or the rendezvous record expired") }
+        opening = false; subscribed = true
+        sessions.subscribe(deviceID: deviceID, identifier: identifier) { [weak self] descriptors in
+            guard let self else { return }
+            self.queue.async { self.sendList(descriptors) }
+        }
+    }
+
     private func sendList(_ descriptors: [SessionDescriptor]) {
         guard !closed, let payload = try? ProtocolPayload.encode(SessionListResult(sessions: descriptors)) else { return }
         framed?.send(ProtocolFrame(kind: .sessionListResult, payload: payload))
@@ -218,6 +238,6 @@ final class SessionConnectionHandler: @unchecked Sendable {
         if let data = try? ProtocolPayload.encode(SessionError(code: code, message: message)) {
             framed?.send(ProtocolFrame(kind: .sessionError, payload: data))
         }
-        close(terminateSession: true)
+        close()
     }
 }

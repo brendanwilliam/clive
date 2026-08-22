@@ -11,14 +11,15 @@ final class TerminalSessionManager: @unchecked Sendable {
     private final class Sink: @unchecked Sendable {
         let id: UUID; let kind: AttachmentKind; let output: Output; let onDetached: @Sendable (DetachmentReason) -> Void; let onShellExit: @Sendable () -> Void
         var size: TerminalSize
+        var activitySequence: UInt64
         var backpressure = OutputBackpressure()
         let onState: StateUpdate
-        init(id: UUID, kind: AttachmentKind, size: TerminalSize, output: @escaping Output, onDetached: @escaping @Sendable (DetachmentReason) -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate) { self.id = id; self.kind = kind; self.size = size; self.output = output; self.onDetached = onDetached; self.onShellExit = onShellExit; self.onState = onState }
+        init(id: UUID, kind: AttachmentKind, size: TerminalSize, activitySequence: UInt64, output: @escaping Output, onDetached: @escaping @Sendable (DetachmentReason) -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate) { self.id = id; self.kind = kind; self.size = size; self.activitySequence = activitySequence; self.output = output; self.onDetached = onDetached; self.onShellExit = onShellExit; self.onState = onState }
     }
     private final class Entry: @unchecked Sendable {
         let session: TerminalSession; let shell: any TerminalProcess
         var sinks: [UUID: Sink] = [:]; var resizeOwner: UUID?; var detachTimer: DispatchWorkItem?
-        var replay = Data(); var replayStartOffset: UInt64 = 0; var outputOffset: UInt64 = 0
+        var replay = Data(); var replayStartOffset: UInt64 = 0; var outputOffset: UInt64 = 0; var activitySequence: UInt64 = 0
         init(session: TerminalSession, shell: any TerminalProcess) { self.session = session; self.shell = shell }
     }
     private let queue = DispatchQueue(label: "com.clive.daemon.sessions")
@@ -62,15 +63,16 @@ final class TerminalSessionManager: @unchecked Sendable {
                 entry = Entry(session: session, shell: shell); entries[key] = entry; disposition = .created; Task { await registry.record(session) }
             }
             entry.detachTimer?.cancel(); entry.detachTimer = nil
-            entry.sinks[attachmentID] = Sink(id: attachmentID, kind: attachmentKind, size: size, output: output, onDetached: onDetached, onShellExit: onShellExit, onState: onState)
+            entry.activitySequence &+= 1
+            entry.sinks[attachmentID] = Sink(id: attachmentID, kind: attachmentKind, size: size, activitySequence: entry.activitySequence, output: output, onDetached: onDetached, onShellExit: onShellExit, onState: onState)
             if entry.resizeOwner == nil { entry.resizeOwner = attachmentID; entry.shell.resize(to: size) }
             let requested = min(lastReceivedOffset, entry.outputOffset); let start = max(requested, entry.replayStartOffset); let index = Int(start - entry.replayStartOffset)
             let replay = index < entry.replay.count ? Data(entry.replay.dropFirst(index)) : Data()
             publish(entry)
             return Attachment(serverSessionID: entry.session.id, disposition: disposition, replay: replay, replayOffset: start, replayTruncated: requested < entry.replayStartOffset)
     }
-    func input(deviceID: String, clientSessionID: UUID, attachmentID: UUID, bytes: Data) throws { try queue.sync { guard let entry = current(deviceID, clientSessionID, attachmentID), let sink = entry.sinks[attachmentID] else { return }; entry.resizeOwner = attachmentID; entry.shell.resize(to: sink.size); try entry.shell.write(bytes); sleepActivity.noteActivity(sessionID: entry.session.id); publish(entry) } }
-    func claimResize(deviceID: String, clientSessionID: UUID, attachmentID: UUID) { queue.async { guard let entry = self.current(deviceID, clientSessionID, attachmentID), let sink = entry.sinks[attachmentID] else { return }; entry.resizeOwner = attachmentID; entry.shell.resize(to: sink.size); self.publish(entry) } }
+    func input(deviceID: String, clientSessionID: UUID, attachmentID: UUID, bytes: Data) throws { try queue.sync { guard let entry = current(deviceID, clientSessionID, attachmentID), let sink = entry.sinks[attachmentID] else { return }; entry.activitySequence &+= 1; sink.activitySequence = entry.activitySequence; entry.resizeOwner = attachmentID; entry.shell.resize(to: sink.size); try entry.shell.write(bytes); sleepActivity.noteActivity(sessionID: entry.session.id); publish(entry) } }
+    func claimResize(deviceID: String, clientSessionID: UUID, attachmentID: UUID) { queue.async { guard let entry = self.current(deviceID, clientSessionID, attachmentID), let sink = entry.sinks[attachmentID] else { return }; entry.activitySequence &+= 1; sink.activitySequence = entry.activitySequence; entry.resizeOwner = attachmentID; entry.shell.resize(to: sink.size); self.publish(entry) } }
     func resize(deviceID: String, clientSessionID: UUID, attachmentID: UUID, size: TerminalSize) { queue.async { guard let entry = self.current(deviceID, clientSessionID, attachmentID), let sink = entry.sinks[attachmentID] else { return }; sink.size = size; if entry.resizeOwner == attachmentID { entry.shell.resize(to: size) }; self.publish(entry) } }
     func detach(deviceID: String, clientSessionID: UUID, attachmentID: UUID) { queue.async { self.removeSink(Key(deviceID: deviceID, clientSessionID: clientSessionID), attachmentID: attachmentID) } }
     func close(deviceID: String, clientSessionID: UUID, attachmentID: UUID) { queue.async { let key = Key(deviceID: deviceID, clientSessionID: clientSessionID); guard self.entries[key]?.sinks[attachmentID] != nil else { return }; self.terminate(key) } }
@@ -99,7 +101,7 @@ final class TerminalSessionManager: @unchecked Sendable {
     }
     private func removeSink(_ key: Key, attachmentID: UUID) {
         guard let entry = entries[key], entry.sinks.removeValue(forKey: attachmentID) != nil else { return }
-        if entry.resizeOwner == attachmentID { entry.resizeOwner = entry.sinks.keys.sorted { $0.uuidString < $1.uuidString }.first; if let owner = entry.resizeOwner, let sink = entry.sinks[owner] { entry.shell.resize(to: sink.size) } }
+        if entry.resizeOwner == attachmentID { entry.resizeOwner = entry.sinks.values.max { $0.activitySequence < $1.activitySequence }?.id; if let owner = entry.resizeOwner, let sink = entry.sinks[owner] { entry.shell.resize(to: sink.size) } }
         publish(entry)
         guard entry.sinks.isEmpty else { return }
         entry.detachTimer?.cancel(); let timer = DispatchWorkItem { [weak self] in self?.terminate(key) }; entry.detachTimer = timer; queue.asyncAfter(deadline: .now() + graceInterval, execute: timer)

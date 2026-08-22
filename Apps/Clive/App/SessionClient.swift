@@ -29,7 +29,7 @@ final class SessionClient: @unchecked Sendable {
     private var lastSize: TerminalSize?
     private var lastReceivedOffset: UInt64 = 0
 
-    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, size: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil, expectsResumption: Bool = false) {
+    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, serverSessionID: UUID? = nil, size: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil, expectsResumption: Bool = false) {
         generation += 1
         let attempt = generation
         let requestedSize = lastSize ?? size
@@ -59,7 +59,15 @@ final class SessionClient: @unchecked Sendable {
             switch state {
             case .ready:
                 self.timeout?.cancel()
-                self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(clientSessionID: clientSessionID, initialSize: requestedSize, rendezvousCapability: self.rendezvousCapability, wanGateToken: self.wanGateToken, workingDirectory: workingDirectory, lastReceivedOffset: self.lastReceivedOffset))) ?? Data()), on: connection); self.receive(on: connection, generation: attempt, expectsResumption: expectsResumption)
+                let frame: ProtocolFrame
+                if let serverSessionID {
+                    let request = SessionAttachRequest(serverSessionID: serverSessionID, lastReceivedOffset: self.lastReceivedOffset, attachmentKind: .iPhone, initialSize: requestedSize, wanGateToken: self.wanGateToken)
+                    frame = ProtocolFrame(kind: .sessionAttach, payload: (try? ProtocolPayload.encode(request)) ?? Data())
+                } else {
+                    let request = SessionOpenRequest(clientSessionID: clientSessionID, initialSize: requestedSize, rendezvousCapability: self.rendezvousCapability, wanGateToken: self.wanGateToken, workingDirectory: workingDirectory, lastReceivedOffset: self.lastReceivedOffset)
+                    frame = ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(request)) ?? Data())
+                }
+                self.send(frame, on: connection); self.receive(on: connection, generation: attempt, expectsResumption: expectsResumption || serverSessionID != nil)
             case .failed(let error):
                 self.timeout?.cancel()
                 self.terminalStateReported = true

@@ -189,6 +189,21 @@ final class TerminalSessionManagerTests: XCTestCase {
         XCTAssertEqual(process.sizes.last, secondSize)
     }
 
+    func testResizeOwnerLossFallsBackToMostRecentlyActiveAttachment() throws {
+        let process = FakeTerminalProcess(), manager = makeManager(process), client = UUID()
+        let first = UUID(), second = UUID(), third = UUID()
+        _ = try attach(manager, clientID: client, attachmentID: first)
+        _ = try attach(manager, clientID: client, attachmentID: second)
+        _ = try attach(manager, clientID: client, attachmentID: third)
+        let secondSize = TerminalSize(columns: 111, rows: 33)
+        manager.resize(deviceID: "phone", clientSessionID: client, attachmentID: second, size: secondSize)
+        manager.claimResize(deviceID: "phone", clientSessionID: client, attachmentID: second)
+        manager.claimResize(deviceID: "phone", clientSessionID: client, attachmentID: third)
+        manager.detach(deviceID: "phone", clientSessionID: client, attachmentID: third)
+        manager.synchronize()
+        XCTAssertEqual(process.sizes.last, secondSize)
+    }
+
     private func makeManager(_ process: FakeTerminalProcess, replayLimit: Int = 1_048_576) -> TerminalSessionManager {
         TerminalSessionManager(registry: SessionRegistry(), replayLimit: replayLimit, processFactory: { _, _, output, exit in
             process.output = output; process.exit = exit; return process

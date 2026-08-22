@@ -43,7 +43,10 @@ public struct SessionDescriptor: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-public struct SessionListRequest: Codable, Equatable, Sendable { public init() {} }
+public struct SessionListRequest: Codable, Equatable, Sendable {
+    public let wanGateToken: Data?
+    public init(wanGateToken: Data? = nil) { self.wanGateToken = wanGateToken }
+}
 public struct SessionListResult: Codable, Equatable, Sendable {
     public let sessions: [SessionDescriptor]
     public init(sessions: [SessionDescriptor]) { self.sessions = sessions }
@@ -53,9 +56,10 @@ public struct SessionAttachRequest: Codable, Equatable, Sendable {
     public let lastReceivedOffset: UInt64
     public let attachmentKind: AttachmentKind
     public let initialSize: TerminalSize
-    public init(serverSessionID: UUID, lastReceivedOffset: UInt64 = 0, attachmentKind: AttachmentKind, initialSize: TerminalSize) {
+    public let wanGateToken: Data?
+    public init(serverSessionID: UUID, lastReceivedOffset: UInt64 = 0, attachmentKind: AttachmentKind, initialSize: TerminalSize, wanGateToken: Data? = nil) {
         self.serverSessionID = serverSessionID; self.lastReceivedOffset = lastReceivedOffset
-        self.attachmentKind = attachmentKind; self.initialSize = initialSize
+        self.attachmentKind = attachmentKind; self.initialSize = initialSize; self.wanGateToken = wanGateToken
     }
 }
 public struct AttachmentState: Codable, Equatable, Sendable {

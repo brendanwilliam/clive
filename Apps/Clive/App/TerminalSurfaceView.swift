@@ -10,13 +10,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
         context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installEdgeControls(on: view)
-        configureKeyboardDismissal(in: view)
         session?.onOutput = { [weak view] data in DispatchQueue.main.async { view?.feed(byteArray: ArraySlice(data)) } }
         return view
-    }
-    private func configureKeyboardDismissal(in view: UIView) {
-        if let scroll = view as? UIScrollView { scroll.keyboardDismissMode = .interactive }
-        view.subviews.forEach(configureKeyboardDismissal)
     }
     func updateUIView(_ uiView: TerminalView, context: Context) {
         context.coordinator.session = session
