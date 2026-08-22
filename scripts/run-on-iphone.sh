@@ -12,10 +12,39 @@ DAEMON_PLIST=${RUN_DIR}/com.clive.development-daemon.plist
 DAEMON_LABEL=com.clive.development-daemon
 LAUNCH_DOMAIN=gui/$(id -u)
 LAUNCH_SERVICE=${LAUNCH_DOMAIN}/${DAEMON_LABEL}
+REFRESH_LABEL=com.clive.development-refresh
+REFRESH_SERVICE=${LAUNCH_DOMAIN}/${REFRESH_LABEL}
+REFRESH_PLIST=${RUN_DIR}/${REFRESH_LABEL}.plist
+REFRESH_LOG=${RUN_DIR}/refresh.log
 
-if (( $# > 0 )); then
+if (( $# > 1 )) || [[ ${1:-} != "" && ${1:-} != "--worker" ]]; then
     echo "Usage: ./scripts/run-on-iphone.sh" >&2
     exit 64
+fi
+
+if [[ ${CLIVE_MANAGED_TERMINAL:-} == 1 && ${1:-} != --worker ]]; then
+    mkdir -p "${RUN_DIR}"
+
+    # A daemon restart sends SIGHUP to every Clive-managed terminal. Run the
+    # disruptive part under launchd so it survives the terminal that requested
+    # it. A completed one-shot job remains registered, so remove it first.
+    launchctl bootout "${REFRESH_SERVICE}" >/dev/null 2>&1 || true
+    : > "${REFRESH_LOG}"
+    plutil -create xml1 "${REFRESH_PLIST}"
+    plutil -insert Label -string "${REFRESH_LABEL}" "${REFRESH_PLIST}"
+    plutil -insert ProgramArguments -json "[\"${0:A}\",\"--worker\"]" "${REFRESH_PLIST}"
+    plutil -insert RunAtLoad -bool true "${REFRESH_PLIST}"
+    plutil -insert ProcessType -string Background "${REFRESH_PLIST}"
+    plutil -insert EnvironmentVariables -json '{}' "${REFRESH_PLIST}"
+    plutil -insert EnvironmentVariables.PATH -string "${PATH}" "${REFRESH_PLIST}"
+    plutil -insert WorkingDirectory -string "${ROOT_DIR}" "${REFRESH_PLIST}"
+    plutil -insert StandardOutPath -string "${REFRESH_LOG}" "${REFRESH_PLIST}"
+    plutil -insert StandardErrorPath -string "${REFRESH_LOG}" "${REFRESH_PLIST}"
+    launchctl bootstrap "${LAUNCH_DOMAIN}" "${REFRESH_PLIST}"
+
+    echo "Clive rebuild handed off to launchd. This terminal will close while the daemon restarts."
+    echo "Progress log: ${REFRESH_LOG}"
+    exit 0
 fi
 
 for command in swift xcodebuild xcrun xcodegen lsof plutil; do
