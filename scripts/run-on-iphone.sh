@@ -7,14 +7,18 @@ LOCAL_CONFIG=${IOS_DIR}/Config/Local.xcconfig
 RUN_DIR=${CLIVE_DEVICE_RUN_DIR:-/private/tmp/clive-device-run}
 DERIVED_DIR=${RUN_DIR}/DerivedData
 DAEMON_LOG=${RUN_DIR}/daemon.log
-DAEMON_PID_FILE=${RUN_DIR}/daemon.pid
+DAEMON_ERROR_LOG=${RUN_DIR}/daemon-error.log
+DAEMON_PLIST=${RUN_DIR}/com.clive.development-daemon.plist
+DAEMON_LABEL=com.clive.development-daemon
+LAUNCH_DOMAIN=gui/$(id -u)
+LAUNCH_SERVICE=${LAUNCH_DOMAIN}/${DAEMON_LABEL}
 
 if (( $# > 0 )); then
     echo "Usage: ./scripts/run-on-iphone.sh" >&2
     exit 64
 fi
 
-for command in swift xcodebuild xcrun xcodegen; do
+for command in swift xcodebuild xcrun xcodegen lsof plutil; do
     command -v "${command}" >/dev/null || {
         echo "Missing required command: ${command}" >&2
         exit 69
@@ -32,30 +36,76 @@ echo "Building the current Clive daemon…"
 swift build --package-path "${ROOT_DIR}" --product clive
 DAEMON=${ROOT_DIR}/.build/debug/clive
 
-# Stop either development daemon cleanly before asking the installed companion
-# to quit. A missing control socket is expected on the first run.
+# Remove the previous development job before stopping any other daemon. A
+# missing job or control socket is expected on the first run.
+launchctl bootout "${LAUNCH_SERVICE}" >/dev/null 2>&1 || true
 "${DAEMON}" stop >/dev/null 2>&1 || true
 /usr/bin/osascript -e 'tell application "Clive" to quit' >/dev/null 2>&1 || true
 
-echo "Starting the current Clive daemon…"
-: > "${DAEMON_LOG}"
-/usr/bin/nohup "${DAEMON}" start --allow-non-private-network >"${DAEMON_LOG}" 2>&1 &
-daemon_pid=$!
-print -r -- "${daemon_pid}" > "${DAEMON_PID_FILE}"
+clive_listener_pids() {
+    lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk '
+        NR > 1 && ($1 == "clive" || $1 == "Clive") { print $2 }
+    ' | sort -u
+}
 
-daemon_ready=false
+echo "Waiting for the previous Clive listener to stop…"
+listener_stopped=false
 for _ in {1..50}; do
-    if "${DAEMON}" status >/dev/null 2>&1; then
-        daemon_ready=true
-        break
-    fi
-    if ! kill -0 "${daemon_pid}" 2>/dev/null; then
+    if [[ -z $(clive_listener_pids) ]]; then
+        listener_stopped=true
         break
     fi
     sleep 0.1
 done
-if [[ ${daemon_ready} != true ]]; then
-    echo "The development daemon did not start. Log: ${DAEMON_LOG}" >&2
+if [[ ${listener_stopped} != true ]]; then
+    listener_pids=(${(f)"$(clive_listener_pids)"})
+    echo "Stopping unresponsive Clive listener process ${listener_pids[*]}…"
+    kill -TERM ${listener_pids[@]}
+    for _ in {1..50}; do
+        if [[ -z $(clive_listener_pids) ]]; then
+            listener_stopped=true
+            break
+        fi
+        sleep 0.1
+    done
+fi
+if [[ ${listener_stopped} != true ]]; then
+    echo "The previous Clive listener did not stop within 10 seconds." >&2
+    lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR == 1 || $1 == "clive" || $1 == "Clive"' >&2
+    exit 1
+fi
+
+echo "Registering the current Clive daemon with launchd…"
+: > "${DAEMON_LOG}"
+: > "${DAEMON_ERROR_LOG}"
+plutil -create xml1 "${DAEMON_PLIST}"
+plutil -insert Label -string "${DAEMON_LABEL}" "${DAEMON_PLIST}"
+plutil -insert ProgramArguments -json "[\"${DAEMON}\",\"start\",\"--allow-non-private-network\"]" "${DAEMON_PLIST}"
+plutil -insert RunAtLoad -bool true "${DAEMON_PLIST}"
+plutil -insert KeepAlive -json '{"SuccessfulExit":false}' "${DAEMON_PLIST}"
+plutil -insert ProcessType -string Background "${DAEMON_PLIST}"
+plutil -insert ThrottleInterval -integer 2 "${DAEMON_PLIST}"
+plutil -insert WorkingDirectory -string "${ROOT_DIR}" "${DAEMON_PLIST}"
+plutil -insert StandardOutPath -string "${DAEMON_LOG}" "${DAEMON_PLIST}"
+plutil -insert StandardErrorPath -string "${DAEMON_ERROR_LOG}" "${DAEMON_PLIST}"
+launchctl bootstrap "${LAUNCH_DOMAIN}" "${DAEMON_PLIST}"
+
+wait_for_daemon() {
+    for _ in {1..100}; do
+        if "${DAEMON}" status >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    return 1
+}
+
+if ! wait_for_daemon; then
+    echo "The launchd development daemon did not become ready." >&2
+    launchctl print "${LAUNCH_SERVICE}" >&2 || true
+    echo "Standard error: ${DAEMON_ERROR_LOG}" >&2
+    tail -40 "${DAEMON_ERROR_LOG}" >&2
+    echo "Standard output: ${DAEMON_LOG}" >&2
     tail -40 "${DAEMON_LOG}" >&2
     exit 1
 fi
@@ -137,6 +187,14 @@ xcrun devicectl device process launch \
     --terminate-existing \
     "${bundle_id}"
 
+if ! wait_for_daemon; then
+    echo "The development daemon stopped during the iPhone deployment." >&2
+    launchctl print "${LAUNCH_SERVICE}" >&2 || true
+    tail -40 "${DAEMON_ERROR_LOG}" >&2
+    exit 1
+fi
+
 echo "Clive is running on the iPhone."
 echo "Daemon log: ${DAEMON_LOG}"
-echo "Stop the daemon with: ${DAEMON} stop"
+echo "Daemon error log: ${DAEMON_ERROR_LOG}"
+echo "Stop the daemon with: launchctl bootout ${LAUNCH_SERVICE}"

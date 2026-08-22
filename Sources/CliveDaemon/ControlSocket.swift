@@ -13,6 +13,17 @@ enum ControlSocketError: LocalizedError {
     }
 }
 
+private func configureDescriptor(_ descriptor: Int32, nonblocking: Bool = false) -> Bool {
+    let descriptorFlags = fcntl(descriptor, F_GETFD)
+    guard descriptorFlags >= 0, fcntl(descriptor, F_SETFD, descriptorFlags | FD_CLOEXEC) == 0 else { return false }
+    let statusFlags = fcntl(descriptor, F_GETFL)
+    guard statusFlags >= 0 else { return false }
+    let desiredStatusFlags = nonblocking ? statusFlags | O_NONBLOCK : statusFlags & ~O_NONBLOCK
+    guard fcntl(descriptor, F_SETFL, desiredStatusFlags) == 0 else { return false }
+    var noSigPipe: Int32 = 1
+    return setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout.size(ofValue: noSigPipe))) == 0
+}
+
 final class ControlChannel: @unchecked Sendable {
     private let descriptor: Int32
     private let writeLock = NSLock()
@@ -89,6 +100,7 @@ final class ControlSocketServer: @unchecked Sendable {
         let serverDescriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         descriptor = serverDescriptor
         guard serverDescriptor >= 0 else { throw ControlSocketError.unavailable }
+        guard configureDescriptor(serverDescriptor, nonblocking: true) else { Darwin.close(serverDescriptor); throw ControlSocketError.unavailable }
         var address = sockaddr_un(); address.sun_family = sa_family_t(AF_UNIX)
         guard socketPath.utf8.count < MemoryLayout.size(ofValue: address.sun_path) else { Darwin.close(serverDescriptor); throw ControlSocketError.unavailable }
         withUnsafeMutableBytes(of: &address.sun_path) { bytes in
@@ -112,6 +124,7 @@ final class ControlSocketServer: @unchecked Sendable {
         while true {
             let client = Darwin.accept(descriptor, nil, nil)
             if client < 0 { if errno == EAGAIN || errno == EWOULDBLOCK { return }; return }
+            guard configureDescriptor(client) else { Darwin.close(client); continue }
             let channel = ControlChannel(descriptor: client)
             Task { [handler] in
                 do { try await handler(channel.readRequest(), channel) }
@@ -126,6 +139,7 @@ enum ControlSocketClient {
     static func connect(url: URL) throws -> ControlChannel {
         let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         guard descriptor >= 0 else { throw ControlSocketError.unavailable }
+        guard configureDescriptor(descriptor) else { Darwin.close(descriptor); throw ControlSocketError.unavailable }
         var address = sockaddr_un(); address.sun_family = sa_family_t(AF_UNIX)
         let path = url.path
         guard path.utf8.count < MemoryLayout.size(ofValue: address.sun_path) else { Darwin.close(descriptor); throw ControlSocketError.unavailable }
