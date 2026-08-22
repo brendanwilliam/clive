@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clive Local Refresh"
+  short_description: "Rebuild and redeploy Clive after a recoverable development failure."
+  default_prompt: "Refresh the local Clive development deployment. I accept that the current terminal session will be terminated."
