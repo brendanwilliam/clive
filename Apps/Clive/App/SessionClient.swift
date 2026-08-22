@@ -9,6 +9,7 @@ final class SessionClient: @unchecked Sendable {
     var onOutput: ((Data) -> Void)?
     var onActivityOutput: ((Data) -> Void)?
     var onState: ((State) -> Void)?
+    var onAttachmentState: ((AttachmentState) -> Void)?
     var onRendezvousUpgrade: ((Data, RendezvousCapability) -> Void)?
     enum State: Equatable {
         case connecting, reconnecting(waitingForWiFi: Bool), active(UUID, SessionOpened.Disposition, Bool), disconnected, resumeUnavailable, revoked, workingDirectoryUnavailable, certificateChanged, protocolError, networkError(String)
@@ -85,6 +86,7 @@ final class SessionClient: @unchecked Sendable {
         sendResize(size)
     }
     func close() { generation += 1; timeout?.cancel(); send(ProtocolFrame(kind: .sessionClose)); connection?.cancel(); connection = nil; opened = false }
+    func terminate() { generation += 1; timeout?.cancel(); send(ProtocolFrame(kind: .sessionTerminate)); connection?.cancel(); connection = nil; opened = false }
     func detach() { generation += 1; timeout?.cancel(); terminalStateReported = true; connection?.cancel(); connection = nil; opened = false }
     private func send(_ frame: ProtocolFrame, on target: NWConnection? = nil) { guard let data = try? frame.encoded() else { return }; (target ?? connection)?.send(content: data, completion: .idempotent) }
     private func receive(on target: NWConnection, generation attempt: Int, expectsResumption: Bool) {
@@ -123,6 +125,7 @@ final class SessionClient: @unchecked Sendable {
                 onActivityOutput?(Data(bytes)); onOutput?(Data(bytes))
             }
         case .sessionClose: reportTerminalState(.resumeUnavailable); connection?.cancel()
+        case .attachmentState: onAttachmentState?(try ProtocolPayload.decode(AttachmentState.self, from: frame.payload))
         case .sessionError: try handleError(frame)
         default: throw ClientError.protocolViolation
         }
@@ -133,6 +136,8 @@ final class SessionClient: @unchecked Sendable {
         case .revoked: .revoked
         case .workingDirectoryUnavailable: .workingDirectoryUnavailable
         case .authenticationFailed: .networkError("The route could not be authenticated.")
+        case .sessionUnavailable: .resumeUnavailable
+        case .slowConsumer: .networkError("This connection could not keep up with terminal output.")
         default: .protocolError
         }
         reportTerminalState(state); connection?.cancel()

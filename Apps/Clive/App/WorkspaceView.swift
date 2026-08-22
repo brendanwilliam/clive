@@ -8,7 +8,10 @@ struct WorkspaceView: View {
     @State private var renameTarget: WorkspaceSession?
     @State private var renameText = ""
     @State private var deleteTarget: WorkspaceSession?
+    @State private var endTarget: WorkspaceSession?
     @State private var showingDisconnectConfirmation = false
+    @State private var showingConnectionGuide = false
+    @State private var showingConnectionDetails = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -42,6 +45,8 @@ struct WorkspaceView: View {
             SettingsView(preferences: coordinator.preferences, connection: coordinator.selectedMac)
         }
         .fullScreenCover(isPresented: $showingScanner) { scanner }
+        .sheet(isPresented: $showingConnectionGuide) { ConnectionGuideView { showingScanner = true } }
+        .sheet(isPresented: $showingConnectionDetails) { connectionDetails }
         .alert("Rename terminal", isPresented: renameBinding) {
             TextField("Terminal name", text: $renameText)
             Button("Cancel", role: .cancel) { renameTarget = nil }
@@ -54,7 +59,13 @@ struct WorkspaceView: View {
             Button("Cancel", role: .cancel) { deleteTarget = nil }
             Button("Close Terminal", role: .destructive) { coordinator.close(session); deleteTarget = nil }
         } message: { session in
-            Text("Closing \(session.descriptor.label) ends its shell and any running processes.")
+            Text("Closing \(session.descriptor.label) only detaches this iPhone. The shared shell remains available on the Mac.")
+        }
+        .alert("End shared session?", isPresented: Binding(get: { endTarget != nil }, set: { if !$0 { endTarget = nil } }), presenting: endTarget) { session in
+            Button("Cancel", role: .cancel) { endTarget = nil }
+            Button("End Shared Session", role: .destructive) { coordinator.end(session); endTarget = nil }
+        } message: { session in
+            Text("This ends \(session.descriptor.label), its running processes, and every attached client.")
         }
         .alert("Disconnect and unpair?", isPresented: $showingDisconnectConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -86,7 +97,8 @@ struct WorkspaceView: View {
             .navigationTitle("")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { terminalButton }
-                ToolbarItem(placement: .topBarTrailing) { connectionButton }
+                ToolbarItem(placement: .principal) { connectionButton }
+                ToolbarItem(placement: .topBarTrailing) { shortcutsButton }
             }
         }
     }
@@ -108,21 +120,22 @@ struct WorkspaceView: View {
     }
 
     private var connectionButton: some View {
-        Button { coordinator.showConnections() } label: {
-            Group {
-                if let mac = coordinator.selectedMac {
-                    ConnectionIndicatorView(value: coordinator.preferences.indicator(for: mac), color: coordinator.preferences.indicatorColor(for: mac), size: 36)
-                } else {
-                    Image(systemName: "person.2.fill")
-                        .frame(width: 36, height: 36)
-                        .background(Color.secondary.opacity(0.18), in: .circle)
-                }
-            }
+        Button { showingConnectionDetails = true } label: {
+            HStack(spacing: 7) { Image(systemName: connectionStatusIcon).foregroundStyle(connectionStatusColor); VStack(spacing: 0) { Text(coordinator.selectedMac?.displayName ?? "No Mac").font(.subheadline.weight(.semibold)); Text(connectionStatusText).font(.caption2) } }
         }
         .buttonStyle(.plain)
         .contentShape(.circle)
-        .accessibilityLabel("Connections")
-        .accessibilityValue(coordinator.selectedMac?.displayName ?? "No connection")
+        .accessibilityLabel("Connection status")
+        .accessibilityValue("\(coordinator.selectedMac?.displayName ?? "No connection"), \(connectionStatusText)")
+    }
+
+    private var shortcutsButton: some View {
+        Menu {
+            if coordinator.preferences.value.shortcuts.isEmpty { Text("No shortcuts configured") }
+            ForEach(coordinator.preferences.value.shortcuts) { shortcut in Button(shortcut.name) { coordinator.runShortcut(shortcut) } }
+        } label: { Image(systemName: "command").frame(width: 44, height: 44) }
+        .disabled(coordinator.selectedSessionID == nil)
+        .accessibilityLabel("Terminal shortcuts")
     }
 
     private var workspace: some View {
@@ -145,6 +158,7 @@ struct WorkspaceView: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                .simultaneousGesture(boundaryDrag)
             }
         }
     }
@@ -211,14 +225,50 @@ struct WorkspaceView: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.descriptor.label).fontWeight(session.id == coordinator.selectedSessionID ? .semibold : .regular)
+                if let attachment = session.attachmentState {
+                    Text("\(attachment.attachmentCount) attached · resize: \(attachment.resizeOwner?.rawValue ?? "none")").font(.caption).foregroundStyle(.secondary)
+                }
                 if let preview = session.preview { Text(preview).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary) }
             }
             .contentShape(.rect)
             .onTapGesture { coordinator.selectSession(session.id); coordinator.dismissPresentedScreen() }
             Spacer(minLength: 4)
+            Menu {
+                Button("Rename", systemImage: "pencil") { renameText = session.descriptor.label; renameTarget = session }
+                Button("Close", systemImage: "trash", role: .destructive) { deleteTarget = session }
+                Button("End Shared Session…", systemImage: "xmark.octagon", role: .destructive) { endTarget = session }
+            } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(.rect) }
+            .accessibilityLabel("Actions for \(session.descriptor.label)")
         }
-        .padding(12)
+        .padding(.horizontal, 12).frame(minHeight: 68)
         .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08), in: .rect(cornerRadius: 12))
+    }
+
+    private var boundaryDrag: some Gesture {
+        DragGesture(minimumDistance: 24).onEnded { value in
+            guard TerminalBoundaryDragPolicy.action(translation: value.translation, selectedIndex: coordinator.sessions.firstIndex { $0.id == coordinator.selectedSessionID } ?? 0, count: coordinator.sessions.count) != nil else { return }
+            switch TerminalBoundaryDragPolicy.action(translation: value.translation, selectedIndex: coordinator.sessions.firstIndex { $0.id == coordinator.selectedSessionID } ?? 0, count: coordinator.sessions.count) {
+            case .openDrawer: coordinator.showTerminalList()
+            case .newTerminal: coordinator.addShell()
+            case nil: break
+            }
+        }
+    }
+
+    private var connectionStatusText: String { coordinator.selectedMac == nil ? "Not connected" : (coordinator.recovery == nil ? "Secure" : "Needs attention") }
+    private var connectionStatusIcon: String { coordinator.recovery == nil && coordinator.selectedMac != nil ? "lock.shield.fill" : "exclamationmark.triangle.fill" }
+    private var connectionStatusColor: Color { coordinator.recovery == nil && coordinator.selectedMac != nil ? .green : .orange }
+    private var connectionDetails: some View {
+        NavigationStack { List {
+            LabeledContent("Session health", value: connectionStatusText)
+            LabeledContent("Active route", value: coordinator.selectedMac.map(routeStatus) ?? "None")
+            LabeledContent("Transport security", value: coordinator.selectedMac == nil ? "Unavailable" : "Mutual TLS and certificate pinning")
+            LabeledContent("Certificate", value: coordinator.selectedMac == nil ? "No certificate" : "Pinned certificate matches")
+            LabeledContent("Attachments", value: "iPhone")
+            LabeledContent("Resize owner", value: "Active terminal")
+            LabeledContent("Replay", value: "No truncation reported")
+            if coordinator.recovery != nil { Text("Choose a reachable Mac or retry the connection.").foregroundStyle(.orange) }
+        }.navigationTitle("Connection Details").toolbar { Button("Connections") { showingConnectionDetails = false; coordinator.showConnections() } } }
     }
 
     private var connectionPopover: some View {
@@ -254,6 +304,7 @@ struct WorkspaceView: View {
 
                 Divider().padding(.vertical, 6)
                 Button { coordinator.dismissPresentedScreen(); showingScanner = true } label: { Label("Add connection", systemImage: "qrcode.viewfinder") }.padding(.vertical, 8)
+                Button { coordinator.dismissPresentedScreen(); showingConnectionGuide = true } label: { Label("Connection Guide", systemImage: "list.number") }.padding(.vertical, 8)
                 if coordinator.selectedMac != nil {
                     Button(role: .destructive) { showingDisconnectConfirmation = true } label: {
                         HStack {
@@ -312,7 +363,8 @@ struct WorkspaceView: View {
             } description: {
                 Text("Pair a Mac before starting a terminal.")
             } actions: {
-                Button("Add Connection") { showingScanner = true }
+                Button("Connection Guide") { showingConnectionGuide = true }
+                Button("Pair a Mac") { showingScanner = true }
             }
         case .disconnected:
             ContentUnavailableView {

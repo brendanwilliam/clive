@@ -53,6 +53,9 @@ struct CliveDaemon {
         case "attach":
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
             try requireInteractiveTerminal(); try runManagedTerminal(command: .sessionAttach, sessionID: id, deviceID: option("--device", in: arguments))
+        case "end":
+            guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
+            try runOneShot(.init(command: .sessionEnd, deviceID: option("--device", in: arguments), sessionID: id))
         case "shell": try requireInteractiveTerminal(); try runManagedTerminal(command: .sessionCreate, sessionID: nil, deviceID: option("--device", in: arguments))
         case "help", "--help", "-h": print(usage)
         default: throw CommandError.usage
@@ -216,7 +219,7 @@ struct CliveDaemon {
     }
 
     static let usage = """
-    Usage: clive <start|pair|status|revoke|stop|cellular> [options]
+    Usage: clive <start|pair|status|revoke|stop|cellular|shell|sessions|attach|end> [options]
       start [--allow-non-private-network] [--remote-host <private-vpn-host-or-ip> --session-port <port>]
       start --clear-remote
       pair
@@ -230,6 +233,7 @@ struct CliveDaemon {
       shell
       sessions [--device <device-id>]
       attach <session-id> [--device <device-id>]
+      end <session-id> [--device <device-id>]
     """
 
     private static func parseRemoteEndpoint(_ arguments: [String]) throws -> RemoteEndpoint? {

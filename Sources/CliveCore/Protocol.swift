@@ -52,8 +52,20 @@ public struct SessionAttachRequest: Codable, Equatable, Sendable {
     public let serverSessionID: UUID
     public let lastReceivedOffset: UInt64
     public let attachmentKind: AttachmentKind
-    public init(serverSessionID: UUID, lastReceivedOffset: UInt64 = 0, attachmentKind: AttachmentKind) {
-        self.serverSessionID = serverSessionID; self.lastReceivedOffset = lastReceivedOffset; self.attachmentKind = attachmentKind
+    public let initialSize: TerminalSize
+    public init(serverSessionID: UUID, lastReceivedOffset: UInt64 = 0, attachmentKind: AttachmentKind, initialSize: TerminalSize) {
+        self.serverSessionID = serverSessionID; self.lastReceivedOffset = lastReceivedOffset
+        self.attachmentKind = attachmentKind; self.initialSize = initialSize
+    }
+}
+public struct AttachmentState: Codable, Equatable, Sendable {
+    public let sessionID: UUID
+    public let attachmentCount: Int
+    public let resizeOwner: AttachmentKind?
+    public let outputOffset: UInt64
+    public init(sessionID: UUID, attachmentCount: Int, resizeOwner: AttachmentKind?, outputOffset: UInt64) {
+        self.sessionID = sessionID; self.attachmentCount = attachmentCount
+        self.resizeOwner = resizeOwner; self.outputOffset = outputOffset
     }
 }
 public struct TerminalOutputChunk: Codable, Equatable, Sendable {
@@ -132,6 +144,7 @@ public struct SessionOpened: Codable, Equatable, Sendable {
 public struct SessionError: Codable, Equatable, Sendable {
     public enum Code: String, Codable, Sendable {
         case authenticationFailed, invalidFrameOrder, shellCreationFailed, workingDirectoryUnavailable, revoked, protocolError
+        case sessionUnavailable, slowConsumer
     }
     public let code: Code
     public let message: String

@@ -91,6 +91,21 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(chunk.endOffset == 44)
 }
 
+@Test func sessionAttachAndAttachmentStateRoundTrip() throws {
+    let id = UUID(), size = TerminalSize(columns: 132, rows: 40)
+    let request = SessionAttachRequest(serverSessionID: id, lastReceivedOffset: 19, attachmentKind: .iPhone, initialSize: size)
+    #expect(try ProtocolPayload.decode(SessionAttachRequest.self, from: ProtocolPayload.encode(request)) == request)
+    let state = AttachmentState(sessionID: id, attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 41)
+    #expect(try ProtocolPayload.decode(AttachmentState.self, from: ProtocolPayload.encode(state)) == state)
+    #expect(SessionError.Code.sessionUnavailable != .slowConsumer)
+}
+
+@Test func testFlightDestinationRequiresOfficialPublicInvitation() {
+    #expect(DownloadDestination.testFlightURL("https://testflight.apple.com/join/AbC123") != nil)
+    #expect(DownloadDestination.testFlightURL("http://testflight.apple.com/join/AbC123") == nil)
+    #expect(DownloadDestination.testFlightURL("https://example.com/join/AbC123") == nil)
+}
+
 @Test func workspaceSessionIDReplacesOnlyMatchingPhoneSession() async {
     let registry = SessionRegistry()
     let stableID = UUID()

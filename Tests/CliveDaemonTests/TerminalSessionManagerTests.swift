@@ -159,6 +159,36 @@ final class TerminalSessionManagerTests: XCTestCase {
         XCTAssertEqual(process.terminateCount, 1)
     }
 
+    func testAttachExistingNeverCreatesReplacementPTY() throws {
+        let process = FakeTerminalProcess(), creations = Box(0)
+        let manager = TerminalSessionManager(registry: SessionRegistry(), processFactory: { _, _, output, exit in creations.value += 1; process.output = output; process.exit = exit; return process })
+        let original = try attach(manager, clientID: UUID(), attachmentID: UUID())
+        let resumed = try manager.attachExisting(deviceID: "phone", serverSessionID: original.serverSessionID, size: size, attachmentID: UUID(), attachmentKind: .macCLI, lastReceivedOffset: 0, output: { _, done in done() }, onDetached: { _ in }, onShellExit: {})
+        let unavailable = try manager.attachExisting(deviceID: "phone", serverSessionID: UUID(), size: size, attachmentID: UUID(), attachmentKind: .iPhone, lastReceivedOffset: 0, output: { _, done in done() }, onDetached: { _ in }, onShellExit: {})
+        XCTAssertEqual(resumed?.serverSessionID, original.serverSessionID)
+        XCTAssertNil(unavailable); XCTAssertEqual(creations.value, 1)
+    }
+
+    func testCatalogSubscriptionTracksAttachmentsWithoutCountingSubscriber() throws {
+        let process = FakeTerminalProcess(), manager = makeManager(process), snapshots = Box<[[SessionDescriptor]]>([])
+        manager.subscribe(deviceID: "phone", identifier: UUID()) { snapshots.value.append($0) }; manager.synchronize()
+        let client = UUID(), attachment = UUID(); _ = try attach(manager, clientID: client, attachmentID: attachment); manager.synchronize()
+        manager.detach(deviceID: "phone", clientSessionID: client, attachmentID: attachment); manager.synchronize()
+        XCTAssertEqual(snapshots.value.first, [])
+        XCTAssertEqual(snapshots.value.dropFirst().first?.first?.attachmentCount, 1)
+        XCTAssertEqual(snapshots.value.last?.first?.attachmentCount, 0)
+    }
+
+    func testNonOwnerViewportIsStoredAndAppliedWhenInputClaimsOwnership() throws {
+        let process = FakeTerminalProcess(), manager = makeManager(process), client = UUID(), first = UUID(), second = UUID()
+        _ = try attach(manager, clientID: client, attachmentID: first)
+        _ = try attach(manager, clientID: client, attachmentID: second)
+        let secondSize = TerminalSize(columns: 120, rows: 50)
+        manager.resize(deviceID: "phone", clientSessionID: client, attachmentID: second, size: secondSize); manager.synchronize()
+        try manager.input(deviceID: "phone", clientSessionID: client, attachmentID: second, bytes: Data("x".utf8))
+        XCTAssertEqual(process.sizes.last, secondSize)
+    }
+
     private func makeManager(_ process: FakeTerminalProcess, replayLimit: Int = 1_048_576) -> TerminalSessionManager {
         TerminalSessionManager(registry: SessionRegistry(), replayLimit: replayLimit, processFactory: { _, _, output, exit in
             process.output = output; process.exit = exit; return process

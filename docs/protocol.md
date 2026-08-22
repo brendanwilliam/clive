@@ -27,7 +27,7 @@ The pairing endpoint accepts only one successful exchange. Expired, consumed, or
 - The peer certificate must exactly match the stored fingerprint for the selected pairing record.
 - TLS errors, certificate changes, protocol-version incompatibility, or missing biometric authorization terminate the attempt before shell creation.
 - The app sends `session.open` only after mutual TLS completes. The Mac responds with `session.opened` containing an opaque session ID, a `created` or `resumed` disposition, and a replay-truncation flag. Older replies without those fields mean `created` and not truncated.
-- One TLS connection carries exactly one session and PTY. Multiple tabs use independent connections, so terminal frames need no session ID.
+- One TLS connection is either a foreground `session.list` subscription or one terminal attachment. Catalog subscriptions never count as terminal attachments.
 
 ## Framing
 
@@ -35,8 +35,14 @@ Application records are length-prefixed binary frames over TLS:
 
 | Frame | Direction | Purpose |
 | --- | --- | --- |
-| `session.open` / `session.close` | iOS → Mac | Request or end an interactive session. |
+| `session.open` | iOS → Mac | Create or resume a client-owned shell. |
 | `session.opened` | Mac → iOS | Confirm shell creation and return its opaque session ID. |
+| `session.list` / `session.list.result` | iOS ↔ Mac | Subscribe to initial and changed catalog snapshots while foregrounded and unlocked. |
+| `session.attach` | iOS → Mac | Attach to an existing stable server session ID with an output offset and viewport; never creates a PTY. |
+| `attachment.state` | Mac → client | Report attachment count, resize owner, and current output offset. |
+| `resize.claim` | client → Mac | Claim resize ownership and immediately apply the attachment's stored viewport. |
+| `session.close` | client → Mac | Detach this transport while retaining the PTY for the grace period. |
+| `session.terminate` | client → Mac | Explicitly end the shared PTY for every attachment. |
 | `pairing.revoke` / `pairing.revoked` | iOS ↔ Mac | Revoke the authenticated iPhone and acknowledge persisted removal. |
 | `terminal.input` | iOS → Mac | UTF-8/control bytes to the PTY. |
 | `terminal.output` | Mac → iOS | Raw PTY output bytes. |
@@ -47,7 +53,9 @@ Frames have a bounded maximum size and an explicit protocol version. The Mac rej
 
 ## Session lifecycle
 
-Each authenticated device ID and stable client session ID maps to one PTY and login shell. Network loss detaches only the transport and retains the shell for 30 minutes; detached output does not extend that retention timer. Up to 1 MiB of output is replayed in order on reattachment, with oldest bytes discarded and reported on overflow. A replacement TLS attachment supersedes the prior attachment, whose later input, resize, close, or disconnect events have no effect. Explicit close by the current attachment, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY immediately. Shell exit sends `session.close` to the current iOS attachment. The iOS app persists only opaque session IDs, never terminal contents.
+Each authenticated device ID and stable client session ID maps to one PTY and login shell. Any number of authenticated iPhone or local CLI transports may attach to that PTY. Network loss and ordinary navigation detach only that transport; after the final detach the Mac retains the shell for 30 minutes. Detached output does not extend the timer. Up to 1 MiB of output is replayed in order, with oldest bytes discarded and truncation reported. Output is offset-tagged and ordered independently for every attachment; a bounded slow consumer is evicted without suspending the PTY or its peers.
+
+Every input frame is written atomically on the session queue. Each attachment retains its latest viewport. The most recent accepted input or explicit `resize.claim` becomes resize owner and immediately applies that viewport; a non-owner resize only updates its stored viewport. Owner detachment transfers ownership to a remaining attachment and applies its viewport. Explicit `session.terminate`, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY everywhere. Shell exit sends `session.close` to all current attachments. The iOS app persists only opaque session IDs and labels, never terminal contents.
 
 Successful terminal input and produced output refresh one daemon-wide idle-system-sleep assertion for 30 minutes. Pairing, authentication, resize traffic, and idle connections do not. Display sleep, explicit Sleep, lid close, shutdown, and system policy remain unaffected.
 
