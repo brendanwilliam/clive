@@ -1,5 +1,7 @@
 # Architecture
 
+The macOS daemon owns shared PTYs. Authenticated iOS connections and the owner-only local control socket attach to them; `clive sessions`, `clive attach`, and `clive shell` switch to framed terminal traffic after the control response. The final detach starts expiry, while explicit termination, shell exit, revocation, and shutdown close every attachment.
+
 ## Components
 
 | Component | Responsibility |
@@ -40,4 +42,6 @@ The running process owns a mode-`0600` Unix control socket. All other commands u
 
 The app requires biometric authentication on initial launch and when more than five minutes have elapsed since the last successful verification. The in-memory grace period remains valid through exactly 300 seconds; foregrounding does not extend it. It must clearly distinguish a disconnected state, an unpaired Mac, a pairing-in-progress state, and an active shell. Terminal rendering follows standard VT behavior; clipboard and file-transfer capabilities are out of scope for V1.
 
-When iOS becomes inactive, Clive immediately detaches every live transport and removes terminal previews from memory. On foreground it recreates connections from opaque workspace descriptors only after the in-memory biometric grace check or successful authorization, retaining the same client session UUIDs. A matching daemon PTY resumes; an expired, exited, revoked, or daemon-restarted PTY creates a fresh shell. Authentication cancellation leaves the workspace locked and opens no connection. Process termination, a missing timestamp, or clock rollback invalidates the grace period.
+When iOS becomes inactive, Clive immediately detaches every live transport and removes terminal previews from memory. On foreground it reconnects from opaque local and server session IDs only after the in-memory biometric grace check or successful authorization. Reconnection always sends `session.attach`; an expired, exited, revoked, or daemon-restarted PTY is shown as ended and never replaced implicitly. Only an explicit New Shell action sends `session.open`. Authentication cancellation leaves the workspace locked and opens no catalog or terminal connection. Process termination, a missing timestamp, or clock rollback invalidates the grace period.
+
+The biometric and daemon clocks are independent. Returning at or before 300 seconds can reattach without another prompt, but does not extend the Mac's detached-session lifetime. Returning later requires Face ID first; if the Mac's 30-minute retention has also elapsed, the descriptor becomes ended and the user must explicitly create a new shell.

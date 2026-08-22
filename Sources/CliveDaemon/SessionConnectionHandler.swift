@@ -15,6 +15,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
     private var sessionID: UUID?
     private var clientSessionID: UUID?
     private var opening = false
+    private var subscribed = false
     private var closed = false
     private let onClosed: @Sendable (UUID) -> Void
     private let validateGate: @Sendable (String, Data?) async -> Bool
@@ -42,6 +43,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
     func close(terminateSession: Bool = false) {
         guard !closed else { return }; closed = true
         framed?.cancel(); framed = nil
+        if subscribed { sessions.unsubscribe(identifier: identifier); subscribed = false }
         if let clientSessionID {
             if terminateSession { sessions.close(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier) }
             else { sessions.detach(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier) }
@@ -53,6 +55,30 @@ final class SessionConnectionHandler: @unchecked Sendable {
 
     private func handle(_ frame: ProtocolFrame) {
         if sessionID == nil {
+            if !opening, frame.kind == .sessionList,
+               let request = try? ProtocolPayload.decode(SessionListRequest.self, from: frame.payload) {
+                opening = true
+                Task { [weak self] in
+                    guard let self else { return }
+                    let allowed = requiresWANGate ? await validateGate(deviceID, request.wanGateToken) : true
+                    queue.async { [weak self] in self?.finishListSubscription(allowed: allowed) }
+                }
+                return
+            }
+            if !opening, frame.kind == .sessionAttach,
+               let request = try? ProtocolPayload.decode(SessionAttachRequest.self, from: frame.payload), request.initialSize.isValid {
+                opening = true
+                Task { [weak self] in
+                    guard let self else { return }
+                    let allowed = requiresWANGate ? await validateGate(deviceID, request.wanGateToken) : true
+                    queue.async { [weak self] in
+                        guard let self else { return }
+                        if allowed { self.finishAttach(request: request) }
+                        else { self.fail(.authenticationFailed, "Cellular access is disabled or the rendezvous record expired") }
+                    }
+                }
+                return
+            }
             if !opening, frame.kind == .reachabilityProbe,
                let probe = try? ProtocolPayload.decode(ReachabilityProbe.self, from: frame.payload) {
                 opening = true
@@ -100,7 +126,10 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 return fail(.protocolError, "Invalid terminal size")
             }
             if let clientSessionID { sessions.resize(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier, size: size) }
-        case .sessionClose: close(terminateSession: true)
+        case .resizeClaim:
+            if let clientSessionID { sessions.claimResize(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: identifier) }
+        case .sessionClose: close()
+        case .sessionTerminate: close(terminateSession: true)
         default: fail(.invalidFrameOrder, "Frame is not valid in an open session")
         }
     }
@@ -127,9 +156,11 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 size: request.initialSize,
                 workingDirectory: request.workingDirectory,
                 attachmentID: identifier,
-                output: { [weak self] bytes, completion in
+                attachmentKind: request.attachmentKind,
+                lastReceivedOffset: request.lastReceivedOffset,
+                output: { [weak self] chunk, completion in
                     guard let self else { completion(); return }
-                    self.queue.async { self.sendOutput(bytes, completion: completion) }
+                    self.queue.async { self.sendOutput(chunk, completion: completion) }
                 },
                 onSuperseded: { [weak self] in
                     guard let self else { return }
@@ -138,12 +169,16 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 onShellExit: { [weak self] in
                     guard let self else { return }
                     self.queue.async { self.shellExited() }
-                }
+                },
+                onState: { [weak self] state in guard let self else { return }; self.queue.async { self.sendState(state) } }
             )
             clientSessionID = request.clientSessionID; sessionID = attachment.serverSessionID
             let data = try ProtocolPayload.encode(SessionOpened(serverSessionID: attachment.serverSessionID, rendezvousCapability: localCapability, disposition: attachment.disposition, replayTruncated: attachment.replayTruncated))
             framed?.send(ProtocolFrame(kind: .sessionOpened, payload: data))
-            if !attachment.replay.isEmpty { framed?.send(ProtocolFrame(kind: .terminalOutput, payload: attachment.replay)) }
+            if !attachment.replay.isEmpty {
+                let chunk = TerminalOutputChunk(offset: attachment.replayOffset, bytes: attachment.replay)
+                framed?.send(ProtocolFrame(kind: .terminalOutput, payload: try ProtocolPayload.encode(chunk)))
+            }
             print("Session: shell opened.")
         } catch PTYProcessError.invalidWorkingDirectory {
             fail(.workingDirectoryUnavailable, "The configured working directory is unavailable. Choose another directory in Settings.")
@@ -153,9 +188,45 @@ final class SessionConnectionHandler: @unchecked Sendable {
         }
     }
 
-    private func sendOutput(_ bytes: Data, completion: @escaping @Sendable () -> Void) {
+    private func finishAttach(request: SessionAttachRequest) {
+        do {
+            guard let attachment = try sessions.attachExisting(deviceID: deviceID, serverSessionID: request.serverSessionID, size: request.initialSize, attachmentID: identifier, attachmentKind: request.attachmentKind, lastReceivedOffset: request.lastReceivedOffset, output: { [weak self] chunk, completion in
+                guard let self else { completion(); return }; self.queue.async { self.sendOutput(chunk, completion: completion) }
+            }, onDetached: { [weak self] reason in
+                guard let self else { return }; self.queue.async { if case .slowConsumer = reason { self.fail(.slowConsumer, "This attachment could not keep up with terminal output.") } }
+            }, onShellExit: { [weak self] in guard let self else { return }; self.queue.async { self.shellExited() } }, onState: { [weak self] state in guard let self else { return }; self.queue.async { self.sendState(state) } }) else {
+                return fail(.sessionUnavailable, "The requested shared session is no longer available.")
+            }
+            opening = false; clientSessionID = sessions.clientSessionID(deviceID: deviceID, serverSessionID: request.serverSessionID); sessionID = attachment.serverSessionID
+            let opened = SessionOpened(serverSessionID: attachment.serverSessionID, disposition: .resumed, replayTruncated: attachment.replayTruncated)
+            framed?.send(ProtocolFrame(kind: .sessionOpened, payload: try ProtocolPayload.encode(opened)))
+            if !attachment.replay.isEmpty { framed?.send(ProtocolFrame(kind: .terminalOutput, payload: try ProtocolPayload.encode(TerminalOutputChunk(offset: attachment.replayOffset, bytes: attachment.replay)))) }
+        } catch { fail(.protocolError, "Unable to attach to the shared session.") }
+    }
+
+    private func finishListSubscription(allowed: Bool) {
+        guard allowed else { return fail(.authenticationFailed, "Cellular access is disabled or the rendezvous record expired") }
+        opening = false; subscribed = true
+        sessions.subscribe(deviceID: deviceID, identifier: identifier) { [weak self] descriptors in
+            guard let self else { return }
+            self.queue.async { self.sendList(descriptors) }
+        }
+    }
+
+    private func sendList(_ descriptors: [SessionDescriptor]) {
+        guard !closed, let payload = try? ProtocolPayload.encode(SessionListResult(sessions: descriptors)) else { return }
+        framed?.send(ProtocolFrame(kind: .sessionListResult, payload: payload))
+    }
+
+    private func sendState(_ state: AttachmentState) {
+        guard !closed, let payload = try? ProtocolPayload.encode(state) else { return }
+        framed?.send(ProtocolFrame(kind: .attachmentState, payload: payload))
+    }
+
+    private func sendOutput(_ chunk: TerminalOutputChunk, completion: @escaping @Sendable () -> Void) {
         guard !closed else { completion(); return }
-        framed?.send(ProtocolFrame(kind: .terminalOutput, payload: bytes)) { _ in completion() }
+        guard let payload = try? ProtocolPayload.encode(chunk) else { completion(); return }
+        framed?.send(ProtocolFrame(kind: .terminalOutput, payload: payload)) { _ in completion() }
     }
 
     private func shellExited() {
@@ -167,6 +238,6 @@ final class SessionConnectionHandler: @unchecked Sendable {
         if let data = try? ProtocolPayload.encode(SessionError(code: code, message: message)) {
             framed?.send(ProtocolFrame(kind: .sessionError, payload: data))
         }
-        close(terminateSession: true)
+        close()
     }
 }

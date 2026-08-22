@@ -49,7 +49,14 @@ struct CliveDaemon {
             case "test" where arguments.count == 2: try runCellularTest()
             default: throw CommandError.usage
             }
-        case "shell": try requireInteractiveTerminal(); try runLocalShell()
+        case "sessions": try runSessions(arguments: Array(arguments.dropFirst()))
+        case "attach":
+            guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
+            try requireInteractiveTerminal(); try runManagedTerminal(command: .sessionAttach, sessionID: id, deviceID: option("--device", in: arguments))
+        case "end":
+            guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
+            try runOneShot(.init(command: .sessionEnd, deviceID: option("--device", in: arguments), sessionID: id))
+        case "shell": try requireInteractiveTerminal(); try runManagedTerminal(command: .sessionCreate, sessionID: nil, deviceID: option("--device", in: arguments))
         case "help", "--help", "-h": print(usage)
         default: throw CommandError.usage
         }
@@ -212,7 +219,7 @@ struct CliveDaemon {
     }
 
     static let usage = """
-    Usage: clive <start|pair|status|revoke|stop|cellular> [options]
+    Usage: clive <start|pair|status|revoke|stop|cellular|shell|sessions|attach|end> [options]
       start [--allow-non-private-network] [--remote-host <private-vpn-host-or-ip> --session-port <port>]
       start --clear-remote
       pair
@@ -224,6 +231,9 @@ struct CliveDaemon {
       cellular setup --manual --host <hostname-or-ip> --external-port <port> [--listener-port <port>]
       cellular test
       shell
+      sessions [--device <device-id>]
+      attach <session-id> [--device <device-id>]
+      end <session-id> [--device <device-id>]
     """
 
     private static func parseRemoteEndpoint(_ arguments: [String]) throws -> RemoteEndpoint? {
@@ -237,16 +247,47 @@ struct CliveDaemon {
         return RemoteEndpoint(host: arguments[hostIndex + 1], port: port)
     }
 
-    private static func runLocalShell() throws {
-        let shell = try PTYProcess(size: TerminalSize(columns: 80, rows: 24)) { FileHandle.standardOutput.write($0) }
+    private static func runSessions(arguments: [String]) throws {
+        guard arguments.isEmpty || (arguments.count == 2 && arguments[0] == "--device") else { throw CommandError.usage }
+        let response = try sendOneShot(.init(command: .sessions, deviceID: option("--device", in: arguments)))
+        guard response.success else { throw CommandError.remote(response.message ?? "Unable to list sessions.") }
+        if response.sessions?.isEmpty != false { print("No active sessions."); return }
+        for session in response.sessions ?? [] { print("\(session.id.uuidString)  attachments=\(session.attachmentCount)  clive attach \(session.id.uuidString)") }
+    }
+
+    private static func runManagedTerminal(command: ControlCommand, sessionID: UUID?, deviceID: String?) throws {
+        let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
+        let size = terminalSize()
+        try channel.send(ControlRequest(command: command, deviceID: deviceID, sessionID: sessionID, initialSize: size))
+        let response = try channel.readResponse(); guard response.success else { throw CommandError.remote(response.message ?? "Unable to open session.") }
+        var original = termios(); guard tcgetattr(STDIN_FILENO, &original) == 0 else { throw CommandError.requiresInteractiveTerminal }
+        var raw = original; cfmakeraw(&raw); guard tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0 else { throw CommandError.requiresInteractiveTerminal }
+        defer { var restored = original; tcsetattr(STDIN_FILENO, TCSANOW, &restored) }
+        try channel.send(ProtocolFrame(kind: .resizeClaim)); try channel.send(ProtocolFrame(kind: .terminalResize, payload: ProtocolPayload.encode(size)))
+        let finished = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            defer { finished.signal() }
+            while let frame = try? channel.readFrame() {
+                if frame.kind == .sessionClose { return }
+                guard frame.kind == .terminalOutput, let chunk = try? ProtocolPayload.decode(TerminalOutputChunk.self, from: frame.payload) else { continue }
+                FileHandle.standardOutput.write(chunk.bytes)
+            }
+        }
         let input = DispatchSource.makeReadSource(fileDescriptor: STDIN_FILENO, queue: .global(qos: .userInitiated))
         input.setEventHandler {
             var bytes = [UInt8](repeating: 0, count: 4096)
             let count = Darwin.read(STDIN_FILENO, &bytes, bytes.count)
-            if count > 0 { try? shell.write(Data(bytes.prefix(Int(count)))) }
-            else { shell.terminate(); input.cancel(); Foundation.exit(0) }
+            if count > 0 { try? channel.send(ProtocolFrame(kind: .terminalInput, payload: Data(bytes.prefix(Int(count))))) }
+            else { try? channel.send(ProtocolFrame(kind: .sessionClose)); input.cancel(); finished.signal() }
         }
-        input.resume(); dispatchMain()
+        let resize = DispatchSource.makeSignalSource(signal: SIGWINCH, queue: .global(qos: .userInitiated))
+        signal(SIGWINCH, SIG_IGN); resize.setEventHandler { try? channel.send(ProtocolFrame(kind: .terminalResize, payload: ProtocolPayload.encode(terminalSize()))) }
+        input.resume(); resize.resume(); finished.wait(); input.cancel(); resize.cancel()
+    }
+
+    private static func terminalSize() -> TerminalSize {
+        var value = winsize(); _ = ioctl(STDIN_FILENO, TIOCGWINSZ, &value)
+        return TerminalSize(columns: max(value.ws_col, 1), rows: max(value.ws_row, 1))
     }
 }
 
@@ -266,7 +307,7 @@ private enum CommandError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .usage: CliveDaemon.usage
-        case .requiresInteractiveTerminal: "Pairing requires an interactive local terminal."
+        case .requiresInteractiveTerminal: "This command requires an interactive local terminal."
         case .nonPrivateNetwork: "Refusing to advertise without an eligible private interface. Use --allow-non-private-network to override."
         case .remote(let message): message
         }

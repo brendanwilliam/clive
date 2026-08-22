@@ -76,10 +76,31 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(try decoder.append(Data(encoded.dropFirst(5))) == [frame])
 }
 
-@Test func versionOneFramesAreRejectedByVersionTwoDecoder() throws {
-    var bytes = Data(); bytes.appendUInt32(3); bytes.appendUInt16(1); bytes.append(FrameKind.sessionClose.rawValue)
+@Test func versionTwoFramesAreRejectedByVersionThreeDecoder() throws {
+    var bytes = Data(); bytes.appendUInt32(3); bytes.appendUInt16(2); bytes.append(FrameKind.sessionClose.rawValue)
     var decoder = FrameDecoder()
-    #expect(throws: ProtocolError.unsupportedVersion(1)) { try decoder.append(bytes) }
+    #expect(throws: ProtocolError.unsupportedVersion(2)) { try decoder.append(bytes) }
+}
+
+@Test func v3SessionAndOutputDescriptorsRoundTrip() throws {
+    let id = UUID()
+    let descriptor = SessionDescriptor(id: id, label: "build", attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 42)
+    #expect(try ProtocolPayload.decode(SessionDescriptor.self, from: ProtocolPayload.encode(descriptor)) == descriptor)
+    let chunk = TerminalOutputChunk(offset: 42, bytes: Data("ok".utf8))
+    #expect(try ProtocolPayload.decode(TerminalOutputChunk.self, from: ProtocolPayload.encode(chunk)) == chunk)
+    #expect(chunk.endOffset == 44)
+}
+
+@Test func sessionAttachAndAttachmentStateRoundTrip() throws {
+    let id = UUID(), size = TerminalSize(columns: 132, rows: 40)
+    let gate = Data("wan-gate".utf8)
+    let request = SessionAttachRequest(serverSessionID: id, lastReceivedOffset: 19, attachmentKind: .iPhone, initialSize: size, wanGateToken: gate)
+    #expect(try ProtocolPayload.decode(SessionAttachRequest.self, from: ProtocolPayload.encode(request)) == request)
+    let list = SessionListRequest(wanGateToken: gate)
+    #expect(try ProtocolPayload.decode(SessionListRequest.self, from: ProtocolPayload.encode(list)) == list)
+    let state = AttachmentState(sessionID: id, attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 41)
+    #expect(try ProtocolPayload.decode(AttachmentState.self, from: ProtocolPayload.encode(state)) == state)
+    #expect(SessionError.Code.sessionUnavailable != .slowConsumer)
 }
 
 @Test func workspaceSessionIDReplacesOnlyMatchingPhoneSession() async {

@@ -2,6 +2,7 @@ import Foundation
 
 public enum ControlCommand: String, Codable, Sendable {
     case pair, status, revoke, stop, approvePairing, cancelPairing, setCellularAccess, configureCellular, beginCellularVerification
+    case sessions, sessionCreate, sessionAttach, sessionEnd
 }
 
 public enum CellularEndpointMode: String, Codable, Equatable, Sendable { case automatic, manual }
@@ -24,14 +25,17 @@ public struct ControlRequest: Codable, Equatable, Sendable {
     public let cellularEnabled: Bool?
     public let manualEndpoint: RemoteEndpoint?
     public let cellularConfiguration: CellularConfiguration?
+    public let sessionID: UUID?
+    public let initialSize: TerminalSize?
 
-    public init(command: ControlCommand, deviceID: String? = nil, approved: Bool? = nil, cellularEnabled: Bool? = nil, manualEndpoint: RemoteEndpoint? = nil, cellularConfiguration: CellularConfiguration? = nil) {
+    public init(command: ControlCommand, deviceID: String? = nil, approved: Bool? = nil, cellularEnabled: Bool? = nil, manualEndpoint: RemoteEndpoint? = nil, cellularConfiguration: CellularConfiguration? = nil, sessionID: UUID? = nil, initialSize: TerminalSize? = nil) {
         self.command = command
         self.deviceID = deviceID
         self.approved = approved
         self.cellularEnabled = cellularEnabled
         self.manualEndpoint = manualEndpoint
         self.cellularConfiguration = cellularConfiguration
+        self.sessionID = sessionID; self.initialSize = initialSize
     }
 }
 
@@ -70,8 +74,9 @@ public struct ControlResponse: Codable, Equatable, Sendable {
     public let pairingTicket: PairingTicket?
     public let pairingPrompt: PairingPrompt?
     public let cellularStatus: CellularAccessStatus?
+    public let sessions: [SessionDescriptor]?
 
-    public init(kind: Kind = .result, success: Bool, message: String? = nil, devices: [ControlDevice]? = nil, pairingTicket: PairingTicket? = nil, pairingPrompt: PairingPrompt? = nil, cellularStatus: CellularAccessStatus? = nil) {
+    public init(kind: Kind = .result, success: Bool, message: String? = nil, devices: [ControlDevice]? = nil, pairingTicket: PairingTicket? = nil, pairingPrompt: PairingPrompt? = nil, cellularStatus: CellularAccessStatus? = nil, sessions: [SessionDescriptor]? = nil) {
         self.kind = kind
         self.success = success
         self.message = message
@@ -79,6 +84,7 @@ public struct ControlResponse: Codable, Equatable, Sendable {
         self.pairingTicket = pairingTicket
         self.pairingPrompt = pairingPrompt
         self.cellularStatus = cellularStatus
+        self.sessions = sessions
     }
 }
 

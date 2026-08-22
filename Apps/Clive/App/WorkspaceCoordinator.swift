@@ -10,7 +10,10 @@ struct WorkspaceSnapshot: Codable {
 struct SessionDescriptor: Codable, Identifiable, Equatable {
     let id: UUID
     var label: String
-    init(id: UUID = UUID(), label: String) { self.id = id; self.label = label }
+    var serverSessionID: UUID?
+    init(id: UUID = UUID(), label: String, serverSessionID: UUID? = nil) {
+        self.id = id; self.label = label; self.serverSessionID = serverSessionID
+    }
 }
 
 struct RestorableDestination: Codable, Equatable {
@@ -136,6 +139,7 @@ struct AuthenticationGracePolicy: Equatable {
     var state: SessionClient.State = .connecting
     var preview: String?
     var lastActivityAt: Date?
+    var attachmentState: AttachmentState?
     private var accumulator = TerminalPreviewAccumulator()
 
     private var routes: [MacRoute]
@@ -170,6 +174,7 @@ struct AuthenticationGracePolicy: Equatable {
         self.now = now; self.schedule = schedule
         self.localRendezvousCapability = localRendezvousCapability; self.onUpgrade = onUpgrade
         client.onState = { [weak self] value in DispatchQueue.main.async { self?.handleState(value) } }
+        client.onAttachmentState = { [weak self] value in DispatchQueue.main.async { self?.attachmentState = value } }
         client.onActivityOutput = { [weak self] bytes in DispatchQueue.main.async {
             guard let self else { return }; self.accumulator.consume(bytes); self.preview = self.accumulator.preview; self.lastActivityAt = .now
         } }
@@ -180,6 +185,7 @@ struct AuthenticationGracePolicy: Equatable {
     func noteInput() { lastActivityAt = .now }
     func clearTransientActivity() { accumulator.clear(); preview = nil; lastActivityAt = nil }
     func close() { retryTask?.cancel(); clearTransientActivity(); client.close() }
+    func terminate() { retryTask?.cancel(); clearTransientActivity(); client.terminate() }
     func detach() { retryTask?.cancel(); client.detach() }
 
     func updateRoutes(_ newRoutes: [MacRoute]) {
@@ -197,7 +203,8 @@ struct AuthenticationGracePolicy: Equatable {
 
     private func handleState(_ value: SessionClient.State) {
         state = value
-        if case .active(_, let disposition, _) = value {
+        if case .active(let serverSessionID, let disposition, _) = value {
+            descriptor.serverSessionID = serverSessionID
             retryTask?.cancel(); reconnecting = false; reconnectStartedAt = nil; retryIndex = 0; hasOpened = true
             activeRouteKind = routes[routeIndex].kind
             if disposition == .created, let command = initialCommand.take() {
@@ -254,7 +261,7 @@ struct AuthenticationGracePolicy: Equatable {
 
     private func connectCurrentRoute(expectsResumption: Bool = false) {
         let route = routes[routeIndex]
-        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, workingDirectory: workingDirectory, expectsResumption: expectsResumption)
+        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, serverSessionID: descriptor.serverSessionID, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, workingDirectory: workingDirectory, expectsResumption: expectsResumption)
     }
 }
 
@@ -367,6 +374,11 @@ struct AuthenticationGracePolicy: Equatable {
         recordDestination(RestorableDestination(screen: .terminal, macID: macID, sessionID: id))
     }
 
+    func runShortcut(_ shortcut: CLIShortcut) {
+        guard let session = sessions.first(where: { $0.id == selectedSessionID }), !shortcut.command.isEmpty else { return }
+        session.client.sendInput(Data((shortcut.command + "\r").utf8))
+    }
+
     func showTerminalList() {
         presentedScreen = .terminalList
         if let macID = selectedMacID { recordDestination(RestorableDestination(screen: .terminalList, macID: macID)) }
@@ -395,6 +407,13 @@ struct AuthenticationGracePolicy: Equatable {
 
     func close(_ session: WorkspaceSession) {
         session.close(); sessions.removeAll { $0.id == session.id }
+        if selectedSessionID == session.id { selectSession(sessions.last?.id) }
+        saveCurrentDescriptors(); persist()
+        if sessions.isEmpty { clearDestination() }
+    }
+
+    func end(_ session: WorkspaceSession) {
+        session.terminate(); sessions.removeAll { $0.id == session.id }
         if selectedSessionID == session.id { selectSession(sessions.last?.id) }
         saveCurrentDescriptors(); persist()
         if sessions.isEmpty { clearDestination() }

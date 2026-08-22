@@ -120,6 +120,71 @@ final class DaemonRuntime: @unchecked Sendable {
                 try await rendezvous.beginVerification()
                 try channel.send(ControlResponse(success: true, cellularStatus: await rendezvous.status()))
             } catch { try? channel.send(ControlResponse(success: false, message: error.localizedDescription, cellularStatus: await rendezvous.status())) }
+        case .sessions:
+            guard let deviceID = await selectedDevice(request.deviceID, channel: channel) else { return }
+            try? channel.send(ControlResponse(success: true, sessions: terminalSessions.descriptors(deviceID: deviceID)))
+        case .sessionCreate:
+            guard let deviceID = await selectedDevice(request.deviceID, channel: channel) else { return }
+            await runLocalAttachment(deviceID: deviceID, clientSessionID: UUID(), channel: channel, size: request.initialSize ?? TerminalSize(columns: 80, rows: 24))
+        case .sessionAttach:
+            guard let deviceID = await selectedDevice(request.deviceID, channel: channel), let sessionID = request.sessionID else {
+                try? channel.send(ControlResponse(success: false, message: "The requested session is unavailable.")); return
+            }
+            await runLocalAttachment(deviceID: deviceID, clientSessionID: nil, serverSessionID: sessionID, channel: channel, size: request.initialSize ?? TerminalSize(columns: 80, rows: 24))
+        case .sessionEnd:
+            guard let deviceID = await selectedDevice(request.deviceID, channel: channel), let sessionID = request.sessionID else { return }
+            let ended = terminalSessions.end(deviceID: deviceID, serverSessionID: sessionID)
+            try? channel.send(ControlResponse(success: ended, message: ended ? "Session ended." : "The requested session is unavailable."))
+        }
+    }
+
+    private func selectedDevice(_ requested: String?, channel: ControlChannel) async -> String? {
+        let devices = await trustStore.all()
+        if let requested, devices.contains(where: { $0.id == requested }) { return requested }
+        if requested != nil { try? channel.send(ControlResponse(success: false, message: "No paired device matches that ID.")); return nil }
+        guard devices.count == 1 else {
+            try? channel.send(ControlResponse(success: false, message: devices.isEmpty ? "No iPhone is paired." : "Multiple iPhones are paired; pass --device <device-id>.")); return nil
+        }
+        return devices[0].id
+    }
+
+    private func runLocalAttachment(deviceID: String, clientSessionID: UUID?, serverSessionID: UUID? = nil, channel: ControlChannel, size: TerminalSize) async {
+        let attachmentID = UUID()
+        do {
+            let sendOutput: TerminalSessionManager.Output = { chunk, completion in
+                do { try channel.send(ProtocolFrame(kind: .terminalOutput, payload: ProtocolPayload.encode(chunk))); completion() }
+                catch { completion() }
+            }
+            let attachment: TerminalSessionManager.Attachment
+            let resolvedClientSessionID: UUID
+            if let serverSessionID {
+                guard let existingClientID = terminalSessions.clientSessionID(deviceID: deviceID, serverSessionID: serverSessionID),
+                      let existing = try terminalSessions.attachExisting(deviceID: deviceID, serverSessionID: serverSessionID, size: size, attachmentID: attachmentID, attachmentKind: .macCLI, lastReceivedOffset: 0, output: sendOutput, onDetached: { _ in }, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) }) else {
+                    try channel.send(ControlResponse(success: false, message: "The requested session is unavailable.")); return
+                }
+                resolvedClientSessionID = existingClientID; attachment = existing
+            } else {
+                guard let clientSessionID else { throw ControlSocketError.malformedMessage }
+                resolvedClientSessionID = clientSessionID
+                attachment = try terminalSessions.attach(deviceID: deviceID, clientSessionID: clientSessionID, size: size, workingDirectory: nil, attachmentID: attachmentID, attachmentKind: .macCLI, output: sendOutput, onSuperseded: {}, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) })
+            }
+            try channel.send(ControlResponse(success: true, sessions: [SessionDescriptor(id: attachment.serverSessionID, attachmentCount: 1, resizeOwner: .macCLI, outputOffset: attachment.replayOffset)]))
+            if !attachment.replay.isEmpty { try channel.send(ProtocolFrame(kind: .terminalOutput, payload: ProtocolPayload.encode(TerminalOutputChunk(offset: attachment.replayOffset, bytes: attachment.replay)))) }
+            while true {
+                let frame = try channel.readFrame()
+                switch frame.kind {
+                case .terminalInput: try terminalSessions.input(deviceID: deviceID, clientSessionID: resolvedClientSessionID, attachmentID: attachmentID, bytes: frame.payload)
+                case .terminalResize:
+                    if let value = try? ProtocolPayload.decode(TerminalSize.self, from: frame.payload), value.isValid { terminalSessions.resize(deviceID: deviceID, clientSessionID: resolvedClientSessionID, attachmentID: attachmentID, size: value) }
+                case .resizeClaim: terminalSessions.claimResize(deviceID: deviceID, clientSessionID: resolvedClientSessionID, attachmentID: attachmentID)
+                case .sessionClose: terminalSessions.detach(deviceID: deviceID, clientSessionID: resolvedClientSessionID, attachmentID: attachmentID); return
+                case .sessionTerminate: terminalSessions.close(deviceID: deviceID, clientSessionID: resolvedClientSessionID, attachmentID: attachmentID); return
+                default: throw ControlSocketError.malformedMessage
+                }
+            }
+        } catch {
+            if let clientSessionID { terminalSessions.detach(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: attachmentID) }
+            try? channel.send(ControlResponse(success: false, message: error.localizedDescription))
         }
     }
 

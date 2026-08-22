@@ -13,6 +13,7 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
 final class CompanionModel: ObservableObject {
     @Published var status = CellularAccessStatus(enabled: false, state: .disabled)
     @Published var devices: [ControlDevice] = []
+    @Published var sessionsByDevice: [String: [CliveCore.SessionDescriptor]] = [:]
     @Published var errorMessage: String?
     @Published var pairingTicket: PairingTicket?
     @Published var pairingPrompt: PairingPrompt?
@@ -43,6 +44,10 @@ final class CompanionModel: ObservableObject {
         do {
             let response = try request(.init(command: .status))
             devices = response.devices ?? []; if let cellular = response.cellularStatus { status = cellular }
+            sessionsByDevice = Dictionary(uniqueKeysWithValues: devices.map { device in
+                let sessions = (try? request(.init(command: .sessions, deviceID: device.id)).sessions) ?? []
+                return (device.id, sessions)
+            })
             errorMessage = response.message
         } catch { errorMessage = error.localizedDescription }
     }
@@ -85,6 +90,10 @@ final class CompanionModel: ObservableObject {
     }
 
     func stop() { runtime?.stop(); runtime = nil }
+
+    func end(sessionID: UUID, deviceID: String) {
+        Task { do { let response = try request(.init(command: .sessionEnd, deviceID: deviceID, sessionID: sessionID)); errorMessage = response.success ? nil : response.message; await refresh() } catch { errorMessage = error.localizedDescription } }
+    }
 
     func beginPairing() {
         guard !isPairing else { return }
@@ -168,7 +177,18 @@ struct CliveMacApp: App {
                 if let message = model.status.diagnostic ?? model.errorMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
                 Divider()
                 if model.devices.isEmpty { Text("No paired iPhones").foregroundStyle(.secondary) }
-                else { ForEach(model.devices, id: \.id) { device in Text("\(device.displayName) — \(device.activeSessionCount) sessions") } }
+                else { ForEach(model.devices, id: \.id) { device in
+                    Menu("\(device.displayName) — \(device.activeSessionCount) sessions") {
+                        if model.sessionsByDevice[device.id, default: []].isEmpty { Text("No active sessions") }
+                        ForEach(model.sessionsByDevice[device.id, default: []]) { session in
+                            Menu("\(session.id.uuidString.prefix(8)) — \(session.attachmentCount) attached") {
+                                Text("Resize owner: \(session.resizeOwner?.rawValue ?? "none")")
+                                Button("Copy Attach Command") { copy("clive attach \(session.id.uuidString) --device \(device.id)") }
+                                Button("End Session…", role: .destructive) { pendingEnd = PendingEnd(sessionID: session.id, deviceID: device.id) }
+                            }
+                        }
+                    }
+                } }
                 Divider()
                 Button("Refresh") { Task { await model.refresh() } }
                 CellularSetupMenuButton(model: model)
@@ -183,6 +203,11 @@ struct CliveMacApp: App {
                 }
                 Button("Quit Clive") { model.stop(); NSApplication.shared.terminate(nil) }
             }
+            .task { while !Task.isCancelled { try? await Task.sleep(for: .seconds(10)); await model.refresh() } }
+            .confirmationDialog("End this shared session for every attached client?", isPresented: Binding(get: { pendingEnd != nil }, set: { if !$0 { pendingEnd = nil } }), titleVisibility: .visible) {
+                Button("End Shared Session", role: .destructive) { if let pendingEnd { model.end(sessionID: pendingEnd.sessionID, deviceID: pendingEnd.deviceID) }; pendingEnd = nil }
+                Button("Cancel", role: .cancel) { pendingEnd = nil }
+            }
         } label: {
             Label("Clive", systemImage: model.status.enabled ? "network.badge.shield.half.filled" : "terminal")
         }
@@ -196,6 +221,10 @@ struct CliveMacApp: App {
         }
         Settings { EmptyView() }
     }
+
+    @State private var pendingEnd: PendingEnd?
+    private struct PendingEnd { let sessionID: UUID; let deviceID: String }
+    private func copy(_ value: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string) }
 
     private var stateLabel: String {
         switch model.status.state {
@@ -322,9 +351,10 @@ private struct PairingWindow: View {
                     Button("Approve") { model.approvePairing(true) }
                         .keyboardShortcut(.defaultAction)
                 }
-            } else if let ticket = model.pairingTicket, let image = qrImage(for: ticket) {
-                Image(nsImage: image).interpolation(.none).resizable().scaledToFit().frame(width: 280, height: 280)
-                Text("Scan this code in Clive for iPhone. It expires \(ticket.expiresAt, style: .relative).")
+            } else if let ticket = model.pairingTicket, let payload = try? PairingPayload.encode(ticket), let image = qrImage(payload) {
+                Image(nsImage: image).interpolation(.none).resizable().scaledToFit().frame(width: 280, height: 280).padding(8).background(.green.opacity(0.12), in: .rect(cornerRadius: 16))
+                Label("Secure pairing QR", systemImage: "lock.shield").font(.headline)
+                Text("Scan this one-attempt code in Clive for iPhone. It expires \(ticket.expiresAt, style: .relative).")
                     .multilineTextAlignment(.center).foregroundStyle(.secondary)
             } else if model.isPairing { ProgressView("Creating secure pairing code…") }
             if let message = model.pairingMessage { Text(message).foregroundStyle(.secondary) }
@@ -338,14 +368,12 @@ private struct PairingWindow: View {
         .onDisappear { model.cancelPairing() }
     }
 
-    private func qrImage(for ticket: PairingTicket) -> NSImage? {
-        guard let payload = try? PairingPayload.encode(ticket), let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
-        filter.setValue(Data(payload.utf8), forKey: "inputMessage"); filter.setValue("M", forKey: "inputCorrectionLevel")
-        guard let output = filter.outputImage else { return nil }
-        let scaled = output.transformed(by: .init(scaleX: 8, y: 8))
-        let representation = NSCIImageRep(ciImage: scaled)
-        let image = NSImage(size: representation.size)
-        image.addRepresentation(representation)
-        return image
-    }
+}
+
+private func qrImage(_ payload: String) -> NSImage? {
+    guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+    filter.setValue(Data(payload.utf8), forKey: "inputMessage"); filter.setValue("M", forKey: "inputCorrectionLevel")
+    guard let output = filter.outputImage else { return nil }
+    let representation = NSCIImageRep(ciImage: output.transformed(by: .init(scaleX: 8, y: 8)))
+    let image = NSImage(size: representation.size); image.addRepresentation(representation); return image
 }

@@ -9,6 +9,7 @@ final class SessionClient: @unchecked Sendable {
     var onOutput: ((Data) -> Void)?
     var onActivityOutput: ((Data) -> Void)?
     var onState: ((State) -> Void)?
+    var onAttachmentState: ((AttachmentState) -> Void)?
     var onRendezvousUpgrade: ((Data, RendezvousCapability) -> Void)?
     enum State: Equatable {
         case connecting, reconnecting(waitingForWiFi: Bool), active(UUID, SessionOpened.Disposition, Bool), disconnected, resumeUnavailable, revoked, workingDirectoryUnavailable, certificateChanged, protocolError, networkError(String)
@@ -26,8 +27,9 @@ final class SessionClient: @unchecked Sendable {
     private var timeout: DispatchWorkItem?
     private var generation = 0
     private var lastSize: TerminalSize?
+    private var lastReceivedOffset: UInt64 = 0
 
-    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, size: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil, expectsResumption: Bool = false) {
+    func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, clientSessionID: UUID, serverSessionID: UUID? = nil, size: TerminalSize, rendezvousCapability: RendezvousCapability? = nil, wanGateToken: Data? = nil, workingDirectory: String? = nil, expectsResumption: Bool = false) {
         generation += 1
         let attempt = generation
         let requestedSize = lastSize ?? size
@@ -57,7 +59,15 @@ final class SessionClient: @unchecked Sendable {
             switch state {
             case .ready:
                 self.timeout?.cancel()
-                self.send(ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(SessionOpenRequest(clientSessionID: clientSessionID, initialSize: requestedSize, rendezvousCapability: self.rendezvousCapability, wanGateToken: self.wanGateToken, workingDirectory: workingDirectory))) ?? Data()), on: connection); self.receive(on: connection, generation: attempt, expectsResumption: expectsResumption)
+                let frame: ProtocolFrame
+                if let serverSessionID {
+                    let request = SessionAttachRequest(serverSessionID: serverSessionID, lastReceivedOffset: self.lastReceivedOffset, attachmentKind: .iPhone, initialSize: requestedSize, wanGateToken: self.wanGateToken)
+                    frame = ProtocolFrame(kind: .sessionAttach, payload: (try? ProtocolPayload.encode(request)) ?? Data())
+                } else {
+                    let request = SessionOpenRequest(clientSessionID: clientSessionID, initialSize: requestedSize, rendezvousCapability: self.rendezvousCapability, wanGateToken: self.wanGateToken, workingDirectory: workingDirectory, lastReceivedOffset: self.lastReceivedOffset)
+                    frame = ProtocolFrame(kind: .sessionOpen, payload: (try? ProtocolPayload.encode(request)) ?? Data())
+                }
+                self.send(frame, on: connection); self.receive(on: connection, generation: attempt, expectsResumption: expectsResumption || serverSessionID != nil)
             case .failed(let error):
                 self.timeout?.cancel()
                 self.terminalStateReported = true
@@ -84,6 +94,7 @@ final class SessionClient: @unchecked Sendable {
         sendResize(size)
     }
     func close() { generation += 1; timeout?.cancel(); send(ProtocolFrame(kind: .sessionClose)); connection?.cancel(); connection = nil; opened = false }
+    func terminate() { generation += 1; timeout?.cancel(); send(ProtocolFrame(kind: .sessionTerminate)); connection?.cancel(); connection = nil; opened = false }
     func detach() { generation += 1; timeout?.cancel(); terminalStateReported = true; connection?.cancel(); connection = nil; opened = false }
     private func send(_ frame: ProtocolFrame, on target: NWConnection? = nil) { guard let data = try? frame.encoded() else { return }; (target ?? connection)?.send(content: data, completion: .idempotent) }
     private func receive(on target: NWConnection, generation attempt: Int, expectsResumption: Bool) {
@@ -113,8 +124,16 @@ final class SessionClient: @unchecked Sendable {
             onState?(.active(reply.serverSessionID, reply.disposition, reply.replayTruncated)); return
         }
         switch frame.kind {
-        case .terminalOutput: onActivityOutput?(frame.payload); onOutput?(frame.payload)
+        case .terminalOutput:
+            let chunk = try ProtocolPayload.decode(TerminalOutputChunk.self, from: frame.payload)
+            guard chunk.offset <= lastReceivedOffset else { throw ClientError.protocolViolation }
+            let overlap = Int(lastReceivedOffset - chunk.offset)
+            if overlap < chunk.bytes.count {
+                let bytes = chunk.bytes.dropFirst(overlap); lastReceivedOffset += UInt64(bytes.count)
+                onActivityOutput?(Data(bytes)); onOutput?(Data(bytes))
+            }
         case .sessionClose: reportTerminalState(.resumeUnavailable); connection?.cancel()
+        case .attachmentState: onAttachmentState?(try ProtocolPayload.decode(AttachmentState.self, from: frame.payload))
         case .sessionError: try handleError(frame)
         default: throw ClientError.protocolViolation
         }
@@ -125,6 +144,8 @@ final class SessionClient: @unchecked Sendable {
         case .revoked: .revoked
         case .workingDirectoryUnavailable: .workingDirectoryUnavailable
         case .authenticationFailed: .networkError("The route could not be authenticated.")
+        case .sessionUnavailable: .resumeUnavailable
+        case .slowConsumer: .networkError("This connection could not keep up with terminal output.")
         default: .protocolError
         }
         reportTerminalState(state); connection?.cancel()

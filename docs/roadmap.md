@@ -26,3 +26,9 @@
 - Ship the signed menu bar owner, private CloudKit rendezvous, public-IPv6 direct paths, visible opt-in, and route diagnostics.
 - Preserve mutual TLS, pins, revocation, biometrics, bounded framing, and retained-session handoff across LAN and cellular paths.
 - Complete [the NAT-traversal spike](nat-traversal-spike.md); a relay remains out of scope.
+
+## 6. Shared terminal handoff — implemented; multi-device acceptance pending
+
+- Keep Mac-owned PTYs alive across iPhone backgrounding and attach iPhone or local CLI clients by stable server session ID.
+- Publish a foreground-only authoritative catalog, attachment counts, resize ownership, replay truncation, and terminal end state without exposing terminal content.
+- Require explicit New Shell and End Shared Session actions; navigation, locking, cancellation, and transport loss only detach.

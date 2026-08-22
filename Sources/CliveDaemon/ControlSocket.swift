@@ -30,6 +30,15 @@ final class ControlChannel: @unchecked Sendable {
 
     func send(_ request: ControlRequest) throws { try write(ControlCodec.encode(request)) }
     func send(_ response: ControlResponse) throws { try write(ControlCodec.encode(response)) }
+    func send(_ frame: ProtocolFrame) throws { try write(frame.encoded()) }
+    func readFrame() throws -> ProtocolFrame {
+        let header = try readExactly(4)
+        let length = Int(header.uint32(at: 0))
+        guard length >= 3, length - 3 <= ProtocolFrame.defaultMaximumPayloadSize else { throw ControlSocketError.messageTooLarge }
+        var decoder = FrameDecoder(); let frames = try decoder.append(header + readExactly(length))
+        guard let frame = frames.first else { throw ControlSocketError.malformedMessage }
+        return frame
+    }
 
     private func readLine() throws -> Data {
         var data = Data()
@@ -53,6 +62,15 @@ final class ControlChannel: @unchecked Sendable {
             guard written > 0 else { throw ControlSocketError.unavailable }
             offset += written
         }
+    }
+
+    private func readExactly(_ count: Int) throws -> Data {
+        var data = Data(count: count); var offset = 0
+        while offset < count {
+            let readCount = data.withUnsafeMutableBytes { Darwin.read(descriptor, $0.baseAddress!.advanced(by: offset), count - offset) }
+            guard readCount > 0 else { throw ControlSocketError.unavailable }; offset += readCount
+        }
+        return data
     }
 }
 
