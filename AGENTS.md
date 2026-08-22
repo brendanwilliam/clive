@@ -2,27 +2,47 @@
 
 ## Project Structure & Module Organization
 
-This repository currently contains the product specification; application code has not yet been added. Keep the root `README.md` as the project entry point and keep design requirements in `docs/`:
+Clive is a native Swift project with shared packages and platform apps:
 
-- `docs/architecture.md` defines the iOS client, macOS CLI, and shared Swift-package boundaries.
-- `docs/protocol.md` defines discovery, pairing, TLS sessions, and binary frames.
-- `docs/security.md` contains non-negotiable security controls and validation requirements.
-- `docs/roadmap.md` sequences implementation work.
+- `Sources/CliveCore`, `Sources/CliveSecurity`, and `Sources/CliveCloud` contain shared protocol, security, and rendezvous code.
+- `Sources/CliveDaemon` contains the macOS daemon and `clive` command-line implementation.
+- `Apps/CliveMac` contains the macOS companion app, and `Apps/Clive` contains the iOS app.
+- `Tests/CliveCoreTests` and `Tests/CliveDaemonTests` contain Swift package tests. Keep new tests with the target whose behavior they cover.
+- `docs/architecture.md`, `docs/protocol.md`, and `docs/security.md` define product boundaries and non-negotiable behavior.
 
-When implementation begins, place shared protocol and cryptography code in a Swift package, platform code in clearly named iOS/macOS targets, and tests alongside their target or in conventional `Tests/` directories.
+Keep the root `README.md` as the project entry point. Do not commit Xcode `DerivedData/`, SwiftPM `.build/`, provisioning files, or local pairing state; these are ignored already.
+
+## Task Routing
+
+Repository skills are cumulative. Use every skill that applies to the requested work:
+
+| Task | Skill |
+| --- | --- |
+| Swift implementation or refactoring | `clive-swift-development` |
+| Pairing, certificates, key storage, logging, permissions, CloudKit, cellular routing, LAN exposure, or other security-sensitive work | Add `clive-security-review` |
+| Daemon, control-socket, localhost TLS, PTY, or macOS session-lifecycle integration | Add `clive-macos-integration` |
+| Local compatibility checks or pre-PR verification | `clive-local-verify` |
+| Coordinated macOS and iOS releases | `clive-release` |
+| Deliberate physical-device recovery when losing the active terminal is acceptable | `clive-local-refresh` |
+
+Focused tests belong in the development loop. After those pass, use `clive-local-verify` for the authoritative repository verification before submitting a pull request. Keep `clive-local-verify`, `clive-release`, and `clive-local-refresh` as the source of truth for their scripts, authorization boundaries, and operational procedures.
 
 ## Build, Test, and Development Commands
 
-Run `./scripts/verify-local.sh` for the authoritative quick compatibility check: it executes `swift test` and builds both app targets. Use `./scripts/verify-local.sh --signed` only when local signing readiness matters. `./scripts/test-macos-integration.sh` covers localhost TLS/PTY behavior, and `./scripts/build-pkg.sh` builds the macOS installer. Do not commit Xcode `DerivedData/`, SwiftPM `.build/`, provisioning files, or local pairing state; these are ignored already.
+Run focused `swift test --filter <test-or-suite>` checks while developing. Run `./scripts/verify-local.sh` for the authoritative quick compatibility check: it executes `swift test` and builds both app targets. Use `./scripts/verify-local.sh --signed` only when local signing readiness matters. `./scripts/test-macos-integration.sh` covers localhost TLS/PTY behavior, and `./scripts/build-pkg.sh` builds the macOS installer.
 
 ## Coding Style & Naming Conventions
 
-Use native Swift conventions: four-space indentation, `UpperCamelCase` for types, and `lowerCamelCase` for methods, properties, and local values. Name protocol frames and CLI commands exactly as specified, such as `session.open`, `terminal.resize`, and `clive revoke <device-id>`. Prefer small, explicit types over unstructured dictionaries. Add the selected formatter/linter and its command when code tooling is introduced.
+Use the [Google Style Guides](https://google.github.io/styleguide/) as the general code-style baseline and the [Google Swift Style Guide](https://google.github.io/swift/) for Swift source. Apply these standards to new and modified code; do not mass-format or otherwise rewrite unrelated code.
+
+Clive's security specification, documented protocol and CLI names, platform constraints, and task-specific test requirements take precedence over external style guidance. Preserve exact names such as `session.open`, `terminal.resize`, and `clive revoke <device-id>`. Prefer small, explicit boundary types over unstructured dictionaries, and follow the existing file's conventions where the external guide permits alternatives.
 
 ## Testing Guidelines
 
-Add automated tests with each behavioral change. Test names should describe the expected outcome, e.g. `testExpiredPairingSecretIsRejected`. At minimum, cover malformed and oversized frames, expired or reused pairing secrets, changed/untrusted certificates, revocation, disconnect cleanup, and bounded output backpressure. Include localhost TLS/PTY integration tests for the macOS service and UI tests for iOS pairing and biometric cancellation where practical.
+Add automated tests with each behavioral change. Test names should describe the expected outcome, for example `testExpiredPairingSecretIsRejected`. At minimum, cover malformed and oversized frames, expired or reused pairing secrets, changed or untrusted certificates, revocation, disconnect cleanup, and bounded output backpressure when affected. Include localhost TLS/PTY integration tests for macOS service changes and UI tests for iOS pairing and biometric cancellation where practical.
+
+Never weaken security controls, platform constraints, or assertions merely to make a test pass. Diagnose the mismatch and preserve the documented requirements.
 
 ## Commit & Pull Request Guidelines
 
-Use concise, imperative commit subjects, consistent with the existing history: `Add initial product and security specification`. Keep commits focused. Pull requests should explain the user-visible or security impact, link the relevant issue or roadmap item, list tests run, and include screenshots for iOS UI changes. Highlight any change to pairing, certificate validation, logging, permissions, or LAN exposure for focused security review.
+Use concise, imperative commit subjects, consistent with the existing history: `Add initial product and security specification`. Keep commits focused. Pull requests should explain the user-visible and security impact, link the relevant issue or roadmap item, list tests run, and include screenshots for iOS UI changes. Highlight any change to pairing, certificate validation, logging, permissions, CloudKit, cellular routing, or LAN exposure for focused security review.
