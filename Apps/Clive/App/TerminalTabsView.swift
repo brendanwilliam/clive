@@ -37,7 +37,13 @@ struct TerminalTabsView: View {
                     Picker("Session", selection: $model.selectedID) { ForEach(Array(model.tabs.enumerated()), id: \.element.id) { index, tab in Text("Shell \(index + 1)").tag(Optional(tab.id)) } }.pickerStyle(.segmented).padding()
                     if let tab = model.tabs.first(where: { $0.id == model.selectedID }) {
                         ZStack {
-                            TerminalSurfaceView(session: tab.client, shortcuts: [], saveShortcut: { _, _ in false })
+                            TerminalSurfaceView(
+                                session: tab.client,
+                                shortcuts: [],
+                                saveShortcut: { _, _ in false },
+                                accessibilityIdentifier: "terminal-surface-\(tab.id.uuidString)",
+                                isSelected: tab.id == model.selectedID
+                            )
                             tabStateOverlay(tab.state)
                         }
                     }

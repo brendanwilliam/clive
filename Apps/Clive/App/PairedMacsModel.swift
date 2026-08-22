@@ -75,4 +75,12 @@ final class PairedMacsModel {
         default: "Pairing failed: \(error.localizedDescription)"
         }
     }
+
+#if DEBUG
+    func installUITestFixture(device: PairedMac, route: MacRoute) {
+        records = [device]
+        devices = [device]
+        routes = [device.serviceID: route]
+    }
+#endif
 }

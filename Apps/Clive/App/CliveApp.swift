@@ -16,7 +16,17 @@ final class CliveAppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct CliveApp: App {
     @UIApplicationDelegateAdaptor(CliveAppDelegate.self) private var appDelegate
-    @State private var coordinator = WorkspaceCoordinator()
+    @State private var coordinator: WorkspaceCoordinator
+
+    init() {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+            _coordinator = State(initialValue: WorkspaceCoordinator.uiTestFixture())
+            return
+        }
+#endif
+        _coordinator = State(initialValue: WorkspaceCoordinator())
+    }
 
     var body: some Scene {
         WindowGroup {

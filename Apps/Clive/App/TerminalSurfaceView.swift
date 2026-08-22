@@ -6,21 +6,34 @@ struct TerminalSurfaceView: UIViewRepresentable {
     let session: SessionClient?
     let shortcuts: [CLIShortcut]
     let saveShortcut: (String, String) -> Bool
+    let accessibilityIdentifier: String
+    let isSelected: Bool
     func makeCoordinator() -> Coordinator { Coordinator(session: session, shortcuts: shortcuts, saveShortcut: saveShortcut) }
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
+        view.accessibilityIdentifier = accessibilityIdentifier
+        view.accessibilityLabel = "Terminal"
+        view.accessibilityValue = isSelected ? "Selected" : "Not selected"
         context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installEdgeControls(on: view)
+        view.keyboardDismissMode = TerminalSurfaceConfiguration.keyboardDismissMode
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+            let fixtureOutput = (1...80).map { "fixture line \($0)" }.joined(separator: "\r\n")
+            view.feed(byteArray: ArraySlice(("\u{1b}[2 q" + fixtureOutput).utf8))
+        }
         session?.onOutput = { [weak view] data in DispatchQueue.main.async { view?.feed(byteArray: ArraySlice(data)) } }
         return view
     }
     func updateUIView(_ uiView: TerminalView, context: Context) {
         context.coordinator.session = session
         context.coordinator.accessory?.updateShortcuts(shortcuts)
+        uiView.accessibilityIdentifier = accessibilityIdentifier
+        uiView.accessibilityValue = isSelected ? "Selected" : "Not selected"
     }
 
     final class Coordinator: NSObject, TerminalViewDelegate, @unchecked Sendable {
         var session: SessionClient?; weak var view: TerminalView?
         fileprivate var accessory: TerminalKeyboardAccessory?
+        fileprivate var keyboardDismissObserver: TerminalKeyboardDismissObserver?
         private var shortcuts: [CLIShortcut]
         private var commandTracker = TerminalCommandTracker()
         private let saveShortcut: (String, String) -> Bool
@@ -39,6 +52,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         @MainActor func installEdgeControls(on view: TerminalView) {
             let gesture = TerminalEdgeTapGestureRecognizer { [weak self] sequence in self?.session?.sendInput(Data(sequence.utf8)) }
             gesture.cancelsTouchesInView = false; view.addGestureRecognizer(gesture)
+            keyboardDismissObserver = TerminalKeyboardDismissObserver.install(on: view)
             view.accessibilityCustomActions = [
                 ("Cursor up", "\u{1b}[A"), ("Cursor down", "\u{1b}[B"),
                 ("Cursor left", "\u{1b}[D"), ("Cursor right", "\u{1b}[C")
@@ -77,6 +91,28 @@ struct TerminalSurfaceView: UIViewRepresentable {
         func scrolled(source: TerminalView, position: Double) {}
         func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {}
         func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
+    }
+}
+
+enum TerminalSurfaceConfiguration { static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .interactive }
+
+@MainActor private final class TerminalKeyboardDismissObserver: NSObject {
+    private weak var view: TerminalView?
+
+    static func install(on view: TerminalView) -> TerminalKeyboardDismissObserver {
+        let observer = TerminalKeyboardDismissObserver(view: view)
+        view.panGestureRecognizer.addTarget(observer, action: #selector(handlePan(_:)))
+        return observer
+    }
+
+    private init(view: TerminalView) { self.view = view }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard let view, gesture.state == .changed else { return }
+        let translation = gesture.translation(in: view)
+        if translation.y > 44, abs(translation.y) > abs(translation.x) * 1.25 {
+            _ = view.resignFirstResponder()
+        }
     }
 }
 
