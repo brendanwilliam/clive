@@ -37,8 +37,6 @@ struct CLITextField: UIViewRepresentable {
 
         func installAccessory(on field: UITextField) {
             field.inputAccessoryView = TerminalKeyboardAccessory(
-                shortcuts: [],
-                showsShortcutMenu: false,
                 send: { [weak self, weak field] data in self?.handle(data, in: field) },
                 command: { _ in },
                 onLayoutChanged: { [weak field] in field?.reloadInputViews() }

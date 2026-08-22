@@ -168,25 +168,23 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertFalse(store.consumePending())
     }
 
-    func testNewTerminalUsesTrimmedDefaultDirectoryWithoutCommand() {
-        var preferences = AppPreferences()
-        preferences.defaultDirectoryPath = "  ~/Projects  "
-
-        XCTAssertEqual(
-            WorkspaceTerminalLaunchResolver.resolve(action: .newTerminal, preferences: preferences),
-            TerminalLaunchConfiguration(workingDirectory: "~/Projects", initialCommand: nil)
-        )
-    }
-
-    func testExplicitShortcutUsesItsOwnDirectoryAndCommand() {
-        let shortcut = CLIShortcut(name: "Status", command: "git status --short", workingDirectory: "~/Status")
-        var preferences = AppPreferences()
-        preferences.defaultDirectoryPath = "~/Code"
-        preferences.shortcuts = [shortcut]
+    func testShortcutLaunchIsCommandOnly() {
+        let shortcut = CLIShortcut(name: "Status", command: "git status --short")
+        let preferences = AppPreferences(shortcuts: [shortcut])
 
         XCTAssertEqual(
             WorkspaceTerminalLaunchResolver.resolve(action: .shortcut(shortcut.id), preferences: preferences),
-            TerminalLaunchConfiguration(workingDirectory: "~/Status", initialCommand: "git status --short")
+            TerminalLaunchConfiguration(workingDirectory: nil, initialCommand: "git status --short")
+        )
+    }
+
+    func testNewTerminalDefaultLaunchIsCommandOnly() {
+        let shortcut = CLIShortcut(name: "Status", command: "git status --short")
+        let preferences = AppPreferences(shortcuts: [shortcut], newTerminalDefaultShortcutID: shortcut.id)
+
+        XCTAssertEqual(
+            WorkspaceTerminalLaunchResolver.resolve(action: .newTerminal, preferences: preferences),
+            TerminalLaunchConfiguration(workingDirectory: nil, initialCommand: "git status --short")
         )
     }
 
@@ -227,6 +225,26 @@ final class WorkspaceRestorationTests: XCTestCase {
 
         XCTAssertFalse(policy.isExpired(startedAt: start, now: start.addingTimeInterval(1_799)))
         XCTAssertTrue(policy.isExpired(startedAt: start, now: start.addingTimeInterval(1_800)))
+    }
+
+    @MainActor
+    func testReconnectNoticeDismissesAfterItsScheduledDuration() {
+        var scheduledAction: (@MainActor () -> Void)?
+        let session = WorkspaceSession(
+            fixture: SessionDescriptor(label: "Shell 1"),
+            state: .active(UUID(), .resumed, false),
+            schedule: { duration, action in
+                XCTAssertEqual(duration, SessionReconnectNoticePolicy.standard.duration)
+                scheduledAction = action
+                return Task {}
+            }
+        )
+
+        session.showReconnectNotice()
+        XCTAssertTrue(session.showsReconnectNotice)
+
+        scheduledAction?()
+        XCTAssertFalse(session.showsReconnectNotice)
     }
 
     func testCloudRoutesRefreshNoMoreThanEveryThirtySeconds() {

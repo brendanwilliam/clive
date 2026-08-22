@@ -9,13 +9,11 @@ struct CLIShortcut: Codable, Equatable, Identifiable {
     var id: UUID
     var name: String
     var command: String
-    var workingDirectory: String
 
-    init(id: UUID = UUID(), name: String, command: String = "", workingDirectory: String = "") {
+    init(id: UUID = UUID(), name: String, command: String = "") {
         self.id = id
         self.name = name
         self.command = command
-        self.workingDirectory = workingDirectory
     }
 
     private enum CodingKeys: String, CodingKey { case id, name, command, workingDirectory }
@@ -23,7 +21,13 @@ struct CLIShortcut: Codable, Equatable, Identifiable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id); name = try values.decode(String.self, forKey: .name)
         command = try values.decodeIfPresent(String.self, forKey: .command) ?? ""
-        workingDirectory = try values.decodeIfPresent(String.self, forKey: .workingDirectory) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(name, forKey: .name)
+        try values.encode(command, forKey: .command)
     }
 }
 
@@ -34,25 +38,13 @@ struct AppPreferences: Codable, Equatable {
     var connectionIndicators: [String: String] = [:]
     var connectionIndicatorColors: [String: String] = [:]
 
-    /// Source compatibility for pre-shortcut callers. This value is never encoded.
-    var defaultDirectoryPath: String {
-        get { newTerminalDefaultShortcutID.flatMap { id in shortcuts.first { $0.id == id }?.workingDirectory } ?? "" }
-        set {
-            let path = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let id = newTerminalDefaultShortcutID, let index = shortcuts.firstIndex(where: { $0.id == id }) {
-                shortcuts[index].workingDirectory = path
-            } else if !path.isEmpty { migrateLegacyDirectory(path) }
-        }
-    }
-
     private enum CodingKeys: String, CodingKey {
         case allowsCellularConnections, defaultDirectoryPath, shortcuts, newTerminalDefaultShortcutID, connectionIndicators, connectionIndicatorColors
     }
 
-    init(allowsCellularConnections: Bool = false, defaultDirectoryPath: String = "", shortcuts: [CLIShortcut] = [], newTerminalDefaultShortcutID: UUID? = nil, connectionIndicators: [String: String] = [:], connectionIndicatorColors: [String: String] = [:]) {
+    init(allowsCellularConnections: Bool = false, shortcuts: [CLIShortcut] = [], newTerminalDefaultShortcutID: UUID? = nil, connectionIndicators: [String: String] = [:], connectionIndicatorColors: [String: String] = [:]) {
         self.allowsCellularConnections = allowsCellularConnections
         self.shortcuts = shortcuts; self.newTerminalDefaultShortcutID = newTerminalDefaultShortcutID
-        migrateLegacyDirectory(defaultDirectoryPath)
         normalizeDefaultSelection()
         self.connectionIndicators = connectionIndicators
         self.connectionIndicatorColors = connectionIndicatorColors
@@ -65,7 +57,6 @@ struct AppPreferences: Codable, Equatable {
         newTerminalDefaultShortcutID = try values.decodeIfPresent(UUID.self, forKey: .newTerminalDefaultShortcutID)
         connectionIndicators = try values.decodeIfPresent([String: String].self, forKey: .connectionIndicators) ?? [:]
         connectionIndicatorColors = try values.decodeIfPresent([String: String].self, forKey: .connectionIndicatorColors) ?? [:]
-        migrateLegacyDirectory(try values.decodeIfPresent(String.self, forKey: .defaultDirectoryPath) ?? "")
         normalizeDefaultSelection()
     }
 
@@ -78,18 +69,11 @@ struct AppPreferences: Codable, Equatable {
         try values.encode(connectionIndicatorColors, forKey: .connectionIndicatorColors)
     }
 
-    private mutating func migrateLegacyDirectory(_ legacy: String) {
-        let path = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !path.isEmpty, newTerminalDefaultShortcutID == nil else { return }
-        var name = "Previous default"; var suffix = 2
-        while shortcuts.contains(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) { name = "Previous default \(suffix)"; suffix += 1 }
-        let shortcut = CLIShortcut(name: name, workingDirectory: path)
-        shortcuts.append(shortcut); newTerminalDefaultShortcutID = shortcut.id
-    }
-
-    private mutating func normalizeDefaultSelection() {
+    mutating func normalizeDefaultSelection() {
         guard let selected = newTerminalDefaultShortcutID else { return }
-        if !shortcuts.contains(where: { $0.id == selected }) { newTerminalDefaultShortcutID = nil }
+        if !shortcuts.contains(where: { $0.id == selected && !$0.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            newTerminalDefaultShortcutID = nil
+        }
     }
 }
 
@@ -108,7 +92,9 @@ struct AppPreferencesStore {
 
     func save(_ preferences: AppPreferences) throws {
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
-        try JSONEncoder().encode(preferences).write(to: url, options: [.atomic, .completeFileProtection])
+        var sanitized = preferences
+        sanitized.normalizeDefaultSelection()
+        try JSONEncoder().encode(sanitized).write(to: url, options: [.atomic, .completeFileProtection])
     }
 }
 

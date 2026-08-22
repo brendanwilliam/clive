@@ -174,8 +174,6 @@ struct WorkspaceView: View {
                         ZStack {
                             TerminalSurfaceView(
                                 session: session.client,
-                                shortcuts: coordinator.preferences.value.shortcuts,
-                                saveShortcut: coordinator.preferences.saveShortcut(name:command:),
                                 accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
                                 isSelected: session.id == coordinator.selectedSessionID
                             )
@@ -372,9 +370,12 @@ struct WorkspaceView: View {
                             if coordinator.runShortcut(shortcut) { showingShortcuts = false }
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
-                                Text(shortcut.command).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(2)
+                                Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name).foregroundStyle(.white)
+                                Text(shortcut.command).font(.caption.monospaced()).foregroundStyle(.gray).lineLimit(2)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 10))
                         }
                     }
                 }
@@ -438,7 +439,7 @@ struct WorkspaceView: View {
         switch session.state {
         case .active(_, let disposition, let replayTruncated):
             VStack(spacing: 6) {
-                if disposition == .resumed { Text("Reconnected to the existing shell.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
+                if session.showsReconnectNotice { Text("Reconnected to the existing shell.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
                 if replayTruncated { Text("Some output produced while disconnected was discarded.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
             }
         case .connecting: ProgressView("Connecting…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12))
@@ -502,7 +503,7 @@ private struct SettingsView: View {
                         set: { preferences.value.newTerminalDefaultShortcutID = $0 }
                     )) {
                         Text("Login shell in Home").tag(nil as UUID?)
-                        ForEach(preferences.value.shortcuts) { shortcut in
+                        ForEach(preferences.value.shortcuts.filter { !$0.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) { shortcut in
                             Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name).tag(Optional(shortcut.id))
                         }
                     }
@@ -514,9 +515,7 @@ private struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             TextField("Name", text: shortcutBinding(shortcut.id, \.name))
                                 .font(.headline)
-                            CLITextField(text: shortcutBinding(shortcut.id, \.workingDirectory), placeholder: "Working directory (optional)")
-                                .frame(minHeight: 34)
-                            CLITextField(text: shortcutBinding(shortcut.id, \.command), placeholder: "Command (optional)")
+                            CLITextField(text: shortcutBinding(shortcut.id, \.command), placeholder: "Command")
                                 .frame(minHeight: 34)
                         }
                         .padding(.vertical, 4)
@@ -527,7 +526,7 @@ private struct SettingsView: View {
                 } header: {
                     Text("CLI shortcuts")
                 } footer: {
-                    Text("A shortcut may set a directory, a command, or both. Commands run only after a new shell opens. Avoid storing secrets in commands.")
+                    Text("Shortcuts insert their command into the active terminal. The selected new-terminal default runs after a new shell opens. Avoid storing secrets in commands.")
                 }
             }
             .navigationTitle("Settings")

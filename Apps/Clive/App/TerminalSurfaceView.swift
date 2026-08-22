@@ -4,17 +4,15 @@ import SwiftUI
 
 struct TerminalSurfaceView: UIViewRepresentable {
     let session: SessionClient?
-    let shortcuts: [CLIShortcut]
-    let saveShortcut: (String, String) -> Bool
     let accessibilityIdentifier: String
     let isSelected: Bool
-    func makeCoordinator() -> Coordinator { Coordinator(session: session, shortcuts: shortcuts, saveShortcut: saveShortcut) }
+    func makeCoordinator() -> Coordinator { Coordinator(session: session) }
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
         view.accessibilityIdentifier = accessibilityIdentifier
         view.accessibilityLabel = "Terminal"
         view.accessibilityValue = isSelected ? "Selected" : "Not selected"
-        context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installEdgeControls(on: view)
+        context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installControls(on: view)
         view.keyboardDismissMode = TerminalSurfaceConfiguration.keyboardDismissMode
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
             let fixtureOutput = (1...80).map { "fixture line \($0)" }.joined(separator: "\r\n")
@@ -25,7 +23,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
     func updateUIView(_ uiView: TerminalView, context: Context) {
         context.coordinator.session = session
-        context.coordinator.accessory?.updateShortcuts(shortcuts)
         uiView.accessibilityIdentifier = accessibilityIdentifier
         uiView.accessibilityValue = isSelected ? "Selected" : "Not selected"
     }
@@ -34,14 +31,9 @@ struct TerminalSurfaceView: UIViewRepresentable {
         var session: SessionClient?; weak var view: TerminalView?
         fileprivate var accessory: TerminalKeyboardAccessory?
         fileprivate var keyboardDismissObserver: TerminalKeyboardDismissObserver?
-        private var shortcuts: [CLIShortcut]
-        private var commandTracker = TerminalCommandTracker()
-        private let saveShortcut: (String, String) -> Bool
-        init(session: SessionClient?, shortcuts: [CLIShortcut], saveShortcut: @escaping (String, String) -> Bool) {
-            self.session = session; self.shortcuts = shortcuts; self.saveShortcut = saveShortcut
-        }
+        init(session: SessionClient?) { self.session = session }
         @MainActor func installAccessory(on view: TerminalView) {
-            let accessory = TerminalKeyboardAccessory(shortcuts: shortcuts, saveLastCommand: { [weak self] name, command in self?.saveShortcut(name, command) ?? false }, send: { [weak self] data in self?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
+            let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
             self.accessory = accessory
             view.inputAccessoryView = accessory
             // SwiftTerm installs a default accessory during its initialization. Reload the
@@ -49,9 +41,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             view.reloadInputViews()
             _ = view.becomeFirstResponder()
         }
-        @MainActor func installEdgeControls(on view: TerminalView) {
-            let gesture = TerminalEdgeTapGestureRecognizer { [weak self] sequence in self?.session?.sendInput(Data(sequence.utf8)) }
-            gesture.cancelsTouchesInView = false; view.addGestureRecognizer(gesture)
+        @MainActor func installControls(on view: TerminalView) {
             keyboardDismissObserver = TerminalKeyboardDismissObserver.install(on: view)
             view.accessibilityCustomActions = [
                 ("Cursor up", "\u{1b}[A"), ("Cursor down", "\u{1b}[B"),
@@ -78,8 +68,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
             }
         }
         @MainActor private func sendInput(_ data: Data) {
-            commandTracker.consume(data)
-            accessory?.updateLastCommand(commandTracker.lastCommand)
             session?.sendInput(data)
         }
         func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
@@ -114,71 +102,4 @@ enum TerminalSurfaceConfiguration { static let keyboardDismissMode: UIScrollView
             _ = view.resignFirstResponder()
         }
     }
-}
-
-struct TerminalCommandTracker {
-    private(set) var currentCommand = ""
-    private(set) var lastCommand: String?
-
-    mutating func consume(_ data: Data) {
-        if data.first == 0x1b { return }
-        for byte in data {
-            switch byte {
-            case 0x0d, 0x0a:
-                let command = currentCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !command.isEmpty { lastCommand = command }
-                currentCommand = ""
-            case 0x08, 0x7f:
-                if !currentCommand.isEmpty { currentCommand.removeLast() }
-            case 0x03:
-                currentCommand = ""
-            case 0x20...0x7e:
-                currentCommand.append(Character(UnicodeScalar(byte)))
-            default:
-                break
-            }
-        }
-    }
-}
-
-struct TerminalEdgeGesturePolicy {
-    static let edgeWidth: CGFloat = 44
-    static let maximumMovement: CGFloat = 10
-    static let maximumDuration: TimeInterval = 0.35
-
-    static func sequence(at point: CGPoint, in bounds: CGRect) -> String? {
-        let distances: [(CGFloat, Bool, String)] = [
-            (point.y - bounds.minY, true, "\u{1b}[A"), (bounds.maxY - point.y, true, "\u{1b}[B"),
-            (point.x - bounds.minX, false, "\u{1b}[D"), (bounds.maxX - point.x, false, "\u{1b}[C")
-        ].filter { $0.0 >= 0 && $0.0 <= edgeWidth }
-        return distances.min { lhs, rhs in lhs.0 == rhs.0 ? (lhs.1 && !rhs.1) : lhs.0 < rhs.0 }?.2
-    }
-
-    static func accepts(movement: CGFloat, duration: TimeInterval) -> Bool {
-        movement <= maximumMovement && duration < maximumDuration
-    }
-}
-
-@MainActor private final class TerminalEdgeTapGestureRecognizer: UIGestureRecognizer {
-    private let send: (String) -> Void
-    private var start = CGPoint.zero
-    private var beganAt = Date()
-    private var sequence: String?
-    init(send: @escaping (String) -> Void) { self.send = send; super.init(target: nil, action: nil) }
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard touches.count == 1, let touch = touches.first, let view else { state = .failed; return }
-        start = touch.location(in: view); beganAt = Date(); sequence = TerminalEdgeGesturePolicy.sequence(at: start, in: view.bounds)
-        if sequence == nil { state = .failed }
-    }
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard let touch = touches.first, let view else { state = .failed; return }
-        let point = touch.location(in: view)
-        if hypot(point.x - start.x, point.y - start.y) > TerminalEdgeGesturePolicy.maximumMovement { state = .failed }
-    }
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard state == .possible, TerminalEdgeGesturePolicy.accepts(movement: 0, duration: Date().timeIntervalSince(beganAt)), let sequence else { state = .failed; return }
-        state = .recognized; send(sequence)
-    }
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { state = .cancelled }
-    override func reset() { sequence = nil }
 }
