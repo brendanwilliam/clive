@@ -6,11 +6,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     let session: SessionClient?
     let shortcuts: [CLIShortcut]
     let saveShortcut: (String, String) -> Bool
-    var isFirstTerminal = false
-    var isLastTerminal = false
-    var onSwipePastFirst: () -> Void = {}
-    var onSwipePastLast: () -> Void = {}
-    func makeCoordinator() -> Coordinator { Coordinator(session: session, shortcuts: shortcuts, saveShortcut: saveShortcut, isFirstTerminal: isFirstTerminal, isLastTerminal: isLastTerminal, onSwipePastFirst: onSwipePastFirst, onSwipePastLast: onSwipePastLast) }
+    func makeCoordinator() -> Coordinator { Coordinator(session: session, shortcuts: shortcuts, saveShortcut: saveShortcut) }
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
         context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installEdgeControls(on: view)
@@ -20,7 +16,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
     func updateUIView(_ uiView: TerminalView, context: Context) {
         context.coordinator.session = session
-        context.coordinator.updateBoundaryContext(isFirstTerminal: isFirstTerminal, isLastTerminal: isLastTerminal, onSwipePastFirst: onSwipePastFirst, onSwipePastLast: onSwipePastLast)
         context.coordinator.accessory?.updateShortcuts(shortcuts)
     }
 
@@ -30,20 +25,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
         private var shortcuts: [CLIShortcut]
         private var commandTracker = TerminalCommandTracker()
         private let saveShortcut: (String, String) -> Bool
-        private var isFirstTerminal: Bool
-        private var isLastTerminal: Bool
-        private var onSwipePastFirst: () -> Void
-        private var onSwipePastLast: () -> Void
-        private var boundaryGate = TerminalBoundaryGestureGate()
-        init(session: SessionClient?, shortcuts: [CLIShortcut], saveShortcut: @escaping (String, String) -> Bool, isFirstTerminal: Bool, isLastTerminal: Bool, onSwipePastFirst: @escaping () -> Void, onSwipePastLast: @escaping () -> Void) {
+        init(session: SessionClient?, shortcuts: [CLIShortcut], saveShortcut: @escaping (String, String) -> Bool) {
             self.session = session; self.shortcuts = shortcuts; self.saveShortcut = saveShortcut
-            self.isFirstTerminal = isFirstTerminal; self.isLastTerminal = isLastTerminal
-            self.onSwipePastFirst = onSwipePastFirst; self.onSwipePastLast = onSwipePastLast
-        }
-        func updateBoundaryContext(isFirstTerminal: Bool, isLastTerminal: Bool, onSwipePastFirst: @escaping () -> Void, onSwipePastLast: @escaping () -> Void) {
-            if self.isFirstTerminal != isFirstTerminal || self.isLastTerminal != isLastTerminal { boundaryGate.reset() }
-            self.isFirstTerminal = isFirstTerminal; self.isLastTerminal = isLastTerminal
-            self.onSwipePastFirst = onSwipePastFirst; self.onSwipePastLast = onSwipePastLast
         }
         @MainActor func installAccessory(on view: TerminalView) {
             let accessory = TerminalKeyboardAccessory(shortcuts: shortcuts, saveLastCommand: { [weak self] name, command in self?.saveShortcut(name, command) ?? false }, send: { [weak self] data in self?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
@@ -61,17 +44,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 ("Cursor up", "\u{1b}[A"), ("Cursor down", "\u{1b}[B"),
                 ("Cursor left", "\u{1b}[D"), ("Cursor right", "\u{1b}[C")
             ].map { name, sequence in UIAccessibilityCustomAction(name: name) { [weak self] _ in self?.session?.sendInput(Data(sequence.utf8)); return true } }
-            let right = NonPreventingSwipeGestureRecognizer(target: self, action: #selector(boundarySwipe(_:))); right.direction = .right
-            let left = NonPreventingSwipeGestureRecognizer(target: self, action: #selector(boundarySwipe(_:))); left.direction = .left
-            right.cancelsTouchesInView = false; left.cancelsTouchesInView = false
-            view.addGestureRecognizer(right); view.addGestureRecognizer(left)
-        }
-        @objc @MainActor private func boundarySwipe(_ gesture: UISwipeGestureRecognizer) {
-            switch boundaryGate.takeAction(direction: gesture.direction, isFirstTerminal: isFirstTerminal, isLastTerminal: isLastTerminal) {
-            case .openDrawer: onSwipePastFirst()
-            case .createTerminal: onSwipePastLast()
-            case .none: break
-            }
         }
         @MainActor private func performCommand(_ key: String) {
             switch key.lowercased() {
@@ -109,33 +81,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
 }
 
-@MainActor private final class NonPreventingSwipeGestureRecognizer: UISwipeGestureRecognizer {
-    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
-}
-
-enum TerminalBoundaryAction: Hashable { case openDrawer, createTerminal }
-
 enum TerminalSurfaceConfiguration { static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .interactive }
-
-enum TerminalBoundaryGesturePolicy {
-    static func action(direction: UISwipeGestureRecognizer.Direction, isFirstTerminal: Bool, isLastTerminal: Bool) -> TerminalBoundaryAction? {
-        if direction == .right, isFirstTerminal { return .openDrawer }
-        if direction == .left, isLastTerminal { return .createTerminal }
-        return nil
-    }
-}
-
-struct TerminalBoundaryGestureGate {
-    private var consumed: Set<TerminalBoundaryAction> = []
-
-    mutating func takeAction(direction: UISwipeGestureRecognizer.Direction, isFirstTerminal: Bool, isLastTerminal: Bool) -> TerminalBoundaryAction? {
-        guard let action = TerminalBoundaryGesturePolicy.action(direction: direction, isFirstTerminal: isFirstTerminal, isLastTerminal: isLastTerminal),
-              consumed.insert(action).inserted else { return nil }
-        return action
-    }
-
-    mutating func reset() { consumed.removeAll() }
-}
 
 struct TerminalCommandTracker {
     private(set) var currentCommand = ""

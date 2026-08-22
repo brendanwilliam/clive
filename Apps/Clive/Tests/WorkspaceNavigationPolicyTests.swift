@@ -3,19 +3,25 @@ import XCTest
 @testable import Clive
 
 final class WorkspaceNavigationPolicyTests: XCTestCase {
-    func testBoundaryActionsOnlyOccurAtOuterTerminals() {
-        XCTAssertEqual(TerminalBoundaryGesturePolicy.action(direction: .right, isFirstTerminal: true, isLastTerminal: false), .openDrawer)
-        XCTAssertEqual(TerminalBoundaryGesturePolicy.action(direction: .left, isFirstTerminal: false, isLastTerminal: true), .createTerminal)
-        XCTAssertNil(TerminalBoundaryGesturePolicy.action(direction: .right, isFirstTerminal: false, isLastTerminal: true))
-        XCTAssertNil(TerminalBoundaryGesturePolicy.action(direction: .left, isFirstTerminal: true, isLastTerminal: false))
+    func testPagerSelectsNormalPagesAndBothBoundaryActions() {
+        let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
+        XCTAssertEqual(policy.transition(to: .terminal(last), terminalIDs: [first, last]), .select(last))
+        XCTAssertEqual(policy.transition(to: .leading, terminalIDs: [first, last]), .openDrawer(restoring: first))
+        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)
     }
 
-    func testBoundaryGatePreventsDuplicateActionsUntilReset() {
-        var gate = TerminalBoundaryGestureGate()
-        XCTAssertEqual(gate.takeAction(direction: .left, isFirstTerminal: false, isLastTerminal: true), .createTerminal)
-        XCTAssertNil(gate.takeAction(direction: .left, isFirstTerminal: false, isLastTerminal: true))
-        gate.reset()
-        XCTAssertEqual(gate.takeAction(direction: .left, isFirstTerminal: false, isLastTerminal: true), .createTerminal)
+    func testPagerPreventsDuplicateSentinelEventsAndCreatesOnlyOnce() {
+        let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
+        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)
+        XCTAssertEqual(policy.transition(to: .terminal(last), terminalIDs: [first, last]), .select(last))
+        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .restore(last))
+    }
+
+    func testHorizontalDirectionRequiresDistanceAndHorizontalDominance() {
+        XCTAssertEqual(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: 50, height: 10)), .right)
+        XCTAssertEqual(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: -50, height: 10)), .left)
+        XCTAssertNil(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: 30, height: 0)))
+        XCTAssertNil(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: 50, height: 48)))
     }
 
     func testTerminalUsesInteractiveKeyboardDismissal() {
@@ -39,6 +45,18 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
         XCTAssertEqual(ConnectionPresentation.routeLabel(for: .privateVPN), "Private VPN")
     }
 
+    func testConnectionPresentationCoversHealthTrustAndReplayStates() {
+        let active = ConnectionStatusPresentation.make(state: .active(UUID(), .created, false), deviceName: "Mac", route: .lan)
+        XCTAssertEqual(active.text, "Connected"); XCTAssertEqual(active.certificatePin, "Verified")
+        XCTAssertEqual(ConnectionStatusPresentation.make(state: .connecting, deviceName: "Mac", route: nil).text, "Connecting")
+        XCTAssertEqual(ConnectionStatusPresentation.make(state: .reconnecting(waitingForWiFi: true), deviceName: "Mac", route: nil).text, "Reconnecting")
+        XCTAssertEqual(ConnectionStatusPresentation.make(state: .disconnected, deviceName: "Mac", route: nil).text, "Offline")
+        XCTAssertEqual(ConnectionStatusPresentation.make(state: .revoked, deviceName: "Mac", route: nil).text, "Revoked")
+        XCTAssertEqual(ConnectionStatusPresentation.make(state: .certificateChanged, deviceName: "Mac", route: nil).certificatePin, "Mismatch")
+        XCTAssertEqual(ConnectionStatusPresentation.make(state: .protocolError, deviceName: "Mac", route: nil).text, "Protocol error")
+        XCTAssertNotNil(ConnectionStatusPresentation.make(state: .active(UUID(), .resumed, true), deviceName: "Mac", route: .privateVPN).replayWarning)
+    }
+
     func testFingerprintIsUppercaseColonSeparatedAndCopyable() {
         XCTAssertEqual(FingerprintFormatter.formatted("aabb01ff"), "AA:BB:01:FF")
         XCTAssertEqual(FingerprintFormatter.formatted("AA:bb 01-ff"), "AA:BB:01:FF")
@@ -46,5 +64,8 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
 
     func testShortcutExecutionAppendsExactlyOneReturn() {
         XCTAssertEqual(ShortcutExecutionPolicy.payload(for: "git status"), Data("git status\r".utf8))
+        XCTAssertTrue(ShortcutExecutionPolicy.canRun(command: "git status", state: .active(UUID(), .created, false)))
+        XCTAssertFalse(ShortcutExecutionPolicy.canRun(command: "git status", state: .connecting))
+        XCTAssertFalse(ShortcutExecutionPolicy.canRun(command: "  ", state: .active(UUID(), .created, false)))
     }
 }

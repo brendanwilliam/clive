@@ -12,7 +12,8 @@ struct WorkspaceView: View {
     @State private var showingDisconnectConfirmation = false
     @State private var showingConnectionDetails = false
     @State private var showingShortcuts = false
-    @State private var revealedSessionID: UUID?
+    @State private var pagerSelection = TerminalPagerPage.leading
+    @State private var pagerPolicy = TerminalPagerPolicy()
 
     var body: some View {
         GeometryReader { proxy in
@@ -111,17 +112,22 @@ struct WorkspaceView: View {
     }
 
     private var connectionStatusButton: some View {
-        Button { showingConnectionDetails = true } label: {
+        let presentation = connectionPresentation
+        return Button { showingConnectionDetails = true } label: {
             HStack(spacing: 7) {
-                Circle().fill(connectionHealthColor).frame(width: 9, height: 9)
-                Text(coordinator.selectedMac?.displayName ?? "No connection").font(.subheadline.weight(.semibold)).lineLimit(1)
+                Image(systemName: presentation.icon).foregroundStyle(connectionHealthColor)
+                Text(presentation.text).font(.subheadline.weight(.semibold)).lineLimit(1)
             }
         }
         .buttonStyle(.plain)
         .disabled(coordinator.selectedMac == nil)
         .accessibilityLabel("Connection details")
-        .accessibilityValue(ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
+        .accessibilityValue(presentation.accessibilityValue)
         .accessibilityIdentifier("connection-details-button")
+    }
+
+    private var connectionPresentation: ConnectionStatusPresentation {
+        ConnectionStatusPresentation.make(state: coordinator.selectedSession?.state, deviceName: coordinator.selectedMac?.displayName, route: coordinator.selectedSession?.activeRouteKind)
     }
 
     private var connectionHealthColor: Color {
@@ -146,24 +152,32 @@ struct WorkspaceView: View {
             else if coordinator.sessions.isEmpty {
                 ContentUnavailableView("No terminal", systemImage: "terminal", description: Text("Create a terminal from the terminal menu."))
             } else {
-                TabView(selection: Binding(get: { coordinator.selectedSessionID }, set: { coordinator.selectSession($0) })) {
-                    ForEach(Array(coordinator.sessions.enumerated()), id: \.element.id) { index, session in
+                TabView(selection: $pagerSelection) {
+                    Color.clear
+                        .tag(Optional(TerminalPagerPage.leading))
+                        .accessibilityHidden(true)
+                    ForEach(coordinator.sessions) { session in
                         ZStack {
                             TerminalSurfaceView(
                                 session: session.client,
                                 shortcuts: coordinator.preferences.value.shortcuts,
-                                saveShortcut: coordinator.preferences.saveShortcut(name:command:),
-                                isFirstTerminal: index == 0,
-                                isLastTerminal: index == coordinator.sessions.count - 1,
-                                onSwipePastFirst: { coordinator.showTerminalList() },
-                                onSwipePastLast: { coordinator.addShell() }
+                                saveShortcut: coordinator.preferences.saveShortcut(name:command:)
                             )
                             sessionOverlay(session)
                         }
-                        .tag(Optional(session.id))
+                        .tag(Optional(TerminalPagerPage.terminal(session.id)))
+                        .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
                     }
+                    Color.clear
+                        .tag(Optional(TerminalPagerPage.trailing))
+                        .accessibilityHidden(true)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                .onAppear { if let id = coordinator.selectedSessionID { pagerSelection = .terminal(id) } }
+                .onChange(of: pagerSelection) { _, page in handlePagerSelection(page) }
+                .onChange(of: coordinator.selectedSessionID) { _, id in
+                    if let id { pagerSelection = .terminal(id) }
+                }
             }
         }
     }
@@ -183,9 +197,13 @@ struct WorkspaceView: View {
             List {
                 Section {
                     ForEach(coordinator.sessions) { session in
-                        revealableTerminalRow(session)
+                        terminalRow(session)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
+                                Button("Edit", systemImage: "pencil") { beginRename(session) }.tint(.blue)
+                            }
                     }
                 } header: {
                     Label("Active Terminals", systemImage: "terminal")
@@ -238,44 +256,42 @@ struct WorkspaceView: View {
                 Text(session.descriptor.label).fontWeight(session.id == coordinator.selectedSessionID ? .semibold : .regular)
                 if let preview = session.preview { Text(preview).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary) }
             }
-            .contentShape(.rect)
-            .onTapGesture { coordinator.selectSession(session.id); coordinator.dismissPresentedScreen() }
             Spacer(minLength: 4)
-            Button { revealedSessionID = DrawerRowRevealPolicy.toggle(current: revealedSessionID, row: session.id) } label: {
+            Menu {
+                Button("Edit", systemImage: "pencil") { beginRename(session) }
+                Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
+            } label: {
                 Image(systemName: "ellipsis").frame(width: 44, height: 44)
             }
-            .buttonStyle(.plain)
             .accessibilityLabel("Actions for \(session.descriptor.label)")
             .accessibilityIdentifier("terminal-actions-\(session.id.uuidString)")
         }
         .padding(12)
+        .frame(minHeight: 56)
+        .contentShape(.rect)
+        .onTapGesture { coordinator.selectSession(session.id); coordinator.dismissPresentedScreen() }
         .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08), in: .rect(cornerRadius: 12))
-    }
-
-    private func revealableTerminalRow(_ session: WorkspaceSession) -> some View {
-        ZStack(alignment: .trailing) {
-            HStack(spacing: 0) {
-                Spacer()
-                drawerAction("Rename", systemImage: "pencil", color: .blue) { beginRename(session) }
-                drawerAction("Close", systemImage: "trash", color: .red) { deleteTarget = session; revealedSessionID = nil }
-            }
-            terminalRow(session)
-                .offset(x: revealedSessionID == session.id ? -DrawerRowRevealPolicy.revealWidth : 0)
-                .gesture(DragGesture(minimumDistance: 20).onEnded { value in
-                    revealedSessionID = DrawerRowRevealPolicy.revealedRow(current: revealedSessionID, row: session.id, translation: value.translation.width)
-                })
-        }
-        .clipShape(.rect(cornerRadius: 12))
-        .animation(.snappy(duration: 0.2), value: revealedSessionID)
-    }
-
-    private func drawerAction(_ title: String, systemImage: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Label(title, systemImage: systemImage).labelStyle(.iconOnly).frame(width: DrawerRowRevealPolicy.actionWidth).frame(maxHeight: .infinity) }
-            .foregroundStyle(.white).background(color).accessibilityLabel(title)
+        .accessibilityIdentifier("terminal-row-\(session.id.uuidString)")
     }
 
     private func beginRename(_ session: WorkspaceSession) {
-        renameText = session.descriptor.label; renameTarget = session; revealedSessionID = nil
+        renameText = session.descriptor.label; renameTarget = session
+    }
+
+    private func handlePagerSelection(_ page: TerminalPagerPage) {
+        let before = coordinator.sessions.map(\.id)
+        switch pagerPolicy.transition(to: page, terminalIDs: before) {
+        case .select(let id):
+            pagerSelection = .terminal(id); coordinator.selectSession(id)
+        case .openDrawer(let restoring):
+            pagerSelection = .terminal(restoring); coordinator.selectSession(restoring); coordinator.showTerminalList()
+        case .createTerminal:
+            coordinator.addShell()
+            if let id = coordinator.selectedSessionID { pagerSelection = .terminal(id) }
+        case .restore(let id):
+            pagerSelection = .terminal(id); coordinator.selectSession(id)
+        case nil: break
+        }
     }
 
     private var connectionDetailsSheet: some View {
@@ -283,14 +299,18 @@ struct WorkspaceView: View {
             List {
                 if let mac = coordinator.selectedMac {
                     Section("Connection") {
+                        LabeledContent("Device", value: mac.displayName)
                         LabeledContent("Session health", value: ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
                         LabeledContent("Route", value: ConnectionPresentation.routeLabel(for: coordinator.selectedSession?.activeRouteKind))
-                        LabeledContent("Activity", value: coordinator.selectedSession?.lastActivityAt == nil ? "No recent activity" : "Active")
+                        LabeledContent("Session", value: connectionPresentation.activity)
+                        if let warning = connectionPresentation.replayWarning { Text(warning).foregroundStyle(.orange) }
                     }
                     Section("Security") {
                         LabeledContent("Transport", value: "TLS 1.3")
                         LabeledContent("Authentication", value: "Mutual authentication")
-                        LabeledContent("Certificate pin", value: coordinator.selectedSession?.state == .certificateChanged ? "Mismatch" : "Verified")
+                        LabeledContent("Certificate pin", value: connectionPresentation.certificatePin)
+                        Text("The stored fingerprint below is verification information, not a secret. Clive never displays private keys, pairing secrets, identities, rendezvous tokens, or raw certificates.")
+                            .font(.caption).foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 8) {
                             Text("SHA-256 fingerprint").font(.caption).foregroundStyle(.secondary)
                             Text(FingerprintFormatter.formatted(mac.certificateFingerprint)).font(.footnote.monospaced()).textSelection(.enabled)

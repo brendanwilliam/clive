@@ -143,8 +143,8 @@ struct AuthenticationGracePolicy: Equatable {
     private var accumulator = TerminalPreviewAccumulator()
 
     private var routes: [MacRoute]
-    private let device: PairedMac
-    private let identity: IPhoneIdentity
+    private let device: PairedMac?
+    private let identity: IPhoneIdentity?
     private var routeIndex = 0
     private let workingDirectory: String?
     private var initialCommand: InitialCommandBuffer
@@ -181,6 +181,17 @@ struct AuthenticationGracePolicy: Equatable {
         client.onRendezvousUpgrade = { certificate, capability in DispatchQueue.main.async { onUpgrade(certificate, capability) } }
         connectCurrentRoute()
     }
+
+#if DEBUG
+    init(fixture descriptor: SessionDescriptor, state: SessionClient.State, route: MacRouteKind = .lan) {
+        self.descriptor = descriptor; id = descriptor.id; routes = []
+        device = nil; identity = nil; workingDirectory = nil
+        initialCommand = InitialCommandBuffer(nil); localRendezvousCapability = nil
+        refreshRoutes = {}; now = Date.init
+        schedule = { _, _ in Task {} }; onUpgrade = { _, _ in }
+        self.state = state; activeRouteKind = route; hasOpened = true; lastActivityAt = .now
+    }
+#endif
 
     func noteInput() { lastActivityAt = .now }
     func run(command: String) { client.sendInput(ShortcutExecutionPolicy.payload(for: command)); noteInput() }
@@ -261,6 +272,7 @@ struct AuthenticationGracePolicy: Equatable {
     }
 
     private func connectCurrentRoute(expectsResumption: Bool = false) {
+        guard let device, let identity, routes.indices.contains(routeIndex) else { return }
         let route = routes[routeIndex]
         client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, serverSessionID: descriptor.serverSessionID, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, workingDirectory: workingDirectory, expectsResumption: expectsResumption)
     }
@@ -295,20 +307,24 @@ struct AuthenticationGracePolicy: Equatable {
     private var isSceneActive = false
     private var hasCapturedForeground = false
     private var authenticationInFlight = false
+    private let isUITestFixture: Bool
 
     init(
         authenticate: @escaping @Sendable () async throws -> Void = { try await LocalAuthenticator.authorizeConnection() },
         provideIdentity: @escaping @MainActor () throws -> IPhoneIdentity = { try IPhoneIdentityProvider().loadOrCreate() },
         authenticationGracePolicy: AuthenticationGracePolicy = .standard,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        isUITestFixture: Bool = false
     ) {
         self.authenticate = authenticate
         self.provideIdentity = provideIdentity
         self.authenticationGracePolicy = authenticationGracePolicy
         self.now = now
+        self.isUITestFixture = isUITestFixture
     }
 
     func start() {
+        if isUITestFixture { return }
         macs.start()
         macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
         snapshot = (try? WorkspaceStore().load()) ?? snapshot
@@ -321,6 +337,7 @@ struct AuthenticationGracePolicy: Equatable {
     var selectedSession: WorkspaceSession? { sessions.first { $0.id == selectedSessionID } }
 
     func authorize() async {
+        if isUITestFixture { return }
         guard !authenticationInFlight else { return }
         authenticationInFlight = true
         defer { authenticationInFlight = false }
@@ -341,6 +358,7 @@ struct AuthenticationGracePolicy: Equatable {
     }
 
     func sceneDidBecomeActive() async {
+        if isUITestFixture { return }
         guard !isSceneActive else { return }
         isSceneActive = true
         hasCapturedForeground = false
@@ -397,6 +415,13 @@ struct AuthenticationGracePolicy: Equatable {
     }
 
     func addShell() {
+#if DEBUG
+        if isUITestFixture {
+            let descriptor = SessionDescriptor(label: "Shell \(sessions.count + 1)")
+            let session = WorkspaceSession(fixture: descriptor, state: .active(UUID(), .created, false))
+            sessions.append(session); selectSession(session.id); return
+        }
+#endif
         guard let mac = selectedMac, let identity else { return }
         let routes = routes(for: mac)
         guard !routes.isEmpty else { recovery = .unavailableMac(mac.displayName); return }
@@ -410,8 +435,8 @@ struct AuthenticationGracePolicy: Equatable {
     @discardableResult
     func runShortcut(_ shortcut: CLIShortcut) -> Bool {
         let command = shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !command.isEmpty,
-              let session = sessions.first(where: { $0.id == selectedSessionID }) else { return false }
+        guard let session = sessions.first(where: { $0.id == selectedSessionID }),
+              ShortcutExecutionPolicy.canRun(command: command, state: session.state) else { return false }
         session.run(command: command)
         return true
     }
@@ -590,6 +615,25 @@ struct AuthenticationGracePolicy: Equatable {
     private func detachLiveSessions() { sessions.forEach { $0.detach() }; sessions.removeAll(); selectedSessionID = nil }
     private func saveCurrentDescriptors() { guard let id = selectedMacID else { return }; snapshot.sessionsByMac[id] = sessions.map(\.descriptor); snapshot.selectedMacID = id }
     private func persist() { try? WorkspaceStore().save(snapshot) }
+
+#if DEBUG
+    static func uiTestFixture() -> WorkspaceCoordinator {
+        let coordinator = WorkspaceCoordinator(authenticate: {}, provideIdentity: { throw CocoaError(.userCancelled) }, isUITestFixture: true)
+        let mac = PairedMac(
+            id: "ui-test-mac", displayName: "Test Mac", serviceID: "ui-test-service",
+            certificateFingerprint: String(repeating: "ab", count: 32), createdAt: Date(timeIntervalSince1970: 0)
+        )
+        coordinator.macs.installUITestFixture(device: mac, route: MacRoute(host: "127.0.0.1", port: 8022))
+        coordinator.preferences.value = AppPreferences(shortcuts: [CLIShortcut(name: "Status", command: "git status --short")])
+        coordinator.state = .active; coordinator.selectedMacID = mac.id
+        coordinator.sessions = [
+            WorkspaceSession(fixture: SessionDescriptor(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, label: "Shell 1"), state: .active(UUID(), .resumed, true)),
+            WorkspaceSession(fixture: SessionDescriptor(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, label: "Shell 2"), state: .active(UUID(), .created, false))
+        ]
+        coordinator.selectedSessionID = coordinator.sessions.first?.id
+        return coordinator
+    }
+#endif
 }
 
 struct WorkspaceStore {

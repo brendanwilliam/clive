@@ -65,12 +65,25 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Clive - CLI for iOS.app/Clive - CLI for iOS"
     dependencies:
       - target: Clive
+  CliveUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [UITests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Clive
+    dependencies:
+      - target: Clive
 schemes:
   Clive:
     build:
       targets:
         Clive: all
         CliveTests: [test]
+        CliveUITests: [test]
     test:
       targets:
         - CliveTests
+        - CliveUITests
