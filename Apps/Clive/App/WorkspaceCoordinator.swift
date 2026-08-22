@@ -466,6 +466,14 @@ struct AuthenticationGracePolicy: Equatable {
         if sessions.isEmpty { clearDestination() }
     }
 
+    func closeAll() {
+        sessions.forEach { $0.close() }
+        sessions.removeAll()
+        selectSession(nil)
+        saveCurrentDescriptors(); persist()
+        clearDestination()
+    }
+
     func end(_ session: WorkspaceSession) {
         session.terminate(); sessions.removeAll { $0.id == session.id }
         if selectedSessionID == session.id { selectSession(sessions.last?.id) }

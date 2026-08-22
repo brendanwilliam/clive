@@ -55,6 +55,11 @@ final class PTYProcess: TerminalProcess, @unchecked Sendable {
         if childPID == 0 {
             if chdir(directory) != 0 { _exit(126) }
             setenv("TERM", "xterm-256color", 1)
+            // Development tools invoked from a Clive shell sometimes need to
+            // restart the daemon that owns this PTY. Give those tools a
+            // reliable way to hand work off before that restart closes the
+            // shell's process group.
+            setenv("CLIVE_MANAGED_TERMINAL", "1", 1)
             var arguments: [UnsafeMutablePointer<CChar>?] = [strdup("zsh"), strdup("-l"), nil]
             arguments.withUnsafeMutableBufferPointer { buffer in
                 _ = execv("/bin/zsh", buffer.baseAddress)

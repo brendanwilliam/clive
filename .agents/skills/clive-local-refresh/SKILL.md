@@ -13,14 +13,13 @@ Before running it:
 
 1. State that the active Clive terminal will end and cannot be resumed after this refresh.
 2. Confirm that the user accepts that interruption. Do not treat permission to build or diagnose as permission to run the refresh.
-3. Confirm `Apps/Clive/Config/Local.xcconfig` exists and a connected, unlocked iPhone is available. If more than one device is connected, require `CLIVE_IOS_DESTINATION_ID` to be set.
 
-After confirmation, run:
+After confirmation, run the script immediately. It performs its own configuration and connected-device checks, including requiring `CLIVE_IOS_DESTINATION_ID` when necessary:
 
 ```sh
 ./scripts/run-on-iphone.sh
 ```
 
-Report whether the script completed and provide its daemon-log paths on failure. Do not retry automatically: a failed deployment may need investigation, and the original terminal is already gone.
+When the script is run from a Clive-managed terminal, it hands the disruptive work to `launchd`, then that terminal ends. In that case, report that the refresh was handed off and provide `/private/tmp/clive-device-run/refresh.log`; do not claim deployment success before that log is checked in a later turn. Otherwise, report whether the script completed and provide its daemon-log paths on failure. Do not retry automatically: a failed deployment may need investigation, and the original terminal is already gone.
 
 For normal validation that must preserve an active terminal, use `./scripts/verify-local.sh` instead; it builds and tests but does not replace the running daemon or iPhone app.

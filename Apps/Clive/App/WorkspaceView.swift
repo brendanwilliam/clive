@@ -10,6 +10,7 @@ struct WorkspaceView: View {
     @State private var renameText = ""
     @State private var deleteTarget: WorkspaceSession?
     @State private var endTarget: WorkspaceSession?
+    @State private var showingClearAllConfirmation = false
     @State private var showingDisconnectConfirmation = false
     @State private var showingConnectionDetails = false
     @State private var showingShortcuts = false
@@ -59,6 +60,12 @@ struct WorkspaceView: View {
             Button("Close Terminal", role: .destructive) { coordinator.close(session); deleteTarget = nil }
         } message: { session in
             Text("Closing \(session.descriptor.label) only detaches this iPhone. The shared shell remains available on the Mac.")
+        }
+        .alert("Clear all terminals?", isPresented: $showingClearAllConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear All", role: .destructive) { coordinator.closeAll() }
+        } message: {
+            Text("This removes every terminal from this iPhone. Their shared shells remain available on the Mac.")
         }
         .alert("End shared session?", isPresented: Binding(get: { endTarget != nil }, set: { if !$0 { endTarget = nil } }), presenting: endTarget) { session in
             Button("Cancel", role: .cancel) { endTarget = nil }
@@ -214,17 +221,23 @@ struct WorkspaceView: View {
                     ForEach(coordinator.sessions) { session in
                         terminalRow(session)
                             .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
+                            .listRowSeparator(.visible)
+                            .listRowSeparatorTint(.secondary.opacity(0.28))
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
                                 Button("Edit", systemImage: "pencil") { beginRename(session) }.tint(.blue)
                             }
                     }
                 } header: {
-                    Label("Active Terminals", systemImage: "terminal")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(nil)
+                    HStack {
+                        Label("Active Terminals", systemImage: "terminal")
+                        Spacer()
+                        Button("Clear All", role: .destructive) { showingClearAllConfirmation = true }
+                            .disabled(coordinator.sessions.isEmpty)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(nil)
                 }
             }
             .listStyle(.plain)
@@ -274,7 +287,7 @@ struct WorkspaceView: View {
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(session.descriptor.label).fontWeight(session.id == coordinator.selectedSessionID ? .semibold : .regular)
+                        Text(session.descriptor.label)
                         if let attachment = session.attachmentState {
                             Text("\(attachment.attachmentCount) attached · resize: \(attachment.resizeOwner?.rawValue ?? "none")")
                                 .font(.caption)
@@ -301,9 +314,8 @@ struct WorkspaceView: View {
             .accessibilityIdentifier("terminal-actions-\(session.id.uuidString)")
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
-        .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08), in: .rect(cornerRadius: 12))
     }
 
     private func beginRename(_ session: WorkspaceSession) {
