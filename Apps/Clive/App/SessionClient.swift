@@ -5,6 +5,7 @@ import Network
 import Security
 
 final class SessionClient: @unchecked Sendable {
+    static let connectionAttemptTimeout: TimeInterval = 60
     enum ClientError: Error { case certificateChanged, protocolViolation, unavailableIdentity }
     var onOutput: ((Data) -> Void)?
     var onActivityOutput: ((Data) -> Void)?
@@ -82,7 +83,7 @@ final class SessionClient: @unchecked Sendable {
             guard let self, self.generation == attempt, !self.opened else { return }
             self.terminalStateReported = true; self.onState?(.networkError("Connection attempt timed out.")); connection?.cancel()
         }
-        self.timeout = timeout; queue.asyncAfter(deadline: .now() + 5, execute: timeout)
+        self.timeout = timeout; queue.asyncAfter(deadline: .now() + Self.connectionAttemptTimeout, execute: timeout)
     }
     func sendInput(_ data: Data) {
         guard opened else { return }

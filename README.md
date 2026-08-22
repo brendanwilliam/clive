@@ -56,7 +56,7 @@ swift run clive status
 
 `verify-local.sh` runs shared Swift tests plus macOS and iOS tests/builds. Pass `--signed` only when checking local signing readiness. To open the iOS project, run `cd Apps/Clive && xcodegen generate`, then open `Clive.xcodeproj`. Local bundle identifiers and signing settings belong in an ignored `Local.xcconfig`; see the example files in each app's `Config` directory.
 
-For the quickest physical-device development loop, connect and unlock an iPhone, configure `Apps/Clive/Config/Local.xcconfig`, and run `./scripts/run-on-iphone.sh`. It rebuilds and starts the daemon from the current checkout, builds the iOS app, then installs and launches it on the connected phone. Set `CLIVE_IOS_DESTINATION_ID` when more than one physical iOS device is connected.
+For the quickest physical-device development loop, connect and unlock an iPhone, configure `Apps/Clive/Config/Local.xcconfig`, and run `./scripts/run-on-iphone.sh`. It rebuilds and runs the daemon as a supervised per-user `launchd` job, builds the iOS app, then installs and launches it on the connected phone. Set `CLIVE_IOS_DESTINATION_ID` when more than one physical iOS device is connected.
 
 ## Architecture and security
 

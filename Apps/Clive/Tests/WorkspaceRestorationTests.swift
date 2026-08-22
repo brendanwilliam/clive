@@ -203,6 +203,10 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertNil(buffer.take())
     }
 
+    func testConnectionAttemptAllowsTimeForInteractiveAuthentication() {
+        XCTAssertEqual(SessionClient.connectionAttemptTimeout, 60)
+    }
+
     func testReconnectBackoffIsImmediateThenBoundedAtFifteenSeconds() {
         let policy = SessionReconnectPolicy.standard
 
