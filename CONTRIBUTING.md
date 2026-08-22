@@ -28,4 +28,8 @@ Changes to pairing, certificate validation, key storage, logging, permissions, C
 
 Run the quick compatibility check and the localhost TLS/PTY integration test before opening a pull request. Use `./scripts/verify-local.sh --signed` when the change affects local signing. Follow the pull request template, link the issue, describe user-visible and security impact, and include sanitized screenshots for UI changes.
 
+Open normal pull requests against `develop`; pull requests into `main` must come
+from `develop`. See the [development branch policy](docs/development-branch-policy.md)
+for the required checks and the administrator exception procedure.
+
 By contributing, you agree that your contributions are licensed under GPL-3.0-or-later. The Clive name and branded artwork remain subject to the [trademark policy](TRADEMARKS.md).

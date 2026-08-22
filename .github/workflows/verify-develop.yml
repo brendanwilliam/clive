@@ -1,0 +1,39 @@
+name: Verify develop integration
+
+on:
+  pull_request:
+    branches: [develop]
+
+concurrency:
+  group: develop-integration-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fast-validation:
+    name: Swift package tests and static checks
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Xcode 26.5
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+        run: |
+          test -x "${DEVELOPER_DIR}/usr/bin/swift" || {
+            echo "::error::Pinned Xcode is unavailable at ${DEVELOPER_DIR}"
+            exit 1
+          }
+          swift --version
+
+      - name: Check whitespace errors
+        run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
+
+      - name: Run Swift package tests
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+        run: swift test
