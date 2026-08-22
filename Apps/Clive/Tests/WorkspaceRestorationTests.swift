@@ -211,6 +211,14 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertEqual((0...7).map(policy.retryDelay(afterCycle:)), [1, 2, 4, 8, 15, 15, 15, 15])
     }
 
+    func testInitialConnectionRetriesWithoutRequiringResumption() {
+        let policy = SessionReconnectPolicy.standard
+
+        XCTAssertTrue(policy.shouldBeginRetryAfterRouteChange(hasOpened: false, reconnecting: false))
+        XCTAssertFalse(policy.expectsResumption(hasOpened: false))
+        XCTAssertTrue(policy.expectsResumption(hasOpened: true))
+    }
+
     func testReconnectDeadlineIsThirtyMinutes() {
         let policy = SessionReconnectPolicy.standard
         let start = Date(timeIntervalSince1970: 1_000)
@@ -246,5 +254,23 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertTrue(policy.shouldRefreshCloud(lastRefresh: nil, now: now))
         XCTAssertFalse(policy.shouldRefreshCloud(lastRefresh: now.addingTimeInterval(-29), now: now))
         XCTAssertTrue(policy.shouldRefreshCloud(lastRefresh: now.addingTimeInterval(-30), now: now))
+    }
+
+    func testUnavailableMacRetriesWhenFirstRouteArrives() {
+        XCTAssertTrue(WorkspaceCoordinator.shouldRetryUnavailableMac(
+            recovery: .unavailableMac("Mac"),
+            state: .active,
+            routesAvailable: true
+        ))
+        XCTAssertFalse(WorkspaceCoordinator.shouldRetryUnavailableMac(
+            recovery: .unavailableMac("Mac"),
+            state: .active,
+            routesAvailable: false
+        ))
+        XCTAssertFalse(WorkspaceCoordinator.shouldRetryUnavailableMac(
+            recovery: nil,
+            state: .active,
+            routesAvailable: true
+        ))
     }
 }
