@@ -6,7 +6,7 @@ import XCTest
 final class TerminalKeyboardAccessoryTests: XCTestCase {
     func testEscapeAppearsImmediatelyBeforeTabAndSendsEscapeByteOnce() throws {
         var sent: [Data] = []
-        let accessory = TerminalKeyboardAccessory(shortcuts: [], send: { sent.append($0) }, command: { _ in })
+        let accessory = TerminalKeyboardAccessory(send: { sent.append($0) }, command: { _ in })
         let escape = try XCTUnwrap(accessory.descendant(withIdentifier: "escape") as? UIButton)
         let tab = try XCTUnwrap(accessory.descendant(withIdentifier: "tab"))
         let row = try XCTUnwrap(escape.superview as? UIStackView)
@@ -22,7 +22,7 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
     }
 
     func testKeyRowUsesInsetCapsuleWithPlainRestingKeys() throws {
-        let accessory = TerminalKeyboardAccessory(shortcuts: [], send: { _ in }, command: { _ in })
+        let accessory = TerminalKeyboardAccessory(send: { _ in }, command: { _ in })
         accessory.frame = CGRect(x: 0, y: 0, width: 320, height: 48)
         accessory.layoutIfNeeded()
         let capsule = try XCTUnwrap(accessory.descendant(withIdentifier: "terminalKeyCapsule") as? UIVisualEffectView)
@@ -39,7 +39,7 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
     }
 
     func testNarrowKeyRowKeepsAllKeysReachableByScrolling() throws {
-        let accessory = TerminalKeyboardAccessory(shortcuts: [], send: { _ in }, command: { _ in })
+        let accessory = TerminalKeyboardAccessory(send: { _ in }, command: { _ in })
         accessory.frame = CGRect(x: 0, y: 0, width: 320, height: 48)
         accessory.layoutIfNeeded()
         let escape = try XCTUnwrap(accessory.descendant(withIdentifier: "escape"))
@@ -52,19 +52,17 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertLessThanOrEqual(dollar.frame.maxX, scroll.contentSize.width)
     }
 
-    func testAdditionalKeysButtonIsSecondAfterShortcuts() throws {
-        let accessory = TerminalKeyboardAccessory(shortcuts: [], send: { _ in }, command: { _ in })
-        let shortcuts = try XCTUnwrap(accessory.descendant(withIdentifier: "shortcuts"))
+    func testAdditionalKeysButtonIsFirstAndShortcutButtonIsAbsent() throws {
+        let accessory = TerminalKeyboardAccessory(send: { _ in }, command: { _ in })
         let additionalKeys = try XCTUnwrap(accessory.descendant(withIdentifier: "keyboard"))
-        let row = try XCTUnwrap(shortcuts.superview as? UIStackView)
+        let row = try XCTUnwrap(additionalKeys.superview as? UIStackView)
 
-        XCTAssertEqual(row.arrangedSubviews.first, shortcuts)
-        XCTAssertEqual(row.arrangedSubviews.dropFirst().first, additionalKeys)
+        XCTAssertEqual(row.arrangedSubviews.first, additionalKeys)
+        XCTAssertNil(accessory.descendant(withIdentifier: "shortcuts"))
     }
 
     func testAdditionalKeysButtonTogglesInlinePanel() throws {
         let accessory = TerminalKeyboardAccessory(
-            shortcuts: [],
             send: { _ in },
             command: { _ in }
         )
@@ -80,76 +78,8 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertNil(accessory.descendant(withIdentifier: "additionalKeysPalette"))
     }
 
-    func testShortcutButtonTogglesInlinePanelAndReplacesAdditionalKeys() throws {
-        let accessory = TerminalKeyboardAccessory(
-            shortcuts: [],
-            send: { _ in },
-            command: { _ in }
-        )
-        let additionalKeysButton = try XCTUnwrap(accessory.descendant(withIdentifier: "keyboard") as? UIButton)
-        additionalKeysButton.sendActions(for: .touchUpInside)
-
-        let shortcutButton = try XCTUnwrap(accessory.descendant(withIdentifier: "shortcuts") as? UIButton)
-        shortcutButton.sendActions(for: .touchUpInside)
-
-        XCTAssertNil(accessory.descendant(withIdentifier: "additionalKeysPalette"))
-        XCTAssertNotNil(accessory.descendant(withIdentifier: "shortcutsPanel"))
-
-        let updatedShortcutButton = try XCTUnwrap(accessory.descendant(withIdentifier: "shortcuts") as? UIButton)
-        updatedShortcutButton.sendActions(for: .touchUpInside)
-        XCTAssertNil(accessory.descendant(withIdentifier: "shortcutsPanel"))
-    }
-
-    func testSaveLastCommandEnablesAfterCommandIsTrackedAndSavesIt() throws {
-        var savedName: String?
-        var savedCommand: String?
-        var saveCount = 0
-        let accessory = TerminalKeyboardAccessory(
-            shortcuts: [],
-            saveLastCommand: { name, command in
-                savedName = name
-                savedCommand = command
-                saveCount += 1
-                return true
-            },
-            send: { _ in },
-            command: { _ in }
-        )
-        let shortcutButton = try XCTUnwrap(accessory.descendant(withIdentifier: "shortcuts") as? UIButton)
-        shortcutButton.sendActions(for: .touchUpInside)
-        XCTAssertFalse(try XCTUnwrap(accessory.descendant(withIdentifier: "saveLastCommand") as? UIButton).isEnabled)
-
-        accessory.updateLastCommand("git status")
-
-        let saveButton = try XCTUnwrap(accessory.descendant(withIdentifier: "saveLastCommand") as? UIButton)
-        XCTAssertTrue(saveButton.isEnabled)
-        accessory.confirmLastCommandShortcut(name: "Repository status")
-
-        XCTAssertEqual(savedName, "Repository status")
-        XCTAssertEqual(savedCommand, "git status")
-        XCTAssertEqual(saveCount, 1)
-        XCTAssertFalse(try XCTUnwrap(accessory.descendant(withIdentifier: "saveLastCommand") as? UIButton).isEnabled)
-    }
-
-    func testExistingShortcutCommandCannotBeSavedAgain() throws {
-        let accessory = TerminalKeyboardAccessory(
-            shortcuts: [CLIShortcut(name: "Status", command: "git status")],
-            lastCommand: " git status ",
-            saveLastCommand: { _, _ in XCTFail("Duplicate should not save"); return true },
-            send: { _ in },
-            command: { _ in }
-        )
-
-        let shortcutButton = try XCTUnwrap(accessory.descendant(withIdentifier: "shortcuts") as? UIButton)
-        shortcutButton.sendActions(for: .touchUpInside)
-
-        XCTAssertFalse(try XCTUnwrap(accessory.descendant(withIdentifier: "saveLastCommand") as? UIButton).isEnabled)
-        XCTAssertNil(accessory.descendant(withIdentifier: "closePanel"))
-    }
-
     func testTerminalKeyShowsVisualPressedFeedback() throws {
         let accessory = TerminalKeyboardAccessory(
-            shortcuts: [],
             send: { _ in },
             command: { _ in }
         )
@@ -164,7 +94,6 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
 
     func testAccessoryDoesNotInsertSpacerBelowKeyRow() {
         let accessory = TerminalKeyboardAccessory(
-            shortcuts: [],
             send: { _ in },
             command: { _ in }
         )

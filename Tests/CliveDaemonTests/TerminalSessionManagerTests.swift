@@ -73,6 +73,36 @@ final class TerminalSessionManagerTests: XCTestCase {
         XCTAssertEqual(process.terminateCount, 1)
     }
 
+    func testTerminalInputExecutesInPTYAndReturnsShellOutputAndErrors() throws {
+        let manager = TerminalSessionManager(registry: SessionRegistry())
+        let clientID = UUID(), attachmentID = UUID()
+        let marker = "clive-command-\(UUID().uuidString)"
+        let received = Box(Data())
+        _ = try attach(manager, clientID: clientID, attachmentID: attachmentID, output: { chunk, completion in
+            received.value.append(chunk.bytes)
+            completion()
+        })
+        defer { manager.close(deviceID: "phone", clientSessionID: clientID, attachmentID: attachmentID); manager.synchronize() }
+
+        try manager.input(deviceID: "phone", clientSessionID: clientID, attachmentID: attachmentID, bytes: Data("printf '%s\\n' '\(marker)'\r".utf8))
+
+        let deadline = Date().addingTimeInterval(5)
+        while !String(decoding: received.value, as: UTF8.self).contains(marker), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+
+        XCTAssertTrue(String(decoding: received.value, as: UTF8.self).contains(marker), "Typed command output did not return from the shell.")
+
+        let diagnostic = "clive-shell-diagnostic-\(UUID().uuidString)"
+        try manager.input(deviceID: "phone", clientSessionID: clientID, attachmentID: attachmentID, bytes: Data("printf '%s\\n' '\(diagnostic)' >&2\r".utf8))
+        let diagnosticDeadline = Date().addingTimeInterval(5)
+        while !String(decoding: received.value, as: UTF8.self).contains(diagnostic), Date() < diagnosticDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+
+        XCTAssertTrue(String(decoding: received.value, as: UTF8.self).contains(diagnostic), "Shell stderr should be returned to the terminal.")
+    }
+
     func testSlowAttachmentIsEvictedWithoutSuspendingPTY() throws {
         let process = FakeTerminalProcess()
         let manager = makeManager(process)

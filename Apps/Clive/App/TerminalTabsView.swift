@@ -39,8 +39,6 @@ struct TerminalTabsView: View {
                         ZStack {
                             TerminalSurfaceView(
                                 session: tab.client,
-                                shortcuts: [],
-                                saveShortcut: { _, _ in false },
                                 accessibilityIdentifier: "terminal-surface-\(tab.id.uuidString)",
                                 isSelected: tab.id == model.selectedID
                             )

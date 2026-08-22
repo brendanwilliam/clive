@@ -1,35 +1,17 @@
-import Foundation
 import XCTest
 @testable import Clive
 
-final class TerminalCommandTrackerTests: XCTestCase {
-    func testReturnCapturesLastCommand() {
-        var tracker = TerminalCommandTracker()
+final class InitialCommandBufferTests: XCTestCase {
+    func testInitialCommandIsDeliveredOnlyOnce() {
+        var buffer = InitialCommandBuffer("git status --short")
 
-        tracker.consume(Data("git status\r".utf8))
-
-        XCTAssertEqual(tracker.lastCommand, "git status")
-        XCTAssertEqual(tracker.currentCommand, "")
+        XCTAssertEqual(buffer.take(), "git status --short")
+        XCTAssertNil(buffer.take())
     }
 
-    func testEditingAndArrowSequencesUpdateCommandSafely() {
-        var tracker = TerminalCommandTracker()
+    func testEmptyInitialCommandRemainsAbsent() {
+        var buffer = InitialCommandBuffer(nil)
 
-        tracker.consume(Data("echo xy".utf8))
-        tracker.consume(Data([0x7f]))
-        tracker.consume(Data("z".utf8))
-        tracker.consume(Data("\u{1b}[D".utf8))
-        tracker.consume(Data("\r".utf8))
-
-        XCTAssertEqual(tracker.lastCommand, "echo xz")
-    }
-
-    func testEmptyReturnKeepsPreviousCommand() {
-        var tracker = TerminalCommandTracker()
-        tracker.consume(Data("pwd\r".utf8))
-
-        tracker.consume(Data("   \r".utf8))
-
-        XCTAssertEqual(tracker.lastCommand, "pwd")
+        XCTAssertNil(buffer.take())
     }
 }

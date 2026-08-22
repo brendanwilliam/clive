@@ -81,10 +81,9 @@ enum WorkspaceTerminalLaunchResolver {
         case .shortcut(let id): shortcut = preferences.shortcuts.first { $0.id == id }
         case .newTerminal, .resumeOrStart: shortcut = preferences.newTerminalDefaultShortcutID.flatMap { id in preferences.shortcuts.first { $0.id == id } }
         }
-        let directory = shortcut?.workingDirectory.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let trimmedCommand = shortcut?.command.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return TerminalLaunchConfiguration(
-            workingDirectory: directory.isEmpty ? nil : directory,
+            workingDirectory: nil,
             initialCommand: trimmedCommand.isEmpty ? nil : shortcut?.command
         )
     }
@@ -99,6 +98,13 @@ struct InitialCommandBuffer {
         defer { command = nil }
         return command
     }
+}
+
+struct SessionReconnectNoticePolicy: Equatable {
+    static let standard = SessionReconnectNoticePolicy()
+    let duration: TimeInterval
+
+    init(duration: TimeInterval = 3) { self.duration = duration }
 }
 
 struct SessionReconnectPolicy: Equatable {
@@ -140,13 +146,13 @@ struct AuthenticationGracePolicy: Equatable {
     var preview: String?
     var lastActivityAt: Date?
     var attachmentState: AttachmentState?
+    var showsReconnectNotice = false
     private var accumulator = TerminalPreviewAccumulator()
 
     private var routes: [MacRoute]
     private let device: PairedMac?
     private let identity: IPhoneIdentity?
     private var routeIndex = 0
-    private let workingDirectory: String?
     private var initialCommand: InitialCommandBuffer
     private let localRendezvousCapability: RendezvousCapability?
     private let onUpgrade: (Data, RendezvousCapability) -> Void
@@ -156,19 +162,20 @@ struct AuthenticationGracePolicy: Equatable {
     private var reconnectStartedAt: Date?
     private var retryIndex = 0
     private var retryTask: Task<Void, Never>?
+    private var reconnectNoticeTask: Task<Void, Never>?
     private var lastRouteRefresh: Date?
     private let refreshRoutes: @MainActor () async -> Void
     private let reconnectPolicy = SessionReconnectPolicy.standard
+    private let reconnectNoticePolicy = SessionReconnectNoticePolicy.standard
     private let now: () -> Date
     private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never>
 
-    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String?, initialCommand: String? = nil, localRendezvousCapability: RendezvousCapability?, refreshRoutes: @escaping @MainActor () async -> Void = {}, now: @escaping () -> Date = Date.init, schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never> = { delay, action in Task { try? await Task.sleep(for: .seconds(delay)); guard !Task.isCancelled else { return }; await action() } }, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
+    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, initialCommand: String? = nil, localRendezvousCapability: RendezvousCapability?, refreshRoutes: @escaping @MainActor () async -> Void = {}, now: @escaping () -> Date = Date.init, schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never> = { delay, action in Task { try? await Task.sleep(for: .seconds(delay)); guard !Task.isCancelled else { return }; await action() } }, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
         self.descriptor = descriptor
         self.id = descriptor.id
         self.routes = routes
         self.device = device
         self.identity = identity
-        self.workingDirectory = workingDirectory
         self.initialCommand = InitialCommandBuffer(initialCommand)
         self.refreshRoutes = refreshRoutes
         self.now = now; self.schedule = schedule
@@ -183,12 +190,12 @@ struct AuthenticationGracePolicy: Equatable {
     }
 
 #if DEBUG
-    init(fixture descriptor: SessionDescriptor, state: SessionClient.State, route: MacRouteKind = .lan) {
+    init(fixture descriptor: SessionDescriptor, state: SessionClient.State, route: MacRouteKind = .lan, schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never> = { _, _ in Task {} }) {
         self.descriptor = descriptor; id = descriptor.id; routes = []
-        device = nil; identity = nil; workingDirectory = nil
+        device = nil; identity = nil
         initialCommand = InitialCommandBuffer(nil); localRendezvousCapability = nil
         refreshRoutes = {}; now = Date.init
-        schedule = { _, _ in Task {} }; onUpgrade = { _, _ in }
+        self.schedule = schedule; onUpgrade = { _, _ in }
         self.state = state; activeRouteKind = route; hasOpened = true; lastActivityAt = .now
     }
 #endif
@@ -196,9 +203,9 @@ struct AuthenticationGracePolicy: Equatable {
     func noteInput() { lastActivityAt = .now }
     func run(command: String) { client.sendInput(ShortcutExecutionPolicy.payload(for: command)); noteInput() }
     func clearTransientActivity() { accumulator.clear(); preview = nil; lastActivityAt = nil }
-    func close() { retryTask?.cancel(); clearTransientActivity(); client.close() }
-    func terminate() { retryTask?.cancel(); clearTransientActivity(); client.terminate() }
-    func detach() { retryTask?.cancel(); client.detach() }
+    func close() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); clearTransientActivity(); client.close() }
+    func terminate() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); clearTransientActivity(); client.terminate() }
+    func detach() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); client.detach() }
 
     func updateRoutes(_ newRoutes: [MacRoute]) {
         let changed = newRoutes != routes
@@ -219,10 +226,11 @@ struct AuthenticationGracePolicy: Equatable {
             descriptor.serverSessionID = serverSessionID
             retryTask?.cancel(); reconnecting = false; reconnectStartedAt = nil; retryIndex = 0; hasOpened = true
             activeRouteKind = routes[routeIndex].kind
-            if disposition == .created, let command = initialCommand.take() {
+            if let command = initialCommand.take() {
                 client.sendInput(Data((command + "\r").utf8))
                 noteInput()
             }
+            if disposition == .resumed { showReconnectNotice() }
         }
         switch value {
         case .networkError, .disconnected:
@@ -234,6 +242,14 @@ struct AuthenticationGracePolicy: Equatable {
         case .certificateChanged, .revoked, .protocolError, .resumeUnavailable, .workingDirectoryUnavailable:
             retryTask?.cancel(); reconnecting = false
         default: break
+        }
+    }
+
+    func showReconnectNotice() {
+        reconnectNoticeTask?.cancel()
+        showsReconnectNotice = true
+        reconnectNoticeTask = schedule(reconnectNoticePolicy.duration) { [weak self] in
+            self?.showsReconnectNotice = false
         }
     }
 
@@ -274,7 +290,7 @@ struct AuthenticationGracePolicy: Equatable {
     private func connectCurrentRoute(expectsResumption: Bool = false) {
         guard let device, let identity, routes.indices.contains(routeIndex) else { return }
         let route = routes[routeIndex]
-        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, serverSessionID: descriptor.serverSessionID, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, workingDirectory: workingDirectory, expectsResumption: expectsResumption)
+        client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, serverSessionID: descriptor.serverSessionID, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, expectsResumption: expectsResumption)
     }
 }
 
@@ -428,7 +444,7 @@ struct AuthenticationGracePolicy: Equatable {
         recovery = nil
         let descriptor = SessionDescriptor(label: "Shell \(sessions.count + 1)")
         let configuration = WorkspaceTerminalLaunchResolver.resolve(action: .newTerminal, preferences: preferences.value)
-        let session = makeSession(descriptor: descriptor, mac: mac, routes: routes, identity: identity, workingDirectory: configuration.workingDirectory, initialCommand: configuration.initialCommand)
+        let session = makeSession(descriptor: descriptor, mac: mac, routes: routes, identity: identity, initialCommand: configuration.initialCommand)
         sessions.append(session); selectSession(session.id); saveCurrentDescriptors(); persist()
     }
 
@@ -555,7 +571,6 @@ struct AuthenticationGracePolicy: Equatable {
             mac: mac,
             routes: routes,
             identity: identity,
-            workingDirectory: configuration.workingDirectory,
             initialCommand: configuration.initialCommand
         )
         sessions = [session]
@@ -589,8 +604,8 @@ struct AuthenticationGracePolicy: Equatable {
         return values
     }
 
-    private func makeSession(descriptor: SessionDescriptor, mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, workingDirectory: String? = nil, initialCommand: String? = nil) -> WorkspaceSession {
-        return WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, workingDirectory: workingDirectory, initialCommand: initialCommand, localRendezvousCapability: macs.localRendezvousCapability, refreshRoutes: { [weak self] in await self?.macs.refreshRendezvous() }) { [weak self] certificate, capability in
+    private func makeSession(descriptor: SessionDescriptor, mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, initialCommand: String? = nil) -> WorkspaceSession {
+        return WorkspaceSession(descriptor: descriptor, device: mac, routes: routes, identity: identity, initialCommand: initialCommand, localRendezvousCapability: macs.localRendezvousCapability, refreshRoutes: { [weak self] in await self?.macs.refreshRendezvous() }) { [weak self] certificate, capability in
             self?.macs.upgrade(macID: mac.id, certificate: certificate, capability: capability)
         }
     }

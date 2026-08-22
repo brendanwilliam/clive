@@ -8,7 +8,6 @@ final class AppPreferencesTests: XCTestCase {
         let preferences = AppPreferences()
 
         XCTAssertFalse(preferences.allowsCellularConnections)
-        XCTAssertEqual(preferences.defaultDirectoryPath, "")
         XCTAssertTrue(preferences.shortcuts.isEmpty)
         XCTAssertTrue(preferences.connectionIndicators.isEmpty)
         XCTAssertTrue(preferences.connectionIndicatorColors.isEmpty)
@@ -20,7 +19,6 @@ final class AppPreferencesTests: XCTestCase {
         let store = AppPreferencesStore(rootURL: root)
         let preferences = AppPreferences(
             allowsCellularConnections: true,
-            defaultDirectoryPath: "~/Projects",
             shortcuts: [
                 CLIShortcut(name: "Status", command: "git status --short"),
                 CLIShortcut(name: "Tests", command: "swift test")
@@ -54,15 +52,19 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(WidgetShortcutStore.choices(for: [emptyName, valid, emptyCommand]).map { $0["id"] }, [valid.id.uuidString])
     }
 
-    func testLegacyPreferencesDecodeWithoutConnectionIndicators() throws {
-        let data = Data(#"{"allowsCellularConnections":true,"defaultDirectoryPath":"~/Code","shortcuts":[]}"#.utf8)
+    func testLegacyDirectoryDataDecodesButIsDiscardedOnSave() throws {
+        let shortcutID = UUID()
+        let data = Data(#"{"allowsCellularConnections":true,"defaultDirectoryPath":"~/Code","shortcuts":[{"id":"\#(shortcutID.uuidString)","name":"Status","command":"git status","workingDirectory":"~/Status"}]}"#.utf8)
 
         let preferences = try JSONDecoder().decode(AppPreferences.self, from: data)
 
         XCTAssertTrue(preferences.allowsCellularConnections)
-        XCTAssertEqual(preferences.defaultDirectoryPath, "~/Code")
+        XCTAssertEqual(preferences.shortcuts, [CLIShortcut(id: shortcutID, name: "Status", command: "git status")])
         XCTAssertTrue(preferences.connectionIndicators.isEmpty)
         XCTAssertTrue(preferences.connectionIndicatorColors.isEmpty)
+        let encoded = try JSONEncoder().encode(preferences)
+        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("workingDirectory"))
+        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("defaultDirectoryPath"))
     }
 
     func testDeletedDefaultSelectionNormalizesToHome() throws {
@@ -72,7 +74,13 @@ final class AppPreferencesTests: XCTestCase {
         let preferences = try JSONDecoder().decode(AppPreferences.self, from: data)
 
         XCTAssertNil(preferences.newTerminalDefaultShortcutID)
-        XCTAssertEqual(preferences.defaultDirectoryPath, "")
+    }
+
+    func testDefaultShortcutWithEmptyCommandIsCleared() throws {
+        let shortcut = CLIShortcut(name: "Empty", command: " ")
+        let preferences = AppPreferences(shortcuts: [shortcut], newTerminalDefaultShortcutID: shortcut.id)
+
+        XCTAssertNil(preferences.newTerminalDefaultShortcutID)
     }
 
     @MainActor
