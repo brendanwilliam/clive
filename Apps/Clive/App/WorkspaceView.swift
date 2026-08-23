@@ -239,6 +239,19 @@ struct WorkspaceView: View {
                     .foregroundStyle(.secondary)
                     .textCase(nil)
                 }
+                if !coordinator.unrepresentedCatalogSessions.isEmpty {
+                    Section("Available on this Mac") {
+                        ForEach(coordinator.unrepresentedCatalogSessions) { session in
+                            catalogSessionRow(session)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.visible)
+                                .listRowSeparatorTint(.secondary.opacity(0.28))
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(nil)
+                }
             }
             .listStyle(.plain)
             .listRowSpacing(DrawerRowRevealPolicy.rowSpacing)
@@ -315,6 +328,26 @@ struct WorkspaceView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 2)
+        .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
+    }
+
+    private func catalogSessionRow(_ session: CliveCore.SessionDescriptor) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Detached terminal")
+                Text(session.attachmentCount == 0 ? "Disconnected — ready to reconnect" : "Attached elsewhere")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            if session.attachmentCount == 0 {
+                Button("Reconnect") { coordinator.reconnect(session) }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("reconnect-session-\(session.id.uuidString)")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
     }
 

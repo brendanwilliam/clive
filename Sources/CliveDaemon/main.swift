@@ -50,6 +50,10 @@ struct CliveDaemon {
             default: throw CommandError.usage
             }
         case "sessions": try runSessions(arguments: Array(arguments.dropFirst()))
+        case "detached": try runDetachedSessions(arguments: Array(arguments.dropFirst()))
+        case "reconnect":
+            try requireInteractiveTerminal()
+            try reconnectDetachedSession(arguments: Array(arguments.dropFirst()))
         case "attach":
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
             try requireInteractiveTerminal(); try runManagedTerminal(command: .sessionAttach, sessionID: id, deviceID: option("--device", in: arguments))
@@ -219,7 +223,7 @@ struct CliveDaemon {
     }
 
     static let usage = """
-    Usage: clive <start|pair|status|revoke|stop|cellular|shell|sessions|attach|end> [options]
+    Usage: clive <start|pair|status|revoke|stop|cellular|shell|sessions|detached|reconnect|attach|end> [options]
       start [--allow-non-private-network] [--remote-host <private-vpn-host-or-ip> --session-port <port>]
       start --clear-remote
       pair
@@ -232,6 +236,8 @@ struct CliveDaemon {
       cellular test
       shell
       sessions [--device <device-id>]
+      detached [--device <device-id>]
+      reconnect [--device <device-id>]
       attach <session-id> [--device <device-id>]
       end <session-id> [--device <device-id>]
     """
@@ -249,10 +255,50 @@ struct CliveDaemon {
 
     private static func runSessions(arguments: [String]) throws {
         guard arguments.isEmpty || (arguments.count == 2 && arguments[0] == "--device") else { throw CommandError.usage }
-        let response = try sendOneShot(.init(command: .sessions, deviceID: option("--device", in: arguments)))
+        let sessions = try sessionDescriptors(deviceID: option("--device", in: arguments))
+        guard !sessions.isEmpty else { print("No active sessions."); return }
+        printSessionDescriptors(sessions)
+    }
+
+    private static func runDetachedSessions(arguments: [String]) throws {
+        guard arguments.isEmpty || (arguments.count == 2 && arguments[0] == "--device") else { throw CommandError.usage }
+        let sessions = detachedSessions(try sessionDescriptors(deviceID: option("--device", in: arguments)))
+        guard !sessions.isEmpty else { print("No detached sessions."); return }
+        printSessionDescriptors(sessions)
+    }
+
+    private static func reconnectDetachedSession(arguments: [String]) throws {
+        guard arguments.isEmpty || (arguments.count == 2 && arguments[0] == "--device") else { throw CommandError.usage }
+        let deviceID = option("--device", in: arguments)
+        let sessions = detachedSessions(try sessionDescriptors(deviceID: deviceID))
+        guard !sessions.isEmpty else { print("No detached sessions to reconnect."); return }
+
+        print("Detached sessions:")
+        for (index, session) in sessions.enumerated() {
+            print("  \(index + 1)) \(session.id.uuidString)")
+        }
+        print("Reconnect to session [1-\(sessions.count), or q to cancel]: ", terminator: "")
+        guard let selection = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines), selection.lowercased() != "q" else { return }
+        guard let index = Int(selection), sessions.indices.contains(index - 1) else {
+            throw CommandError.remote("Enter a session number from 1 to \(sessions.count), or q to cancel.")
+        }
+        try runManagedTerminal(command: .sessionAttach, sessionID: sessions[index - 1].id, deviceID: deviceID)
+    }
+
+    static func detachedSessions(_ sessions: [SessionDescriptor]) -> [SessionDescriptor] {
+        sessions.filter { $0.attachmentCount == 0 }
+    }
+
+    private static func sessionDescriptors(deviceID: String?) throws -> [SessionDescriptor] {
+        let response = try sendOneShot(.init(command: .sessions, deviceID: deviceID))
         guard response.success else { throw CommandError.remote(response.message ?? "Unable to list sessions.") }
-        if response.sessions?.isEmpty != false { print("No active sessions."); return }
-        for session in response.sessions ?? [] { print("\(session.id.uuidString)  attachments=\(session.attachmentCount)  clive attach \(session.id.uuidString)") }
+        return response.sessions ?? []
+    }
+
+    private static func printSessionDescriptors(_ sessions: [SessionDescriptor]) {
+        for session in sessions {
+            print("\(session.id.uuidString)  attachments=\(session.attachmentCount)  clive attach \(session.id.uuidString)")
+        }
     }
 
     private static func runManagedTerminal(command: ControlCommand, sessionID: UUID?, deviceID: String?) throws {

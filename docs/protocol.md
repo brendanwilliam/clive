@@ -1,8 +1,8 @@
 # Protocol and lifecycle
 
-Protocol v3 is a coordinated Mac and iOS/TestFlight upgrade. Existing pairing records remain valid, but v2 frames are rejected before `session.open` can allocate a PTY. Sessions use stable server IDs and support iPhone and Mac CLI attachments through session list, attach, attachment-state, resize-claim, and explicit-termination frames.
+Protocol v3 is a coordinated Mac and iOS/TestFlight upgrade. Existing pairing records remain valid, but v2 frames are rejected before `session.open` can allocate a PTY. A Mac accepts one paired iPhone at a time. Sessions use stable server IDs and support iPhone and Mac CLI attachment through session list, attach, attachment-state, resize-claim, and explicit-termination frames.
 
-Terminal output carries a monotonically increasing byte offset. Reconnecting clients supply their last received offset; the daemon returns bounded replay and reports truncation when that offset predates the replay ring. Sessions are scoped to one paired certificate. Resize ownership follows the latest accepted input or explicit claim, and slow attachments are evicted independently.
+Terminal output carries a monotonically increasing byte offset. Reconnecting clients supply their last received offset; the daemon returns bounded replay and reports truncation when that offset predates the replay ring. Sessions are scoped to one paired certificate and allow at most one attachment. A reconnect from the same endpoint replaces its prior attachment; a different endpoint is rejected.
 
 ## Discovery
 
@@ -53,9 +53,9 @@ Frames have a bounded maximum size and an explicit protocol version. The Mac rej
 
 ## Session lifecycle
 
-Each authenticated device ID and stable client session ID maps to one PTY and login shell. Any number of authenticated iPhone or local CLI transports may attach to that PTY. Network loss and ordinary navigation detach only that transport; after the final detach the Mac retains the shell for 30 minutes. Detached output does not extend the timer. Up to 1 MiB of output is replayed in order, with oldest bytes discarded and truncation reported. Output is offset-tagged and ordered independently for every attachment; a bounded slow consumer is evicted without suspending the PTY or its peers.
+Each authenticated device ID and stable client session ID maps to one PTY and login shell. A PTY has at most one terminal attachment. Network loss and ordinary navigation detach that attachment; after the final detach the Mac retains the shell for 30 minutes. Detached output does not extend the timer. Up to 1 MiB of output is replayed in order, with oldest bytes discarded and truncation reported. Output is offset-tagged; a bounded slow consumer is evicted without suspending the PTY.
 
-Every input frame is written atomically on the session queue. Each attachment retains its latest viewport. The most recent accepted input or explicit `resize.claim` becomes resize owner and immediately applies that viewport; a non-owner resize only updates its stored viewport. Owner detachment transfers ownership to a remaining attachment and applies its viewport. Explicit `session.terminate`, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY everywhere. Shell exit sends `session.close` to all current attachments. The iOS app persists only opaque session IDs and labels, never terminal contents.
+Every input frame is written atomically on the session queue. The active attachment owns the terminal viewport. Explicit `session.terminate`, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY everywhere. Shell exit sends `session.close` to the current attachment. The iOS app persists only opaque session IDs and labels, never terminal contents.
 
 Successful terminal input and produced output refresh one daemon-wide idle-system-sleep assertion for 30 minutes. Pairing, authentication, resize traffic, and idle connections do not. Display sleep, explicit Sleep, lid close, shutdown, and system policy remain unaffected.
 
