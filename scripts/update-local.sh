@@ -18,7 +18,7 @@ REFRESH_PLIST=${RUN_DIR}/${REFRESH_LABEL}.plist
 REFRESH_LOG=${RUN_DIR}/refresh.log
 
 if (( $# > 1 )) || [[ ${1:-} != "" && ${1:-} != "--worker" ]]; then
-    echo "Usage: ./scripts/run-on-iphone.sh" >&2
+    echo "Usage: ./scripts/update-local.sh" >&2
     exit 64
 fi
 

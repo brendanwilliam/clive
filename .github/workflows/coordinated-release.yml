@@ -30,6 +30,18 @@ jobs:
     name: Validate coordinated release
     runs-on: macos-26
     steps:
+      - name: Authorize release initiator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${GITHUB_ACTOR}/permission" --jq .permission)"
+          if [[ "${permission}" != admin ]]; then
+            echo "::error::Only a repository owner or administrator may dispatch a coordinated release"
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
