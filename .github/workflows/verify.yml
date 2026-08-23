@@ -23,11 +23,8 @@ jobs:
 
       - name: Verify runner Xcode
         run: |
-          developer_dir="$(xcode-select -p)"
-          test -x "${developer_dir}/usr/bin/xcodebuild" || {
-            echo "::error::The runner's selected Xcode is unavailable at ${developer_dir}"
-            exit 1
-          }
+          xcode-select -p
+          xcrun --find xcodebuild
           xcodebuild -version
 
       - name: Install XcodeGen
