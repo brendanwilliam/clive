@@ -101,6 +101,7 @@ struct WorkspaceView: View {
                 }
             }
             .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { terminalButton }
                 ToolbarItem(placement: .principal) { connectionStatusButton }
@@ -130,17 +131,15 @@ struct WorkspaceView: View {
     private var connectionStatusButton: some View {
         let presentation = connectionPresentation
         return Button { showingConnectionDetails = true } label: {
-            VStack(spacing: 1) {
+            HStack(spacing: 6) {
+                Image(systemName: presentation.icon)
+                    .foregroundStyle(connectionHealthColor)
                 Text(coordinator.selectedMac?.displayName ?? "No Mac")
-                    .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                HStack(spacing: 4) {
-                    Image(systemName: presentation.icon)
-                    Text(presentation.text)
-                }
-                .font(.caption)
-                .foregroundStyle(connectionHealthColor)
+                    .truncationMode(.tail)
             }
+            .font(.subheadline.weight(.semibold))
+            .frame(height: 44)
         }
         .buttonStyle(.plain)
         .disabled(coordinator.selectedMac == nil)

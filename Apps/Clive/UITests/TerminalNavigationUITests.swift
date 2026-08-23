@@ -50,6 +50,15 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(waitForSelection(of: terminalSurface(secondID)))
     }
 
+    func testTerminalExtendsBehindCompactNavigationBar() {
+        let terminal = terminalSurface(firstID)
+        XCTAssertTrue(terminal.waitForExistence(timeout: 3))
+
+        let connection = app.buttons["connection-details-button"]
+        XCTAssertLessThanOrEqual(connection.frame.height, 44)
+        XCTAssertLessThan(terminal.frame.minY, connection.frame.maxY)
+    }
+
     func testDrawerRowSelectionOutsideMenu() {
         app.buttons["Terminals"].tap()
         drawerRow(secondID).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
