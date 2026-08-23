@@ -40,9 +40,10 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
         XCTAssertNil(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: 50, height: 48)))
     }
 
-    func testTerminalUsesInteractiveKeyboardDismissal() {
-        XCTAssertEqual(TerminalSurfaceConfiguration.keyboardDismissMode, .interactive)
+    func testTerminalKeepsScrollHistoryStillDuringKeyboardDismissal() {
+        XCTAssertEqual(TerminalSurfaceConfiguration.keyboardDismissMode, .none)
         XCTAssertFalse(TerminalSurfaceConfiguration.scrollsToTop)
+        XCTAssertEqual(TerminalSurfaceConfiguration.contentPadding, 2)
     }
 
     func testDrawerRevealPolicyOpensClosesAndKeepsOneRowOpen() {

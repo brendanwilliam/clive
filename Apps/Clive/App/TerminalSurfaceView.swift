@@ -31,6 +31,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     final class Coordinator: NSObject, TerminalViewDelegate, @unchecked Sendable {
         var session: SessionClient?; weak var view: TerminalView?
         fileprivate var accessory: TerminalKeyboardAccessory?
+        fileprivate var keyboardDismissObserver: TerminalKeyboardDismissObserver?
         init(session: SessionClient?) { self.session = session }
         @MainActor func installAccessory(on view: TerminalView) {
             let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
@@ -42,6 +43,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             _ = view.becomeFirstResponder()
         }
         @MainActor func installControls(on view: TerminalView) {
+            keyboardDismissObserver = TerminalKeyboardDismissObserver.install(on: view)
             view.accessibilityCustomActions = [
                 ("Cursor up", "\u{1b}[A"), ("Cursor down", "\u{1b}[B"),
                 ("Cursor left", "\u{1b}[D"), ("Cursor right", "\u{1b}[C")
@@ -82,6 +84,40 @@ struct TerminalSurfaceView: UIViewRepresentable {
 }
 
 enum TerminalSurfaceConfiguration {
-    static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .interactive
+    static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     static let scrollsToTop = false
+    static let contentPadding: CGFloat = 2
+}
+
+@MainActor private final class TerminalKeyboardDismissObserver: NSObject, UIGestureRecognizerDelegate {
+    private weak var view: TerminalView?
+    private lazy var dismissPanGestureRecognizer = UIPanGestureRecognizer(
+        target: self,
+        action: #selector(handlePan(_:))
+    )
+
+    static func install(on view: TerminalView) -> TerminalKeyboardDismissObserver {
+        let observer = TerminalKeyboardDismissObserver(view: view)
+        observer.dismissPanGestureRecognizer.delegate = observer
+        observer.dismissPanGestureRecognizer.cancelsTouchesInView = true
+        view.addGestureRecognizer(observer.dismissPanGestureRecognizer)
+        // Let an intentional downward keyboard-dismiss gesture win before SwiftTerm's
+        // scroll view begins moving terminal history.
+        view.panGestureRecognizer.require(toFail: observer.dismissPanGestureRecognizer)
+        return observer
+    }
+
+    private init(view: TerminalView) { self.view = view }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        _ = view?.resignFirstResponder()
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let view, view.isFirstResponder,
+              let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+        let velocity = pan.velocity(in: view)
+        return velocity.y > 0 && velocity.y > abs(velocity.x) * 1.25
+    }
 }

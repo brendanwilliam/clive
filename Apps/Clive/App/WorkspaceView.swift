@@ -107,7 +107,7 @@ struct WorkspaceView: View {
                 ToolbarItem(placement: .principal) { connectionStatusButton }
                 ToolbarItem(placement: .topBarTrailing) { shortcutsButton }
             }
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(Color.black.opacity(0.18), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
     }
@@ -196,6 +196,7 @@ struct WorkspaceView: View {
                                 )
                                 sessionOverlay(session)
                             }
+                            .padding(TerminalSurfaceConfiguration.contentPadding)
                             .tag(TerminalPagerPage.terminal(session.id))
                             .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
                             .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
