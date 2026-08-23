@@ -1,0 +1,3 @@
+interface:
+  display_name: "Clive Attach Terminal"
+  short_description: "Attach this Mac terminal to an existing Clive session"

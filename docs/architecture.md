@@ -34,7 +34,7 @@ clive revoke <device-id>
 clive stop
 ```
 
-`start` remains foreground by default so access is visible and ends when the process exits. The menu bar app's **Pair iPhone** window is the standard local pairing path; `pair` remains its terminal fallback and presents the same short-lived QR code after an interactive local confirmation. `status` lists paired devices and active sessions without exposing terminal content. `revoke` immediately removes the device trust record and terminates its active sessions.
+`start` remains foreground by default so access is visible and ends when the process exits. The menu bar app's **Pair iPhone** window is the standard local pairing path; `pair` remains its terminal fallback and presents the same short-lived QR code after an interactive local confirmation. `status` lists paired devices and active sessions without exposing terminal content. `clive attach` lets an interactive local terminal select and attach to an existing Clive PTY; it does not adopt an unrelated terminal emulator session. `revoke` immediately removes the device trust record and terminates its active sessions.
 
 The running process owns a mode-`0600` Unix control socket. All other commands use bounded Codable messages over that socket; they never edit live trust state independently.
 
