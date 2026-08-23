@@ -85,12 +85,16 @@ final class TerminalKeyboardAccessory: UIInputView {
         if action == "keyboard" { togglePanel(.additionalKeys); return }
         if action.hasPrefix("special:") || action.hasPrefix("custom:") {
             let value = String(action.dropFirst(action.hasPrefix("special:") ? 8 : 7))
-            send(Data(value.utf8)); consumeOneShot(); return
+            sendTerminalInput(value); return
         }
         if let modifier = modifier(named: action) { toggle(modifier, locked: false); return }
         if action == "escape" { send(Data([0x1b])); consumeOneShot(); return }
         let keys = ["left": "\u{1b}[D", "down": "\u{1b}[B", "up": "\u{1b}[A", "right": "\u{1b}[C", "tab": "\t"]
-        var value = keys[action] ?? action
+        sendTerminalInput(keys[action] ?? action)
+    }
+
+    private func sendTerminalInput(_ input: String) {
+        var value = input
         if active(.command) { command(value); consumeOneShot(); return }
         if active(.shift), value == "\t" { value = "\u{1b}[Z" }
         if active(.shift), value.count == 1 { value = value.uppercased() }

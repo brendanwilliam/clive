@@ -42,6 +42,7 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
 
     func testTerminalUsesInteractiveKeyboardDismissal() {
         XCTAssertEqual(TerminalSurfaceConfiguration.keyboardDismissMode, .interactive)
+        XCTAssertFalse(TerminalSurfaceConfiguration.scrollsToTop)
     }
 
     func testDrawerRevealPolicyOpensClosesAndKeepsOneRowOpen() {

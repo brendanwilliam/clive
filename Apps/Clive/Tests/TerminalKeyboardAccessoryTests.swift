@@ -78,6 +78,21 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertNil(accessory.descendant(withIdentifier: "additionalKeysPalette"))
     }
 
+    func testEveryAdditionalKeySendsItsExpectedInput() throws {
+        var sent: [Data] = []
+        let accessory = TerminalKeyboardAccessory(send: { sent.append($0) }, command: { _ in })
+        let values = ["~", "`", "|", "\\", "{", "}", "[", "]", "(", ")", "<", ">", "=", "*", "#", "^", "_", "-", ";", ":"]
+
+        let additionalKeysButton = try XCTUnwrap(accessory.descendant(withIdentifier: "keyboard") as? UIButton)
+        additionalKeysButton.sendActions(for: .touchUpInside)
+        for value in values {
+            let key = try XCTUnwrap(accessory.descendant(withIdentifier: "special:\(value)") as? UIButton)
+            key.sendActions(for: .touchUpInside)
+        }
+
+        XCTAssertEqual(sent, values.map { Data($0.utf8) })
+    }
+
     func testTerminalKeyShowsVisualPressedFeedback() throws {
         let accessory = TerminalKeyboardAccessory(
             send: { _ in },
