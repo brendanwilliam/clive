@@ -197,6 +197,7 @@ struct WorkspaceView: View {
                                 sessionOverlay(session)
                             }
                             .padding(TerminalSurfaceConfiguration.contentPadding)
+                            .padding(.top, TerminalSurfaceConfiguration.navigationContentPadding)
                             .tag(TerminalPagerPage.terminal(session.id))
                             .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
                             .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
