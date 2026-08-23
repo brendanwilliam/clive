@@ -156,7 +156,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 size: request.initialSize,
                 workingDirectory: request.workingDirectory,
                 attachmentID: identifier,
-                attachmentKind: request.attachmentKind,
+                attachmentKind: .iPhone,
                 lastReceivedOffset: request.lastReceivedOffset,
                 output: { [weak self] chunk, completion in
                     guard let self else { completion(); return }
@@ -190,10 +190,16 @@ final class SessionConnectionHandler: @unchecked Sendable {
 
     private func finishAttach(request: SessionAttachRequest) {
         do {
-            guard let attachment = try sessions.attachExisting(deviceID: deviceID, serverSessionID: request.serverSessionID, size: request.initialSize, attachmentID: identifier, attachmentKind: request.attachmentKind, lastReceivedOffset: request.lastReceivedOffset, output: { [weak self] chunk, completion in
+            guard let attachment = try sessions.attachExisting(deviceID: deviceID, serverSessionID: request.serverSessionID, size: request.initialSize, attachmentID: identifier, attachmentKind: .iPhone, lastReceivedOffset: request.lastReceivedOffset, output: { [weak self] chunk, completion in
                 guard let self else { completion(); return }; self.queue.async { self.sendOutput(chunk, completion: completion) }
             }, onDetached: { [weak self] reason in
-                guard let self else { return }; self.queue.async { if case .slowConsumer = reason { self.fail(.slowConsumer, "This attachment could not keep up with terminal output.") } }
+                guard let self else { return }
+                self.queue.async {
+                    switch reason {
+                    case .slowConsumer: self.fail(.slowConsumer, "This attachment could not keep up with terminal output.")
+                    case .replaced: self.close()
+                    }
+                }
             }, onShellExit: { [weak self] in guard let self else { return }; self.queue.async { self.shellExited() } }, onState: { [weak self] state in guard let self else { return }; self.queue.async { self.sendState(state) } }) else {
                 return fail(.sessionUnavailable, "The requested shared session is no longer available.")
             }
@@ -201,6 +207,8 @@ final class SessionConnectionHandler: @unchecked Sendable {
             let opened = SessionOpened(serverSessionID: attachment.serverSessionID, disposition: .resumed, replayTruncated: attachment.replayTruncated)
             framed?.send(ProtocolFrame(kind: .sessionOpened, payload: try ProtocolPayload.encode(opened)))
             if !attachment.replay.isEmpty { framed?.send(ProtocolFrame(kind: .terminalOutput, payload: try ProtocolPayload.encode(TerminalOutputChunk(offset: attachment.replayOffset, bytes: attachment.replay)))) }
+        } catch TerminalSessionManager.AttachmentError.attachedByDifferentEndpoint {
+            fail(.sessionUnavailable, "This session is currently attached from another device.")
         } catch { fail(.protocolError, "Unable to attach to the shared session.") }
     }
 
