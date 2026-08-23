@@ -14,7 +14,7 @@ struct WorkspaceView: View {
     @State private var showingDisconnectConfirmation = false
     @State private var showingConnectionDetails = false
     @State private var showingShortcuts = false
-    @State private var pagerSelection = TerminalPagerPage.leading
+    @State private var pagerSelection = TerminalPagerPage.empty
     @State private var pagerPolicy = TerminalPagerPolicy()
 
     var body: some View {
@@ -170,35 +170,45 @@ struct WorkspaceView: View {
     private var workspace: some View {
         VStack(spacing: 0) {
             if let recovery = coordinator.recovery { recoveryView(recovery) }
-            else if coordinator.sessions.isEmpty {
-                ContentUnavailableView("No terminal", systemImage: "terminal", description: Text("Create a terminal from the terminal menu."))
-            } else {
+            else {
                 TabView(selection: $pagerSelection) {
                     Color.clear
                         .tag(TerminalPagerPage.leading)
                         .accessibilityHidden(true)
-                    ForEach(coordinator.sessions) { session in
-                        ZStack {
-                            TerminalSurfaceView(
-                                session: session.client,
-                                accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
-                                isSelected: session.id == coordinator.selectedSessionID
-                            )
-                            sessionOverlay(session)
+                    if coordinator.sessions.isEmpty {
+                        ContentUnavailableView {
+                            Label("No terminal", systemImage: "terminal")
+                        } description: {
+                            Text("Start a new shell on your paired Mac.")
+                        } actions: {
+                            Button("New terminal") { coordinator.addShell() }
+                                .buttonStyle(.borderedProminent)
                         }
-                        .tag(TerminalPagerPage.terminal(session.id))
-                        .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
-                        .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
+                        .tag(TerminalPagerPage.empty)
+                    } else {
+                        ForEach(coordinator.sessions) { session in
+                            ZStack {
+                                TerminalSurfaceView(
+                                    session: session.client,
+                                    accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
+                                    isSelected: session.id == coordinator.selectedSessionID
+                                )
+                                sessionOverlay(session)
+                            }
+                            .tag(TerminalPagerPage.terminal(session.id))
+                            .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
+                            .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
+                        }
                     }
                     Color.clear
                         .tag(TerminalPagerPage.trailing)
                         .accessibilityHidden(true)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                .onAppear { if let id = coordinator.selectedSessionID { pagerSelection = .terminal(id) } }
+                .onAppear { pagerSelection = coordinator.selectedSessionID.map(TerminalPagerPage.terminal) ?? .empty }
                 .onChange(of: pagerSelection) { _, page in handlePagerSelection(page) }
                 .onChange(of: coordinator.selectedSessionID) { _, id in
-                    if let id { pagerSelection = .terminal(id) }
+                    pagerSelection = id.map(TerminalPagerPage.terminal) ?? .empty
                 }
             }
         }
@@ -361,12 +371,15 @@ struct WorkspaceView: View {
         case .select(let id):
             pagerSelection = .terminal(id); coordinator.selectSession(id)
         case .openDrawer(let restoring):
-            pagerSelection = .terminal(restoring); coordinator.selectSession(restoring); coordinator.showTerminalList()
+            pagerSelection = restoring.map(TerminalPagerPage.terminal) ?? .empty
+            coordinator.selectSession(restoring)
+            coordinator.showTerminalList()
         case .createTerminal:
             coordinator.addShell()
             if let id = coordinator.selectedSessionID { pagerSelection = .terminal(id) }
         case .restore(let id):
-            pagerSelection = .terminal(id); coordinator.selectSession(id)
+            pagerSelection = id.map(TerminalPagerPage.terminal) ?? .empty
+            coordinator.selectSession(id)
         case nil: break
         }
     }
