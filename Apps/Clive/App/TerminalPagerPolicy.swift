@@ -3,15 +3,16 @@ import Foundation
 
 enum TerminalPagerPage: Hashable {
     case leading
+    case empty
     case terminal(UUID)
     case trailing
 }
 
 enum TerminalPagerAction: Equatable {
     case select(UUID)
-    case openDrawer(restoring: UUID)
+    case openDrawer(restoring: UUID?)
     case createTerminal
-    case restore(UUID)
+    case restore(UUID?)
 }
 
 struct TerminalPagerPolicy {
@@ -28,8 +29,22 @@ struct TerminalPagerPolicy {
     }
 
     mutating func transition(to page: TerminalPagerPage, terminalIDs: [UUID]) -> TerminalPagerAction? {
-        guard let first = terminalIDs.first, let last = terminalIDs.last else { return nil }
+        guard let first = terminalIDs.first, let last = terminalIDs.last else {
+            switch page {
+            case .empty: return nil
+            case .leading:
+                guard consumedBoundary != .leading else { return .restore(nil) }
+                consumedBoundary = .leading; restorationTarget = nil
+                return .openDrawer(restoring: nil)
+            case .trailing:
+                guard consumedBoundary != .trailing else { return .restore(nil) }
+                consumedBoundary = .trailing; restorationTarget = nil
+                return .createTerminal
+            case .terminal: return nil
+            }
+        }
         switch page {
+        case .empty: return nil
         case .terminal(let id):
             if id != restorationTarget { consumedBoundary = nil; restorationTarget = nil }
             return .select(id)

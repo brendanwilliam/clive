@@ -20,6 +20,12 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
         XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)
     }
 
+    func testPagerKeepsDrawerAndNewTerminalGesturesAvailableWithoutSessions() {
+        var policy = TerminalPagerPolicy()
+        XCTAssertEqual(policy.transition(to: .leading, terminalIDs: []), .openDrawer(restoring: nil))
+        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: []), .createTerminal)
+    }
+
     func testPagerPreventsDuplicateSentinelEventsAndCreatesOnlyOnce() {
         let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
         XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)

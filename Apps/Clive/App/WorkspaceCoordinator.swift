@@ -342,7 +342,7 @@ struct AuthenticationGracePolicy: Equatable {
         self.now = now
         self.isUITestFixture = isUITestFixture
         sessionCatalog.onSessions = { [weak self] sessions in
-            DispatchQueue.main.async { self?.catalogSessions = sessions }
+            DispatchQueue.main.async { self?.applyCatalog(sessions) }
         }
     }
 
@@ -681,6 +681,24 @@ struct AuthenticationGracePolicy: Equatable {
     private func startSessionCatalog(for mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity) {
         guard let route = routes.first else { catalogSessions.removeAll(); sessionCatalog.close(); return }
         sessionCatalog.connect(host: route.host, port: route.port, pinnedFingerprint: mac.certificateFingerprint, identity: identity.identity, wanGateToken: route.wanGateToken)
+    }
+
+    private func applyCatalog(_ catalog: [CliveCore.SessionDescriptor]) {
+        catalogSessions = catalog
+        let liveServerSessionIDs = Set(catalog.map(\.id))
+        let staleSessionIDs: [UUID] = sessions.compactMap { session -> UUID? in
+            guard let serverSessionID = session.descriptor.serverSessionID,
+                  !liveServerSessionIDs.contains(serverSessionID) else { return nil }
+            return session.id
+        }
+        guard !staleSessionIDs.isEmpty else { return }
+        sessions.filter { staleSessionIDs.contains($0.id) }.forEach { $0.close() }
+        sessions.removeAll { staleSessionIDs.contains($0.id) }
+        if let selectedSessionID, staleSessionIDs.contains(selectedSessionID) {
+            selectSession(sessions.first?.id)
+        }
+        saveCurrentDescriptors()
+        persist()
     }
 
     private func closeLiveSessions() { sessionCatalog.close(); sessions.forEach { $0.close() }; sessions.removeAll(); selectedSessionID = nil; catalogSessions.removeAll() }
