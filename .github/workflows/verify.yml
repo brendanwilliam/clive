@@ -21,12 +21,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Select Xcode 26.5
-        env:
-          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+      - name: Verify runner Xcode
         run: |
-          test -x "${DEVELOPER_DIR}/usr/bin/xcodebuild" || {
-            echo "::error::Pinned Xcode is unavailable at ${DEVELOPER_DIR}"
+          developer_dir="$(xcode-select -p)"
+          test -x "${developer_dir}/usr/bin/xcodebuild" || {
+            echo "::error::The runner's selected Xcode is unavailable at ${developer_dir}"
             exit 1
           }
           xcodebuild -version
@@ -35,8 +34,6 @@ jobs:
         run: brew install xcodegen
 
       - name: Boot an iOS Simulator
-        env:
-          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
         shell: bash
         run: |
           set -euo pipefail
@@ -54,13 +51,9 @@ jobs:
           echo "CLIVE_IOS_DESTINATION_ID=$simulator_id" >> "$GITHUB_ENV"
 
       - name: Verify both platforms
-        env:
-          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
         run: ./scripts/verify-local.sh
 
       - name: Verify localhost control socket
-        env:
-          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
         shell: bash
         run: |
           set -euo pipefail
