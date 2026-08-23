@@ -55,8 +55,8 @@ struct CliveDaemon {
             try requireInteractiveTerminal()
             try reconnectDetachedSession(arguments: Array(arguments.dropFirst()))
         case "attach":
-            guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
-            try requireInteractiveTerminal(); try runManagedTerminal(command: .sessionAttach, sessionID: id, deviceID: option("--device", in: arguments))
+            try requireInteractiveTerminal()
+            try attachSession(arguments: Array(arguments.dropFirst()))
         case "end":
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
             try runOneShot(.init(command: .sessionEnd, deviceID: option("--device", in: arguments), sessionID: id))
@@ -238,7 +238,7 @@ struct CliveDaemon {
       sessions [--device <device-id>]
       detached [--device <device-id>]
       reconnect [--device <device-id>]
-      attach <session-id> [--device <device-id>]
+      attach [session-id] [--device <device-id>]
       end <session-id> [--device <device-id>]
     """
 
@@ -285,8 +285,47 @@ struct CliveDaemon {
         try runManagedTerminal(command: .sessionAttach, sessionID: sessions[index - 1].id, deviceID: deviceID)
     }
 
+    private static func attachSession(arguments: [String]) throws {
+        let deviceID: String?
+        let explicitSessionID: UUID?
+        if arguments.isEmpty {
+            deviceID = nil; explicitSessionID = nil
+        } else if arguments.count == 2, arguments[0] == "--device", !arguments[1].isEmpty {
+            deviceID = arguments[1]; explicitSessionID = nil
+        } else if arguments.count == 1, let sessionID = UUID(uuidString: arguments[0]) {
+            deviceID = nil; explicitSessionID = sessionID
+        } else if arguments.count == 3, let sessionID = UUID(uuidString: arguments[0]), arguments[1] == "--device", !arguments[2].isEmpty {
+            deviceID = arguments[2]; explicitSessionID = sessionID
+        } else {
+            throw CommandError.usage
+        }
+
+        if let explicitSessionID {
+            try runManagedTerminal(command: .sessionAttach, sessionID: explicitSessionID, deviceID: deviceID)
+            return
+        }
+
+        let sessions = try sessionDescriptors(deviceID: deviceID)
+        guard !sessions.isEmpty else { print("No active Clive sessions."); return }
+        print("Active Clive sessions:")
+        for (index, session) in sessions.enumerated() {
+            print("  \(index + 1)) \(session.id.uuidString)  attachments=\(session.attachmentCount)")
+        }
+        print("Attach this terminal [1-\(sessions.count), or q to cancel]: ", terminator: "")
+        guard let selection = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines), selection.lowercased() != "q" else { return }
+        guard let session = session(at: selection, in: sessions) else {
+            throw CommandError.remote("Enter a session number from 1 to \(sessions.count), or q to cancel.")
+        }
+        try runManagedTerminal(command: .sessionAttach, sessionID: session.id, deviceID: deviceID)
+    }
+
     static func detachedSessions(_ sessions: [SessionDescriptor]) -> [SessionDescriptor] {
         sessions.filter { $0.attachmentCount == 0 }
+    }
+
+    static func session(at selection: String, in sessions: [SessionDescriptor]) -> SessionDescriptor? {
+        guard let index = Int(selection), sessions.indices.contains(index - 1) else { return nil }
+        return sessions[index - 1]
     }
 
     private static func sessionDescriptors(deviceID: String?) throws -> [SessionDescriptor] {
