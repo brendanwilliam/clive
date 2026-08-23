@@ -1,0 +1,279 @@
+name: Create draft PR for agent-ready issue
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: agent-ready-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  validate_issue:
+    if: github.event.label.name == 'agent-ready'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    outputs:
+      eligible: ${{ steps.acceptance-criteria.outputs.eligible }}
+    steps:
+      - name: Check for acceptance criteria
+        id: acceptance-criteria
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          if printf '%s\n' "$ISSUE_BODY" | grep -qiE '^#{1,6}[[:space:]]+acceptance[[:space:]-]*criteria[[:space:]]*$'; then
+            echo 'eligible=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'eligible=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Explain missing acceptance criteria
+        if: steps.acceptance-criteria.outputs.eligible != 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: [
+                'The `agent-ready` label was not processed because this issue has no explicit `## Acceptance criteria` section.',
+                '',
+                'Add a Markdown heading named `Acceptance criteria` with testable checklist items, then remove and reapply `agent-ready`.',
+              ].join('\n'),
+            });
+
+  implement:
+    needs: validate_issue
+    if: needs.validate_issue.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      codex_result: ${{ steps.run-codex.outcome }}
+      codex_report: ${{ steps.run-codex.outputs.final-message }}
+      patch_available: ${{ steps.capture-patch.outputs.available }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+          persist-credentials: false
+
+      - name: Save untrusted issue context
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          {
+            printf '# Issue #%s: %s\n\n' "$ISSUE_NUMBER" "$ISSUE_TITLE"
+            printf '%s\n' "$ISSUE_BODY"
+          } > "$GITHUB_WORKSPACE/.agent-ready-issue.md"
+          echo '/.agent-ready-issue.md' >> .git/info/exclude
+
+      - name: Run Codex
+        id: run-codex
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        env:
+          ISSUE_CONTEXT_PATH: ${{ github.workspace }}/.agent-ready-issue.md
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/prompts/agent-ready.md
+          permission-profile: ':workspace'
+          safety-strategy: drop-sudo
+          output-schema: |
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["summary", "acceptance_criteria_coverage", "verification"],
+              "properties": {
+                "summary": {"type": "string", "maxLength": 2000},
+                "acceptance_criteria_coverage": {
+                  "type": "array",
+                  "items": {"type": "string", "maxLength": 1000},
+                  "maxItems": 20
+                },
+                "verification": {
+                  "type": "array",
+                  "items": {"type": "string", "maxLength": 1000},
+                  "maxItems": 20
+                }
+              }
+            }
+
+      - name: Capture agent patch
+        id: capture-patch
+        if: always() && steps.run-codex.outcome == 'success'
+        run: |
+          set -euo pipefail
+          git add --all
+          if git diff --cached --quiet; then
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --cached --binary > "$RUNNER_TEMP/agent-ready.patch"
+          echo 'available=true' >> "$GITHUB_OUTPUT"
+
+      - name: Upload agent patch
+        if: steps.capture-patch.outputs.available == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-ready-patch
+          path: ${{ runner.temp }}/agent-ready.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  publish_result:
+    needs: [validate_issue, implement]
+    if: always() && needs.validate_issue.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check out repository
+        if: needs.implement.outputs.codex_result == 'success' && needs.implement.outputs.patch_available == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: develop
+          persist-credentials: true
+
+      - name: Download agent patch
+        if: needs.implement.outputs.codex_result == 'success' && needs.implement.outputs.patch_available == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: agent-ready-patch
+          path: ${{ runner.temp }}
+
+      - name: Create and push implementation branch
+        id: push-branch
+        if: needs.implement.outputs.codex_result == 'success' && needs.implement.outputs.patch_available == 'true'
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          branch="agent/issue-${ISSUE_NUMBER}-${RUN_ID}-${RUN_ATTEMPT}"
+          git switch --create "$branch"
+          git apply --index "$RUNNER_TEMP/agent-ready.patch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Implement issue #${ISSUE_NUMBER}"
+          git push origin "$branch"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft pull request or report failure
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          BRANCH: ${{ steps.push-branch.outputs.name }}
+          CODEX_RESULT: ${{ steps.push-branch.outcome }}
+          CODEX_REPORT: ${{ needs.implement.outputs.codex_report }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const branch = process.env.BRANCH;
+            const failedMessage = [
+              'The agent-ready run did not produce a draft pull request.',
+              '',
+              'Review the workflow run for the failure details, correct the issue or repository state, then remove and reapply `agent-ready` to retry.',
+            ].join('\n');
+
+            if (process.env.CODEX_RESULT !== 'success' || !branch) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: failedMessage,
+              });
+              return;
+            }
+
+            const branchResponse = await github.rest.git.getRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `heads/${branch}`,
+            }).catch(() => null);
+            if (!branchResponse) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: failedMessage,
+              });
+              return;
+            }
+
+            let report;
+            try {
+              report = JSON.parse(process.env.CODEX_REPORT || '');
+            } catch {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: failedMessage,
+              });
+              return;
+            }
+
+            const items = (values) => values.map((value) => `- ${value}`).join('\n');
+            const body = [
+              '## Summary',
+              '',
+              report.summary,
+              '',
+              `Closes #${context.payload.issue.number}`,
+              '',
+              '## Impact',
+              '',
+              '- User-visible impact: See the summary above.',
+              '- Compatibility or migration impact: Review required.',
+              '',
+              '## Acceptance criteria coverage',
+              '',
+              items(report.acceptance_criteria_coverage),
+              '',
+              '## Security',
+              '',
+              'Review pairing, certificate validation, storage, logging, permissions, CloudKit, cellular routing, and LAN exposure before requesting review.',
+              '',
+              '## Verification',
+              '',
+              items(report.verification),
+              '',
+              '## Screenshots',
+              '',
+              'Add sanitized screenshots for UI changes before requesting review.',
+              '',
+              '## Checklist',
+              '',
+              '- [ ] Tests cover behavioral changes.',
+              '- [ ] Documentation is updated.',
+              '- [ ] No secrets, pairing material, hostnames, fingerprints, or terminal contents are included.',
+              `- [x] Closes #${context.payload.issue.number}.`,
+            ].join('\n');
+            const pullRequest = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: 'develop',
+              head: branch,
+              title: `Draft: ${process.env.ISSUE_TITLE}`.slice(0, 250),
+              body,
+              draft: true,
+            });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `Created draft pull request: ${pullRequest.data.html_url}`,
+            });
