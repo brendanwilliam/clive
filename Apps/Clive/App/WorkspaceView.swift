@@ -106,6 +106,8 @@ struct WorkspaceView: View {
                 ToolbarItem(placement: .principal) { connectionStatusButton }
                 ToolbarItem(placement: .topBarTrailing) { shortcutsButton }
             }
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
         }
     }
 
@@ -205,6 +207,7 @@ struct WorkspaceView: View {
                         .accessibilityHidden(true)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                .ignoresSafeArea(edges: .top)
                 .onAppear { pagerSelection = coordinator.selectedSessionID.map(TerminalPagerPage.terminal) ?? .empty }
                 .onChange(of: pagerSelection) { _, page in handlePagerSelection(page) }
                 .onChange(of: coordinator.selectedSessionID) { _, id in
@@ -234,8 +237,9 @@ struct WorkspaceView: View {
                             .listRowSeparator(.visible)
                             .listRowSeparatorTint(.secondary.opacity(0.28))
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("End Shared Session", systemImage: "xmark.octagon", role: .destructive) { endTarget = session }
+                                    .tint(.orange)
                                 Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
-                                Button("Edit", systemImage: "pencil") { beginRename(session) }.tint(.blue)
                             }
                     }
                 } header: {

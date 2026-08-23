@@ -71,11 +71,20 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(revealText("SHA-256 fingerprint", in: details))
     }
 
-    func testDrawerExposesNativeSwipeEditAndDeleteActions() {
+    func testDrawerSwipeActionsRouteToTheirRespectiveConfirmations() {
         app.buttons["Terminals"].tap()
         drawerRow(firstID).swipeLeft()
-        XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["End Shared Session"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Delete"].exists)
+
+        app.buttons["End Shared Session"].tap()
+        XCTAssertTrue(app.staticTexts["End shared session?"].waitForExistence(timeout: 2))
+        app.buttons["Cancel"].tap()
+
+        drawerRow(firstID).swipeLeft()
+        app.buttons["Delete"].tap()
+        XCTAssertTrue(app.staticTexts["Close terminal?"].waitForExistence(timeout: 2))
+        app.buttons["Cancel"].tap()
     }
 
     func testDrawerExposesVerticalEllipsisEditAndDeleteActionsAndHitTargets() {
