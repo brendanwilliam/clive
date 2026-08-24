@@ -226,11 +226,13 @@ struct WorkspaceView: View {
                         terminalRow(session)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
+                            .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
                     }
                     ForEach(coordinator.unrepresentedCatalogSessions) { session in
                         catalogSessionRow(session)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
+                            .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
                     }
                 } header: {
                     HStack {
@@ -289,9 +291,7 @@ struct WorkspaceView: View {
             HStack(spacing: 12) {
                 terminalStatusIcon(for: session.state)
                     .accessibilityIdentifier("terminal-status-\(session.id.uuidString)")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.descriptor.label)
-                }
+                Text(session.descriptor.label)
                 Spacer(minLength: 4)
             }
         }
@@ -313,7 +313,6 @@ struct WorkspaceView: View {
                 .tint(.blue)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 2)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
         .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
     }
@@ -321,8 +320,8 @@ struct WorkspaceView: View {
     private func catalogSessionRow(_ session: CliveCore.SessionDescriptor) -> some View {
         Button { coordinator.reconnect(session) } label: {
             HStack(spacing: 12) {
-                Image(systemName: "network.slash")
-                    .foregroundStyle(.secondary)
+                Image(systemName: "terminal")
+                    .foregroundStyle(session.attachmentCount > 0 ? Color.green : Color.secondary)
                     .frame(width: 20, height: 20)
                     .accessibilityLabel("Disconnected")
                     .accessibilityIdentifier("catalog-terminal-status-\(session.id.uuidString)")
@@ -342,13 +341,12 @@ struct WorkspaceView: View {
                 .tint(.green)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
     }
 
     private func terminalStatusIcon(for state: SessionClient.State) -> some View {
         let presentation = ConnectionStatusPresentation.make(state: state, deviceName: nil, route: nil)
-        return Image(systemName: presentation.icon)
+        return Image(systemName: "terminal")
             .foregroundStyle(terminalStatusColor(for: presentation.health))
             .frame(width: 20, height: 20)
             .accessibilityLabel(presentation.text)
@@ -650,6 +648,7 @@ private struct SettingsView: View {
 
 private struct ShortcutManagementView: View {
     @Bindable var preferences: AppPreferencesModel
+    @State private var isEditing = false
     var body: some View {
         List {
             ForEach(preferences.value.shortcuts) { shortcut in
@@ -660,10 +659,18 @@ private struct ShortcutManagementView: View {
             .onDelete(perform: preferences.deleteShortcuts)
             .onMove(perform: preferences.moveShortcuts)
         }
+        .environment(\.editMode, .constant(isEditing ? .active : .inactive))
         .navigationTitle("Shortcuts")
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { EditButton() }
-            ToolbarItem(placement: .topBarTrailing) { Button("Add", systemImage: "plus") { preferences.addShortcut() } }
+            ToolbarItem(placement: .topBarTrailing) {
+                ControlGroup {
+                    Button(isEditing ? "Done" : "Edit", systemImage: isEditing ? "checkmark" : "pencil") {
+                        isEditing.toggle()
+                    }
+                    Button("Add", systemImage: "plus") { preferences.addShortcut() }
+                }
+                .accessibilityIdentifier("shortcut-management-actions")
+            }
         }
     }
 }
