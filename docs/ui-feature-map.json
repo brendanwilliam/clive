@@ -2474,6 +2474,14 @@
         "AGENTS.md"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzz-release-merge-conflict-resolution",
+      "reason": "Release-branch conflict resolution restores an existing terminal navigation UI test without changing mapped user interface components or resource relationships.",
+      "paths": [
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
