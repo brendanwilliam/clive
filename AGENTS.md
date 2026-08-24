@@ -49,4 +49,8 @@ Never weaken security controls, platform constraints, or assertions merely to ma
 
 Create every working branch for an issue and include its issue number in the branch name, using the format `<issue-number>-<short-description>` (for example, `123-improve-pairing-recovery`). Do not begin implementation without an associated issue, except for emergency operational recovery explicitly authorized by the repository owner.
 
+## Issue Creation Guidelines
+
+Use sentence case for issue titles. Draft every issue description in a Markdown file and create the issue with `gh issue create --body-file <markdown-file>`; do not pass an issue body as shell-quoted inline text. This preserves Markdown formatting and avoids shell escaping changing the issue content.
+
 Use concise, imperative commit subjects, consistent with the existing history: `Add initial product and security specification`. Keep commits focused. Pull requests should explain the user-visible and security impact, link the relevant issue or roadmap item, list tests run, and include screenshots for iOS UI changes. Highlight any change to pairing, certificate validation, logging, permissions, CloudKit, cellular routing, or LAN exposure for focused security review.
