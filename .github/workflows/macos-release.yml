@@ -56,6 +56,7 @@ jobs:
       - name: Validate release configuration
         env:
           GH_TOKEN: ${{ github.token }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -75,6 +76,7 @@ jobs:
             DEVELOPER_ID_INSTALLER_CERTIFICATE_BASE64
             DEVELOPER_ID_INSTALLER_CERTIFICATE_PASSWORD
             DEVELOPER_ID_PROVISIONING_PROFILE_BASE64
+            HOMEBREW_TAP_TOKEN
           )
           for name in "${required[@]}"; do
             if [[ -z "${!name}" ]]; then
@@ -168,6 +170,18 @@ jobs:
             arguments+=(--prerelease)
           fi
           gh release create "${arguments[@]}"
+
+      - name: Update Homebrew cask
+        env:
+          RELEASE_GITHUB_TOKEN: ${{ github.token }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! ./scripts/update-homebrew-cask.sh "${{ inputs.tag }}"; then
+            echo "::error::The GitHub Release and tag were published, but the Homebrew cask update failed. Restore the tap credential or release metadata, then rerun scripts/update-homebrew-cask.sh for ${{ inputs.tag }} from the release checkout. Do not replace the published release or tag."
+            exit 1
+          fi
 
       - name: Upload package artifact
         if: always()

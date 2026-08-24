@@ -2384,6 +2384,19 @@
         "scripts/update-local.sh"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzz-homebrew-cask-distribution",
+      "reason": "Homebrew distribution automation, checksum validation, and installation documentation do not change any mapped user interface component or resource relationship.",
+      "paths": [
+        ".github/workflows/macos-release.yml",
+        "README.md",
+        "Tests/HomebrewCaskTests/test_render_homebrew_cask.py",
+        "docs/releases.md",
+        "scripts/render-homebrew-cask.py",
+        "scripts/update-homebrew-cask.sh"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
