@@ -18,6 +18,8 @@ Repository skills are cumulative. Use every skill that applies to the requested 
 
 | Task | Skill |
 | --- | --- |
+| Initial UI feature-map creation, major rebuild, or new-platform inventory | `clive-create-feature-map` |
+| Every repository change intended for `develop` | Add `clive-update-feature-map` |
 | Swift implementation or refactoring | `clive-swift-development` |
 | Pairing, certificates, key storage, logging, permissions, CloudKit, cellular routing, LAN exposure, or other security-sensitive work | Add `clive-security-review` |
 | Daemon, control-socket, localhost TLS, PTY, or macOS session-lifecycle integration | Add `clive-macos-integration` |

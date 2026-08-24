@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update Clive feature map"
+  short_description: "Keep component mappings fresh for develop PRs"
+  default_prompt: "Update and freshness-check the Clive UI feature map for this change."
