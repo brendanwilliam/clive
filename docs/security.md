@@ -29,6 +29,7 @@ Automatic router configuration is owner-approved, TCP-only, limited to the confi
 - An authenticated iPhone may revoke only its own pairing. The Mac persists that removal and invalidates rendezvous access before acknowledging it; an offline or unacknowledged request leaves the iPhone's local pairing intact.
 - Logs contain lifecycle metadata only—timestamps, opaque device IDs, and failure codes—not shell commands, output, QR payloads, secrets, or private keys.
 - Persisted iOS restoration state contains only Mac and opaque session identifiers plus user-assigned labels. Terminal bytes, commands, paths, replay buffers, and biometric results remain memory-only.
+- The single Live Activity contains only active-terminal count, a generic attention boolean, and an opaque session route ID. Its push path must reject invalid credentials, expired registrations, and non-monotonic revisions; it must never receive pairing material, terminal names, hosts, commands, paths, or output.
 
 ## Explicit limitations
 

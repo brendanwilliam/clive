@@ -1,5 +1,6 @@
 import Foundation
 import CliveCore
+import Security
 
 final class TerminalSessionManager: @unchecked Sendable {
     struct Attachment { let serverSessionID: UUID; let disposition: SessionOpened.Disposition; let replay: Data; let replayOffset: UInt64; let replayTruncated: Bool }
@@ -30,7 +31,13 @@ final class TerminalSessionManager: @unchecked Sendable {
         let session: TerminalSession; let shell: any TerminalProcess
         var sinks: [UUID: Sink] = [:]; var resizeOwner: UUID?; var detachTimer: DispatchWorkItem?
         var replay = Data(); var replayStartOffset: UInt64 = 0; var outputOffset: UInt64 = 0; var activitySequence: UInt64 = 0
-        init(session: TerminalSession, shell: any TerminalProcess) { self.session = session; self.shell = shell }
+        let attentionAuthenticator: SessionAttentionAuthenticator
+        var attentionSequence: UInt64 = 0
+        var requiresAttention = false
+        init(session: TerminalSession, shell: any TerminalProcess, attentionCapability: Data) {
+            self.session = session; self.shell = shell
+            self.attentionAuthenticator = SessionAttentionAuthenticator(capability: attentionCapability)
+        }
     }
     private let queue = DispatchQueue(label: "com.clive.daemon.sessions")
     private let registry: SessionRegistry; private let graceInterval: TimeInterval; private let replayLimit: Int
@@ -70,7 +77,7 @@ final class TerminalSessionManager: @unchecked Sendable {
                     guard let self else { return }
                     self.queue.async { self.shellExited(key) }
                 })
-                entry = Entry(session: session, shell: shell); entries[key] = entry; disposition = .created; Task { await registry.record(session) }
+                entry = Entry(session: session, shell: shell, attentionCapability: Self.randomAttentionCapability()); entries[key] = entry; disposition = .created; Task { await registry.record(session) }
             }
             entry.detachTimer?.cancel(); entry.detachTimer = nil
             if let existing = entry.sinks.values.first {
@@ -95,7 +102,7 @@ final class TerminalSessionManager: @unchecked Sendable {
     func closeAll(deviceID: String) { queue.async { self.entries.keys.filter { $0.deviceID == deviceID }.forEach(self.terminate) } }
     func shutdown() { queue.sync { Array(entries.keys).forEach(terminate) }; sleepActivity.shutdown() }
     func synchronize() { queue.sync {} }
-    func descriptors(deviceID: String) -> [SessionDescriptor] { queue.sync { entries.values.filter { $0.session.deviceID == deviceID }.map { entry in SessionDescriptor(id: entry.session.id, attachmentCount: entry.sinks.count, resizeOwner: entry.resizeOwner.flatMap { entry.sinks[$0]?.kind }, outputOffset: entry.outputOffset) }.sorted { $0.id.uuidString < $1.id.uuidString } } }
+    func descriptors(deviceID: String) -> [SessionDescriptor] { queue.sync { descriptorsLocked(deviceID: deviceID) } }
     func subscribe(deviceID: String, identifier: UUID, update: @escaping CatalogUpdate) { queue.async { self.catalogSubscribers[identifier] = (deviceID, update); update(self.descriptorsLocked(deviceID: deviceID)) } }
     func unsubscribe(identifier: UUID) { queue.async { self.catalogSubscribers.removeValue(forKey: identifier) } }
     func clientSessionID(deviceID: String, serverSessionID: UUID) -> UUID? { queue.sync { entries.first { $0.key.deviceID == deviceID && $0.value.session.id == serverSessionID }?.key.clientSessionID } }
@@ -108,6 +115,27 @@ final class TerminalSessionManager: @unchecked Sendable {
         matches.forEach { terminate($0.0) }
         return matches.map(\.1).sorted { $0.uuidString < $1.uuidString }
     } }
+
+    /// Accepts only an authenticated, monotonic shell-hook transition for the
+    /// exact live session. Callers must never infer this from PTY output.
+    @discardableResult
+    func acceptAttentionMarker(deviceID: String, marker: SessionAttentionMarker) -> Bool {
+        queue.sync {
+            guard let entry = entries.values.first(where: { $0.session.deviceID == deviceID && $0.session.id == marker.sessionID }),
+                  marker.sequence > entry.attentionSequence,
+                  entry.attentionAuthenticator.validates(marker) else { return false }
+            entry.attentionSequence = marker.sequence
+            entry.requiresAttention = marker.requiresAttention
+            publish(entry)
+            return true
+        }
+    }
+
+    /// Provided only to the PTY launcher so its opt-in shell hook can MAC its
+    /// own prompt transitions. It is never sent in the session catalog.
+    func attentionCapability(deviceID: String, serverSessionID: UUID) -> Data? {
+        queue.sync { entries.values.first { $0.session.deviceID == deviceID && $0.session.id == serverSessionID }?.attentionAuthenticator.capability }
+    }
 
     private func current(_ deviceID: String, _ clientSessionID: UUID, _ attachmentID: UUID) -> Entry? { let entry = entries[Key(deviceID: deviceID, clientSessionID: clientSessionID)]; return entry?.sinks[attachmentID] == nil ? nil : entry }
     private func receive(_ bytes: Data, for key: Key) {
@@ -133,7 +161,13 @@ final class TerminalSessionManager: @unchecked Sendable {
     private func shellExited(_ key: Key) { terminate(key) }
     private func terminate(_ key: Key) { guard let entry = entries.removeValue(forKey: key) else { return }; entry.detachTimer?.cancel(); entry.sinks.values.forEach { $0.onShellExit() }; entry.shell.terminate(); sleepActivity.end(sessionID: entry.session.id); publishCatalog(deviceID: key.deviceID); Task { await registry.close(id: entry.session.id) } }
     private func descriptorsLocked(deviceID: String) -> [SessionDescriptor] { entries.values.filter { $0.session.deviceID == deviceID }.map { entry in descriptor(entry) }.sorted { $0.id.uuidString < $1.id.uuidString } }
-    private func descriptor(_ entry: Entry) -> SessionDescriptor { SessionDescriptor(id: entry.session.id, attachmentCount: entry.sinks.count, resizeOwner: entry.resizeOwner.flatMap { entry.sinks[$0]?.kind }, outputOffset: entry.outputOffset) }
+    private func descriptor(_ entry: Entry) -> SessionDescriptor { SessionDescriptor(id: entry.session.id, attachmentCount: entry.sinks.count, resizeOwner: entry.resizeOwner.flatMap { entry.sinks[$0]?.kind }, outputOffset: entry.outputOffset, requiresAttention: entry.requiresAttention) }
     private func publish(_ entry: Entry) { let value = descriptor(entry); let state = AttachmentState(sessionID: value.id, attachmentCount: value.attachmentCount, resizeOwner: value.resizeOwner, outputOffset: value.outputOffset); entry.sinks.values.forEach { $0.onState(state) }; publishCatalog(deviceID: entry.session.deviceID) }
     private func publishCatalog(deviceID: String) { let value = descriptorsLocked(deviceID: deviceID); catalogSubscribers.values.filter { $0.deviceID == deviceID }.forEach { $0.update(value) } }
+
+    private static func randomAttentionCapability() -> Data {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        precondition(SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess)
+        return Data(bytes)
+    }
 }

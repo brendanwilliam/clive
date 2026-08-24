@@ -42,7 +42,8 @@ targets:
     type: app-extension
     platform: iOS
     deploymentTarget: "17.0"
-    sources: [Widgets]
+    sources:
+      - Widgets
     configFiles:
       Debug: Config/Base.xcconfig
       Release: Config/Release.xcconfig
@@ -54,6 +55,9 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Widgets/Info.plist
         CODE_SIGN_ENTITLEMENTS: Config/CliveWidget.entitlements
+    dependencies:
+      - package: CliveCore
+        product: CliveCore
   CliveTests:
     type: bundle.unit-test
     platform: iOS
@@ -64,6 +68,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Clive - CLI for iOS.app/Clive - CLI for iOS"
     dependencies:
+      - package: CliveCore
+        product: CliveCore
       - target: Clive
   CliveUITests:
     type: bundle.ui-testing

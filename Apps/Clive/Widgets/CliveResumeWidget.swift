@@ -1,4 +1,6 @@
 import AppIntents
+import ActivityKit
+import CliveCore
 import SwiftUI
 import WidgetKit
 
@@ -87,7 +89,6 @@ private struct TerminalWidgetView: View {
     }
 }
 
-@main
 struct CliveResumeWidget: Widget {
     let kind = "CliveResumeWidget"
 
@@ -98,5 +99,65 @@ struct CliveResumeWidget: Widget {
         .configurationDisplayName("Terminal")
         .description("Start a new terminal or run one of your saved shortcuts.")
         .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}
+
+@available(iOS 17.0, *)
+private struct CliveTerminalLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: CliveTerminalActivityAttributes.self) { context in
+            LiveActivitySummary(state: context.state)
+                .activityBackgroundTint(.black)
+                .activitySystemActionForegroundColor(.white)
+                .widgetURL(liveActivityURL(for: context.state))
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) { Image(systemName: "terminal.fill") }
+                DynamicIslandExpandedRegion(.trailing) {
+                    if context.state.requiresAttention { Image(systemName: "exclamationmark.circle.fill") }
+                }
+                DynamicIslandExpandedRegion(.bottom) { LiveActivitySummary(state: context.state) }
+            } compactLeading: {
+                Image(systemName: "terminal.fill")
+            } compactTrailing: {
+                Text("\(context.state.activeTerminalCount)")
+            } minimal: {
+                Image(systemName: context.state.requiresAttention ? "exclamationmark.circle.fill" : "terminal.fill")
+            }
+            .widgetURL(liveActivityURL(for: context.state))
+        }
+    }
+
+    private func liveActivityURL(for state: CliveTerminalActivityAttributes.ContentState) -> URL {
+        if let id = state.attentionTerminalID { return URL(string: "clive://terminal/\(id.uuidString)")! }
+        return URL(string: "clive://terminals")!
+    }
+}
+
+@available(iOS 17.0, *)
+private struct LiveActivitySummary: View {
+    let state: CliveTerminalActivityAttributes.ContentState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(state.activeTerminalCount) terminal\(state.activeTerminalCount == 1 ? "" : "s") active")
+                .font(.headline)
+            if state.requiresAttention {
+                Label("Action required", systemImage: "exclamationmark.circle.fill")
+                    .font(.subheadline)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(state.requiresAttention
+            ? "\(state.activeTerminalCount) terminals active. Action required."
+            : "\(state.activeTerminalCount) terminals active.")
+    }
+}
+
+@main
+struct CliveWidgets: WidgetBundle {
+    var body: some Widget {
+        CliveResumeWidget()
+        if #available(iOS 17.0, *) { CliveTerminalLiveActivity() }
     }
 }

@@ -29,19 +29,42 @@ public enum FrameKind: UInt8, Sendable, CaseIterable {
     case sessionTerminate = 0x25
     case sessionTerminateMany = 0x26
     case sessionTerminateManyResult = 0x27
+    /// An authenticated shell-integration signal. This is never derived from
+    /// terminal output, titles, or commands.
+    case sessionAttention = 0x28
 }
 
 public enum AttachmentKind: String, Codable, Equatable, Sendable { case iPhone, macCLI }
 
 public struct SessionDescriptor: Codable, Equatable, Identifiable, Sendable {
+    /// Opaque, daemon-issued identifier. It is suitable for routing but must
+    /// only be resolved after a fresh authenticated catalog request.
     public let id: UUID
     public let label: String?
     public let attachmentCount: Int
     public let resizeOwner: AttachmentKind?
     public let outputOffset: UInt64
-    public init(id: UUID, label: String? = nil, attachmentCount: Int, resizeOwner: AttachmentKind?, outputOffset: UInt64) {
+    public let requiresAttention: Bool
+    public init(id: UUID, label: String? = nil, attachmentCount: Int, resizeOwner: AttachmentKind?, outputOffset: UInt64, requiresAttention: Bool = false) {
         self.id = id; self.label = label; self.attachmentCount = attachmentCount
-        self.resizeOwner = resizeOwner; self.outputOffset = outputOffset
+        self.resizeOwner = resizeOwner; self.outputOffset = outputOffset; self.requiresAttention = requiresAttention
+    }
+}
+
+/// A shell hook proves that a prompt-state transition belongs to the session
+/// that created it. The capability is random, single-use, and is not a
+/// pairing credential.
+public struct SessionAttentionMarker: Codable, Equatable, Sendable {
+    public let sessionID: UUID
+    public let sequence: UInt64
+    public let requiresAttention: Bool
+    public let authenticationTag: Data
+
+    public init(sessionID: UUID, sequence: UInt64, requiresAttention: Bool, authenticationTag: Data) {
+        self.sessionID = sessionID
+        self.sequence = sequence
+        self.requiresAttention = requiresAttention
+        self.authenticationTag = authenticationTag
     }
 }
 
@@ -180,7 +203,9 @@ public struct TerminalSize: Codable, Equatable, Sendable {
 }
 
 public struct ProtocolFrame: Equatable, Sendable {
-    public static let version: UInt16 = 3
+    /// Version 4 adds privacy-safe attention metadata to the session catalog.
+    /// Both peers must upgrade together; older frames remain fail-closed.
+    public static let version: UInt16 = 4
     public static let defaultMaximumPayloadSize = 1_048_576
 
     public let version: UInt16

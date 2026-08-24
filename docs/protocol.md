@@ -1,6 +1,6 @@
 # Protocol and lifecycle
 
-Protocol v3 is a coordinated Mac and iOS/TestFlight upgrade. Existing pairing records remain valid, but v2 frames are rejected before `session.open` can allocate a PTY. A Mac accepts one paired iPhone at a time. Sessions use stable server IDs and support iPhone and Mac CLI attachment through session list, attach, attachment-state, resize-claim, and explicit-termination frames.
+Protocol v4 is a coordinated Mac and iOS/TestFlight upgrade. Existing pairing records remain valid, but v3 frames are rejected before `session.open` can allocate a PTY. A Mac accepts one paired iPhone at a time. Sessions use stable opaque server IDs and support iPhone and Mac CLI attachment through session list, attach, attachment-state, resize-claim, and explicit-termination frames.
 
 Terminal output carries a monotonically increasing byte offset. Reconnecting clients supply their last received offset; the daemon returns bounded replay and reports truncation when that offset predates the replay ring. Sessions are scoped to one paired certificate and allow at most one attachment. A reconnect from the same endpoint replaces its prior attachment; a different endpoint is rejected.
 
@@ -38,6 +38,7 @@ Application records are length-prefixed binary frames over TLS:
 | `session.open` | iOS → Mac | Create or resume a client-owned shell. |
 | `session.opened` | Mac → iOS | Confirm shell creation and return its opaque session ID. |
 | `session.list` / `session.list.result` | iOS ↔ Mac | Subscribe to initial and changed catalog snapshots while foregrounded and unlocked. |
+| `session.attention` | local shell integration → Mac | Authenticated, monotonic prompt-state transition; it carries only an opaque session ID, sequence, and attention boolean. |
 | `session.attach` | iOS → Mac | Attach to an existing stable server session ID with an output offset and viewport; never creates a PTY. |
 | `attachment.state` | Mac → client | Report attachment count, resize owner, and current output offset. |
 | `resize.claim` | client → Mac | Claim resize ownership and immediately apply the attachment's stored viewport. |
@@ -50,6 +51,10 @@ Application records are length-prefixed binary frames over TLS:
 | `session.error` | Either | Non-sensitive structured failure code. |
 
 Frames have a bounded maximum size and an explicit protocol version. The Mac rejects unknown mandatory frame types and closes malformed or oversized records. The service must apply backpressure so a slow iPhone cannot cause unbounded PTY output buffering.
+
+## Live Activity catalog metadata
+
+Each catalog descriptor includes only an opaque stable session ID and a `requiresAttention` boolean for Live Activity projection. The optional Bash/Zsh integration must MAC each state marker with an unguessable, session-scoped capability and use a strictly increasing sequence; invalid or replayed markers are ignored. A nonzero completion sets attention, and a successful completion or next command start clears it. Unsupported or unconfigured shells remain in the count but never claim attention. Terminal output, titles, commands, paths, and labels are never parsed as attention signals.
 
 ## Session lifecycle
 

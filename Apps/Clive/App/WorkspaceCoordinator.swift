@@ -79,7 +79,8 @@ enum WorkspaceTerminalLaunchResolver {
         let shortcut: CLIShortcut?
         switch action {
         case .shortcut(let id): shortcut = preferences.shortcuts.first { $0.id == id }
-        case .newTerminal, .resumeOrStart: shortcut = preferences.newTerminalDefaultShortcutID.flatMap { id in preferences.shortcuts.first { $0.id == id } }
+        case .newTerminal, .resumeOrStart, .terminalList, .terminal:
+            shortcut = preferences.newTerminalDefaultShortcutID.flatMap { id in preferences.shortcuts.first { $0.id == id } }
         }
         let trimmedCommand = shortcut?.command.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return TerminalLaunchConfiguration(
@@ -376,6 +377,7 @@ struct LocalStateResetter {
     private var hasCapturedForeground = false
     private var authenticationInFlight = false
     private let isUITestFixture: Bool
+    private let liveActivity = LiveActivityController()
 
     init(
         authenticate: @escaping @Sendable () async throws -> Void = { try await LocalAuthenticator.authorizeConnection() },
@@ -475,7 +477,11 @@ struct LocalStateResetter {
 
     func handleExternalLaunch(_ action: ExternalLaunchURL.Action) {
         guard state == .active else { pendingExternalAction = action; return }
-        performExternalLaunch(action)
+        switch action {
+        case .terminalList: showTerminalList()
+        case .terminal(let id): routeToLiveTerminal(id)
+        default: performExternalLaunch(action)
+        }
     }
 
     func selectMac(_ mac: PairedMac) {
@@ -750,6 +756,26 @@ struct LocalStateResetter {
         case .resumeOrStart: resolveExternalLaunch()
         case .newTerminal: startFreshTerminal(on: mac)
         case .shortcut: startFreshTerminal(on: mac, action: action)
+        case .terminalList, .terminal: showTerminalList()
+        }
+    }
+
+    /// Live Activity destinations are intentionally resolved only from the
+    /// authenticated catalog already obtained from the paired Mac. A stale or
+    /// malformed opaque ID falls back without launching a new shell.
+    private func routeToLiveTerminal(_ serverSessionID: UUID) {
+        guard selectedMac != nil,
+              let catalog = catalogSessions.first(where: { $0.id == serverSessionID }) else {
+            showTerminalList()
+            return
+        }
+        if let existing = sessions.first(where: { $0.descriptor.serverSessionID == catalog.id }) {
+            selectSession(existing.id)
+            presentedScreen = nil
+        } else if catalog.attachmentCount == 0 {
+            reconnect(catalog)
+        } else {
+            showTerminalList()
         }
     }
 
@@ -807,6 +833,7 @@ struct LocalStateResetter {
 
     private func applyCatalog(_ catalog: [CliveCore.SessionDescriptor]) {
         catalogSessions = catalog
+        liveActivity.reconcile(catalog: catalog)
         let liveServerSessionIDs = Set(catalog.map(\.id))
         let staleSessionIDs: [UUID] = sessions.compactMap { session -> UUID? in
             guard let serverSessionID = session.descriptor.serverSessionID,
@@ -823,7 +850,7 @@ struct LocalStateResetter {
         persist()
     }
 
-    private func closeLiveSessions() { sessionCatalog.close(); sessions.forEach { $0.close() }; sessions.removeAll(); selectedSessionID = nil; catalogSessions.removeAll() }
+    private func closeLiveSessions() { sessionCatalog.close(); sessions.forEach { $0.close() }; sessions.removeAll(); selectedSessionID = nil; catalogSessions.removeAll(); liveActivity.reconcile(catalog: []) }
     private func detachLiveSessions() { sessions.forEach { $0.detach() }; sessions.removeAll(); selectedSessionID = nil }
     private func saveCurrentDescriptors() { guard let id = selectedMacID else { return }; snapshot.sessionsByMac[id] = sessions.map(\.descriptor); snapshot.selectedMacID = id }
     private func persist() { try? WorkspaceStore().save(snapshot) }

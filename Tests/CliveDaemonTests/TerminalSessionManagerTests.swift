@@ -252,6 +252,24 @@ final class TerminalSessionManagerTests: XCTestCase {
         XCTAssertEqual(snapshots.value.last?.first?.attachmentCount, 0)
     }
 
+    func testAuthenticatedAttentionMarkerUpdatesCatalogAndRejectsReplay() throws {
+        let manager = makeManager(FakeTerminalProcess())
+        let attachment = try attach(manager, clientID: UUID(), attachmentID: UUID())
+        let capability = try XCTUnwrap(manager.attentionCapability(deviceID: "phone", serverSessionID: attachment.serverSessionID))
+        let authenticator = SessionAttentionAuthenticator(capability: capability)
+        let marker = SessionAttentionMarker(
+            sessionID: attachment.serverSessionID,
+            sequence: 1,
+            requiresAttention: true,
+            authenticationTag: authenticator.tag(sessionID: attachment.serverSessionID, sequence: 1, requiresAttention: true)
+        )
+
+        XCTAssertTrue(manager.acceptAttentionMarker(deviceID: "phone", marker: marker))
+        XCTAssertTrue(manager.descriptors(deviceID: "phone").first?.requiresAttention == true)
+        XCTAssertFalse(manager.acceptAttentionMarker(deviceID: "phone", marker: marker))
+        XCTAssertFalse(manager.acceptAttentionMarker(deviceID: "other-phone", marker: marker))
+    }
+
     func testBulkTerminationOnlyEndsOwnedKnownSessions() throws {
         let first = FakeTerminalProcess(), other = FakeTerminalProcess()
         let processes = Box([first, other])

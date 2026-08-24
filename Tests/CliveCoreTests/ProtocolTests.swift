@@ -76,19 +76,28 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(try decoder.append(Data(encoded.dropFirst(5))) == [frame])
 }
 
-@Test func versionTwoFramesAreRejectedByVersionThreeDecoder() throws {
-    var bytes = Data(); bytes.appendUInt32(3); bytes.appendUInt16(2); bytes.append(FrameKind.sessionClose.rawValue)
+@Test func versionThreeFramesAreRejectedByVersionFourDecoder() throws {
+    var bytes = Data(); bytes.appendUInt32(3); bytes.appendUInt16(3); bytes.append(FrameKind.sessionClose.rawValue)
     var decoder = FrameDecoder()
-    #expect(throws: ProtocolError.unsupportedVersion(2)) { try decoder.append(bytes) }
+    #expect(throws: ProtocolError.unsupportedVersion(3)) { try decoder.append(bytes) }
 }
 
-@Test func v3SessionAndOutputDescriptorsRoundTrip() throws {
+@Test func v4SessionAndOutputDescriptorsRoundTrip() throws {
     let id = UUID()
-    let descriptor = SessionDescriptor(id: id, label: "build", attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 42)
+    let descriptor = SessionDescriptor(id: id, label: "build", attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 42, requiresAttention: true)
     #expect(try ProtocolPayload.decode(SessionDescriptor.self, from: ProtocolPayload.encode(descriptor)) == descriptor)
     let chunk = TerminalOutputChunk(offset: 42, bytes: Data("ok".utf8))
     #expect(try ProtocolPayload.decode(TerminalOutputChunk.self, from: ProtocolPayload.encode(chunk)) == chunk)
     #expect(chunk.endOffset == 44)
+}
+
+@Test func attentionMarkerRequiresTheSessionCapability() {
+    let capability = Data(repeating: 7, count: 32)
+    let authenticator = SessionAttentionAuthenticator(capability: capability)
+    let id = UUID()
+    let marker = SessionAttentionMarker(sessionID: id, sequence: 1, requiresAttention: true, authenticationTag: authenticator.tag(sessionID: id, sequence: 1, requiresAttention: true))
+    #expect(authenticator.validates(marker))
+    #expect(!authenticator.validates(SessionAttentionMarker(sessionID: id, sequence: 1, requiresAttention: false, authenticationTag: marker.authenticationTag)))
 }
 
 @Test func sessionAttachAndAttachmentStateRoundTrip() throws {

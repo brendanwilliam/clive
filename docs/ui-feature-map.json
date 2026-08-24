@@ -2304,6 +2304,56 @@
           "docs/security.md"
         ]
       }
+    },
+    {
+      "id": "widget.live-activity.summary",
+      "semantic_name": "Terminal Activity Summary",
+      "platform": "widget",
+      "kind": "widget",
+      "parent": null,
+      "canonical_path": "Terminal Activity Summary",
+      "order": 2,
+      "aliases": [
+        "Lock Screen terminal summary",
+        "Dynamic Island terminal summary"
+      ],
+      "presentation": "One privacy-safe Live Activity that displays only the active terminal count and a generic action-required state.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.root"
+      ],
+      "states": [
+        "active",
+        "action-required",
+        "stale",
+        "unavailable"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/Widgets/CliveResumeWidget.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/LiveActivityController.swift",
+          "Apps/Clive/App/ExternalLaunch.swift",
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveCore/LiveActivity.swift",
+          "Sources/CliveCore/Protocol.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md",
+          "docs/security.md"
+        ]
+      }
     }
   ],
   "legacy_components": [],

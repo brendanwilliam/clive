@@ -8,6 +8,8 @@ enum ExternalLaunchURL {
         case resumeOrStart
         case newTerminal
         case shortcut(UUID)
+        case terminalList
+        case terminal(UUID)
     }
 
     static func action(for url: URL) -> Action? {
@@ -17,6 +19,11 @@ enum ExternalLaunchURL {
         if components.host == "new-terminal", components.path.isEmpty || components.path == "/" { return .newTerminal }
         if components.host == "shortcut",
            let id = UUID(uuidString: components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))) { return .shortcut(id) }
+        if components.host == "terminals", components.path.isEmpty || components.path == "/" { return .terminalList }
+        if components.host == "terminal",
+           components.path.split(separator: "/").count == 1,
+           let segment = components.path.split(separator: "/").first,
+           let id = UUID(uuidString: String(segment)) { return .terminal(id) }
         return nil
     }
 
