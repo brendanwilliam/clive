@@ -2444,5 +2444,17 @@
       }
     }
   ],
-  "reviews": []
+  "reviews": [
+    {
+      "id": "2026-08-23-daemon-control-socket-ownership",
+      "reason": "Daemon instance locking and ownership-safe control-socket cleanup preserve the existing macOS and iOS surfaces and resource relationships.",
+      "paths": [
+        "Sources/CliveDaemon/ControlSocket.swift",
+        "Tests/CliveDaemonTests/ControlSocketTests.swift",
+        "docs/architecture.md",
+        "scripts/test-macos-integration.sh"
+      ],
+      "result": "no-component-impact"
+    }
+  ]
 }

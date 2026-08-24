@@ -3,13 +3,58 @@ import Foundation
 import CliveCore
 
 enum ControlSocketError: LocalizedError {
-    case unavailable, malformedMessage, messageTooLarge
+    case unavailable, alreadyRunning, malformedMessage, messageTooLarge
     var errorDescription: String? {
         switch self {
         case .unavailable: "The foreground daemon is not running."
+        case .alreadyRunning: "Another Clive daemon is already running."
         case .malformedMessage: "The daemon returned a malformed control message."
         case .messageTooLarge: "The control message exceeded the size limit."
         }
+    }
+}
+
+private final class DaemonInstanceLock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var descriptor: Int32
+
+    init(url: URL) throws {
+        let value = Darwin.open(url.path, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
+        guard value >= 0 else { throw ControlSocketError.unavailable }
+        guard Darwin.fchmod(value, S_IRUSR | S_IWUSR) == 0 else {
+            Darwin.close(value)
+            throw ControlSocketError.unavailable
+        }
+        guard Darwin.lockf(value, F_TLOCK, 0) == 0 else {
+            Darwin.close(value)
+            throw ControlSocketError.alreadyRunning
+        }
+        descriptor = value
+    }
+
+    deinit { release() }
+
+    func release() {
+        let value = lock.withLock { () -> Int32 in
+            let value = descriptor
+            descriptor = -1
+            return value
+        }
+        guard value >= 0 else { return }
+        _ = Darwin.lockf(value, F_ULOCK, 0)
+        Darwin.close(value)
+    }
+}
+
+private struct SocketIdentity: Equatable {
+    let device: dev_t
+    let inode: ino_t
+
+    init?(path: String) {
+        var status = stat()
+        guard Darwin.lstat(path, &status) == 0 else { return nil }
+        device = status.st_dev
+        inode = status.st_ino
     }
 }
 
@@ -89,6 +134,11 @@ final class ControlSocketServer: @unchecked Sendable {
     private let path: String
     private let descriptor: Int32
     private let source: DispatchSourceRead
+    private let instanceLock: DaemonInstanceLock
+    private let socketIdentity: SocketIdentity
+    private let lifecycleLock = NSLock()
+    private var started = false
+    private var stopped = false
     private let handler: @Sendable (ControlRequest, ControlChannel) async -> Void
 
     init(url: URL, handler: @escaping @Sendable (ControlRequest, ControlChannel) async -> Void) throws {
@@ -96,6 +146,7 @@ final class ControlSocketServer: @unchecked Sendable {
         path = socketPath
         self.handler = handler
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        instanceLock = try DaemonInstanceLock(url: url.deletingLastPathComponent().appending(path: "daemon.lock"))
         try? FileManager.default.removeItem(at: url)
         let serverDescriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         descriptor = serverDescriptor
@@ -112,13 +163,36 @@ final class ControlSocketServer: @unchecked Sendable {
         }
         guard result == 0, Darwin.listen(serverDescriptor, 8) == 0 else { Darwin.close(serverDescriptor); throw ControlSocketError.unavailable }
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: socketPath)
+        guard let identity = SocketIdentity(path: socketPath) else { Darwin.close(serverDescriptor); throw ControlSocketError.unavailable }
+        socketIdentity = identity
         source = DispatchSource.makeReadSource(fileDescriptor: serverDescriptor, queue: DispatchQueue(label: "com.clive.control"))
         source.setEventHandler { [weak self] in self?.acceptConnections() }
         source.setCancelHandler { [descriptor] in Darwin.close(descriptor) }
     }
 
-    func start() { source.resume() }
-    func stop() { source.cancel(); try? FileManager.default.removeItem(atPath: path) }
+    deinit { stop() }
+
+    func start() {
+        let shouldStart = lifecycleLock.withLock { () -> Bool in
+            guard !started, !stopped else { return false }
+            started = true
+            return true
+        }
+        if shouldStart { source.activate() }
+    }
+
+    func stop() {
+        let state = lifecycleLock.withLock { () -> (shouldStop: Bool, shouldActivate: Bool) in
+            guard !stopped else { return (false, false) }
+            stopped = true
+            return (true, !started)
+        }
+        guard state.shouldStop else { return }
+        if state.shouldActivate { source.activate() }
+        source.cancel()
+        if SocketIdentity(path: path) == socketIdentity { try? FileManager.default.removeItem(atPath: path) }
+        instanceLock.release()
+    }
 
     private func acceptConnections() {
         while true {
