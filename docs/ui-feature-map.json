@@ -2493,17 +2493,10 @@
     },
     {
       "id": "2026-08-24-zzzzzz-stable-terminal-navigation-test",
-      "reason": "A deterministic terminal-navigation UI test and GitHub authentication recovery guidance do not change mapped user interface components or resource relationships.",
+      "reason": "A deterministic terminal-navigation UI test, GitHub authentication recovery guidance, and serialized verification scheduling do not change mapped user interface components or resource relationships.",
       "paths": [
         "AGENTS.md",
-        "Apps/Clive/UITests/TerminalNavigationUITests.swift"
-      ],
-      "result": "no-component-impact"
-    },
-    {
-      "id": "2026-08-24-zzzzzzz-serialized-xcode-verification",
-      "reason": "Verification scheduling avoids shared Xcode debugger-state contention without changing mapped user interface components or resource relationships.",
-      "paths": [
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift",
         "scripts/verify-local.sh"
       ],
       "result": "no-component-impact"
