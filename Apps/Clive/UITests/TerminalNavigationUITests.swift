@@ -50,6 +50,13 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(waitForSelection(of: terminalSurface(secondID)))
     }
 
+    func testLongPressingTerminalLinkOffersOpenAction() {
+        let terminal = terminalSurface(firstID)
+        XCTAssertTrue(terminal.waitForExistence(timeout: 3))
+        terminal.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.95)).press(forDuration: 1)
+        XCTAssertTrue(app.buttons["Open Link"].waitForExistence(timeout: 2))
+    }
+
     func testTerminalStartsBelowCompactNavigationBar() {
         let terminal = terminalSurface(firstID)
         XCTAssertTrue(terminal.waitForExistence(timeout: 3))
