@@ -9,11 +9,14 @@ struct WorkspaceView: View {
     @State private var renameTarget: WorkspaceSession?
     @State private var renameText = ""
     @State private var deleteTarget: WorkspaceSession?
-    @State private var endTarget: WorkspaceSession?
     @State private var showingClearAllConfirmation = false
     @State private var showingDisconnectConfirmation = false
     @State private var showingConnectionDetails = false
     @State private var showingShortcuts = false
+    @State private var shortcutEditTarget: CLIShortcut?
+    @State private var shortcutEditName = ""
+    @State private var shortcutEditCommand = ""
+    @State private var isReorderingShortcuts = false
     @State private var pagerSelection = TerminalPagerPage.empty
     @State private var pagerPolicy = TerminalPagerPolicy()
 
@@ -61,17 +64,11 @@ struct WorkspaceView: View {
         } message: { session in
             Text("Closing \(session.descriptor.label) only detaches this iPhone. The shared shell remains available on the Mac.")
         }
-        .alert("Clear all terminals?", isPresented: $showingClearAllConfirmation) {
+        .alert("Delete all terminals?", isPresented: $showingClearAllConfirmation) {
             Button("Cancel", role: .cancel) {}
-            Button("Clear All", role: .destructive) { coordinator.closeAll() }
+            Button("Delete All", role: .destructive) { coordinator.deleteAll() }
         } message: {
-            Text("This removes every terminal from this iPhone. Their shared shells remain available on the Mac.")
-        }
-        .alert("End shared session?", isPresented: Binding(get: { endTarget != nil }, set: { if !$0 { endTarget = nil } }), presenting: endTarget) { session in
-            Button("Cancel", role: .cancel) { endTarget = nil }
-            Button("End Shared Session", role: .destructive) { coordinator.end(session); endTarget = nil }
-        } message: { session in
-            Text("This ends \(session.descriptor.label), its running processes, and every attached client.")
+            Text("This permanently ends every Clive terminal currently open from this iPhone.")
         }
         .alert("Disconnect and unpair?", isPresented: $showingDisconnectConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -237,31 +234,19 @@ struct WorkspaceView: View {
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.visible)
                             .listRowSeparatorTint(.secondary.opacity(0.28))
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button("End Shared Session", systemImage: "xmark.octagon", role: .destructive) { endTarget = session }
-                                    .tint(.orange)
-                                Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
-                            }
+                    }
+                    ForEach(coordinator.unrepresentedCatalogSessions) { session in
+                        catalogSessionRow(session)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.visible)
+                            .listRowSeparatorTint(.secondary.opacity(0.28))
                     }
                 } header: {
                     HStack {
-                        Label("Active Terminals", systemImage: "terminal")
+                        Label("Terminals", systemImage: "terminal")
                         Spacer()
-                        Button("Clear All", role: .destructive) { showingClearAllConfirmation = true }
+                        Button("Delete All", role: .destructive) { showingClearAllConfirmation = true }
                             .disabled(coordinator.sessions.isEmpty)
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(nil)
-                }
-                if !coordinator.unrepresentedCatalogSessions.isEmpty {
-                    Section("Available on this Mac") {
-                        ForEach(coordinator.unrepresentedCatalogSessions) { session in
-                            catalogSessionRow(session)
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.visible)
-                                .listRowSeparatorTint(.secondary.opacity(0.28))
-                        }
                     }
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -308,38 +293,39 @@ struct WorkspaceView: View {
     }
 
     private func terminalRow(_ session: WorkspaceSession) -> some View {
-        HStack(spacing: 10) {
-            Button {
-                coordinator.selectSession(session.id)
-                coordinator.dismissPresentedScreen()
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(session.descriptor.label)
-                        if let attachment = session.attachmentState {
-                            Text("\(attachment.attachmentCount) attached · resize: \(attachment.resizeOwner?.rawValue ?? "none")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        if let preview = session.preview { Text(preview).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary) }
-                    }
-                    Spacer(minLength: 4)
+        Button {
+            coordinator.selectSession(session.id)
+            coordinator.dismissPresentedScreen()
+        } label: {
+            HStack(spacing: 12) {
+                terminalStatusIcon(for: session.state)
+                    .accessibilityIdentifier("terminal-status-\(session.id.uuidString)")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.descriptor.label)
+                    Text(terminalStatusText(for: session.state, attachment: session.attachmentState))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let preview = session.preview { Text(preview).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary) }
                 }
+                Spacer(minLength: 4)
             }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .contentShape(.rect)
-            .accessibilityIdentifier("terminal-row-\(session.id.uuidString)")
-            .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
-            Menu {
-                Button("Edit", systemImage: "pencil") { beginRename(session) }
-                Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
-                Button("End Shared Session…", systemImage: "xmark.octagon", role: .destructive) { endTarget = session }
-            } label: {
-                Image(systemName: "ellipsis").rotationEffect(.degrees(90)).frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(.rect)
+        .accessibilityIdentifier("terminal-row-\(session.id.uuidString)")
+        .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
+            if ConnectionPresentation.status(for: session.state) == .connected {
+                Button("Disconnect", systemImage: "network.slash") { coordinator.disconnect(session) }
+                    .tint(.orange)
+            } else {
+                Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
+                    .tint(.green)
             }
-            .accessibilityLabel("Actions for \(session.descriptor.label)")
-            .accessibilityIdentifier("terminal-actions-\(session.id.uuidString)")
+            Button("Rename", systemImage: "pencil") { beginRename(session) }
+                .tint(.blue)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 2)
@@ -347,23 +333,59 @@ struct WorkspaceView: View {
     }
 
     private func catalogSessionRow(_ session: CliveCore.SessionDescriptor) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Detached terminal")
-                Text(session.attachmentCount == 0 ? "Disconnected — ready to reconnect" : "Attached elsewhere")
-                    .font(.caption)
+        Button { coordinator.reconnect(session) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "network.slash")
                     .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .accessibilityLabel("Disconnected")
+                    .accessibilityIdentifier("catalog-terminal-status-\(session.id.uuidString)")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.label ?? "Detached terminal")
+                    Text(session.attachmentCount == 0 ? "Disconnected — ready to reconnect" : "Attached elsewhere")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                if session.attachmentCount == 0 {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundStyle(.tint)
+                }
             }
-            Spacer(minLength: 4)
-            if session.attachmentCount == 0 {
-                Button("Reconnect") { coordinator.reconnect(session) }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("reconnect-session-\(session.id.uuidString)")
-            }
+        }
+        .buttonStyle(.plain)
+        .disabled(session.attachmentCount != 0)
+        .accessibilityIdentifier("reconnect-session-\(session.id.uuidString)")
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
+                .tint(.green)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
+    }
+
+    private func terminalStatusIcon(for state: SessionClient.State) -> some View {
+        let presentation = ConnectionStatusPresentation.make(state: state, deviceName: nil, route: nil)
+        return Image(systemName: presentation.icon)
+            .foregroundStyle(terminalStatusColor(for: presentation.health))
+            .frame(width: 20, height: 20)
+            .accessibilityLabel(presentation.text)
+    }
+
+    private func terminalStatusText(for state: SessionClient.State, attachment: AttachmentState?) -> String {
+        let status = ConnectionStatusPresentation.make(state: state, deviceName: nil, route: nil).text
+        guard let attachment else { return status }
+        return "\(status) · \(attachment.attachmentCount) attached"
+    }
+
+    private func terminalStatusColor(for health: ConnectionHealth) -> Color {
+        switch health {
+        case .connected: .green
+        case .connecting, .reconnecting: .orange
+        case .disconnected: .secondary
+        case .attention: .red
+        }
     }
 
     private func beginRename(_ session: WorkspaceSession) {
@@ -426,34 +448,80 @@ struct WorkspaceView: View {
     private var shortcutsSheet: some View {
         NavigationStack {
             List {
-                let runnable = coordinator.preferences.value.shortcuts.filter { !$0.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                if runnable.isEmpty {
+                if coordinator.preferences.value.shortcuts.isEmpty {
                     ContentUnavailableView("No shortcuts", systemImage: "bolt", description: Text("Add commands in Settings to run them here."))
                 } else {
-                    ForEach(runnable) { shortcut in
+                    ForEach(coordinator.preferences.value.shortcuts) { shortcut in
                         Button {
                             if coordinator.runShortcut(shortcut) { showingShortcuts = false }
                         } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name).foregroundStyle(.white)
-                                Text(shortcut.command).font(.caption.monospaced()).foregroundStyle(.gray).lineLimit(2)
+                            HStack(spacing: 12) {
+                                Image(systemName: "terminal")
+                                    .foregroundStyle(.tint)
+                                    .frame(width: 20, height: 20)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
+                                    Text(shortcut.command.isEmpty ? "No command" : shortcut.command)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 4)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 10))
+                        }
+                        .disabled(isReorderingShortcuts || shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("shortcut-row-\(shortcut.id.uuidString)")
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button("Delete", systemImage: "trash", role: .destructive) {
+                                coordinator.preferences.deleteShortcut(id: shortcut.id)
+                            }
+                            Button("Edit", systemImage: "pencil") { beginEditing(shortcut) }
+                                .tint(.blue)
                         }
                     }
-                }
-                Section {
-                    Button("Manage Shortcuts in Settings", systemImage: "gearshape") {
-                        showingShortcuts = false
-                        DispatchQueue.main.async { coordinator.showSettings() }
-                    }
+                    .onMove(perform: coordinator.preferences.moveShortcuts)
                 }
             }
+            .environment(\.editMode, .constant(isReorderingShortcuts ? .active : .inactive))
             .navigationTitle("Shortcuts")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Done") { showingShortcuts = false }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button(isReorderingShortcuts ? "Done Reordering" : "Reorder Shortcuts", systemImage: "arrow.up.arrow.down") {
+                            isReorderingShortcuts.toggle()
+                        }
+                        Button("Manage in Settings", systemImage: "gearshape") {
+                            showingShortcuts = false
+                            DispatchQueue.main.async { coordinator.showSettings() }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Shortcut options")
+                    .accessibilityIdentifier("shortcut-options")
+                }
+            }
             .accessibilityIdentifier("shortcuts-sheet")
             .presentationDetents([.medium, .large])
+            .alert("Edit shortcut", isPresented: shortcutEditBinding) {
+                TextField("Name", text: $shortcutEditName)
+                TextField("Command", text: $shortcutEditCommand)
+                Button("Cancel", role: .cancel) { shortcutEditTarget = nil }
+                Button("Save") {
+                    if let shortcutEditTarget {
+                        coordinator.preferences.updateShortcut(
+                            id: shortcutEditTarget.id,
+                            name: shortcutEditName,
+                            command: shortcutEditCommand
+                        )
+                    }
+                    shortcutEditTarget = nil
+                }
+            }
         }
     }
 
@@ -466,9 +534,16 @@ struct WorkspaceView: View {
     }
 
     private var renameBinding: Binding<Bool> { Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } }) }
+    private var shortcutEditBinding: Binding<Bool> { Binding(get: { shortcutEditTarget != nil }, set: { if !$0 { shortcutEditTarget = nil } }) }
     private var deleteBinding: Binding<Bool> { Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }) }
     private var disconnectErrorBinding: Binding<Bool> { Binding(get: { coordinator.disconnectError != nil }, set: { if !$0 { coordinator.disconnectError = nil } }) }
     private var settingsBinding: Binding<Bool> { Binding(get: { coordinator.presentedScreen == .settings }, set: { if !$0 { coordinator.dismissPresentedScreen() } }) }
+
+    private func beginEditing(_ shortcut: CLIShortcut) {
+        shortcutEditName = shortcut.name
+        shortcutEditCommand = shortcut.command
+        shortcutEditTarget = shortcut
+    }
 
     @ViewBuilder private func recoveryView(_ recovery: WorkspaceCoordinator.Recovery) -> some View {
         switch recovery {

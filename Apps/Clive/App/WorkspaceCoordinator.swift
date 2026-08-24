@@ -208,6 +208,25 @@ struct AuthenticationGracePolicy: Equatable {
     func close() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); clearTransientActivity(); client.close() }
     func terminate() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); clearTransientActivity(); client.terminate() }
     func detach() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); client.detach() }
+    func disconnect() {
+        retryTask?.cancel()
+        reconnectNoticeTask?.cancel()
+        reconnecting = false
+        client.close()
+        state = .disconnected
+    }
+    func reconnect() {
+        retryTask?.cancel()
+        reconnectNoticeTask?.cancel()
+        reconnecting = false
+        routeIndex = 0
+        guard !routes.isEmpty else {
+            state = .reconnecting(waitingForWiFi: true)
+            return
+        }
+        state = .connecting
+        connectCurrentRoute(expectsResumption: hasOpened)
+    }
 
     func updateRoutes(_ newRoutes: [MacRoute]) {
         let changed = newRoutes != routes
@@ -476,6 +495,16 @@ struct AuthenticationGracePolicy: Equatable {
         presentedScreen = nil
     }
 
+    func disconnect(_ session: WorkspaceSession) {
+        session.disconnect()
+        saveCurrentDescriptors()
+        persist()
+    }
+
+    func reconnect(_ session: WorkspaceSession) {
+        session.reconnect()
+    }
+
     @discardableResult
     func runShortcut(_ shortcut: CLIShortcut) -> Bool {
         let command = shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -492,8 +521,8 @@ struct AuthenticationGracePolicy: Equatable {
         if sessions.isEmpty { clearDestination() }
     }
 
-    func closeAll() {
-        sessions.forEach { $0.close() }
+    func deleteAll() {
+        sessions.forEach { $0.terminate() }
         sessions.removeAll()
         selectSession(nil)
         saveCurrentDescriptors(); persist()
@@ -719,6 +748,15 @@ struct AuthenticationGracePolicy: Equatable {
         coordinator.sessions = [
             WorkspaceSession(fixture: SessionDescriptor(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, label: "Shell 1"), state: .active(UUID(), .resumed, true)),
             WorkspaceSession(fixture: SessionDescriptor(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, label: "Shell 2"), state: .active(UUID(), .created, false))
+        ]
+        coordinator.catalogSessions = [
+            CliveCore.SessionDescriptor(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+                label: "Detached shell",
+                attachmentCount: 0,
+                resizeOwner: nil,
+                outputOffset: 0
+            )
         ]
         coordinator.selectedSessionID = coordinator.sessions.first?.id
         return coordinator

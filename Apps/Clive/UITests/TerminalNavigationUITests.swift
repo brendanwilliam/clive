@@ -27,7 +27,7 @@ final class TerminalNavigationUITests: XCTestCase {
 
     func testSwipeRightFromFirstOpensDrawerWithoutChangingSelection() {
         terminalSurface(firstID).swipeRight()
-        XCTAssertTrue(app.staticTexts["Active Terminals"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 4))
         XCTAssertEqual(drawerRow(firstID).value as? String, "Selected")
     }
 
@@ -62,7 +62,7 @@ final class TerminalNavigationUITests: XCTestCase {
     func testDrawerRowSelectionOutsideMenu() {
         app.buttons["Terminals"].tap()
         drawerRow(secondID).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
-        XCTAssertFalse(app.staticTexts["Active Terminals"].exists)
+        XCTAssertFalse(app.staticTexts["Terminals"].exists)
         XCTAssertEqual(terminalSurface(secondID).value as? String, "Selected")
     }
 
@@ -80,35 +80,53 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(revealText("SHA-256 fingerprint", in: details))
     }
 
-    func testDrawerSwipeActionsRouteToTheirRespectiveConfirmations() {
+    func testDrawerUsesNativeRenameDisconnectAndDeleteSwipeActions() {
         app.buttons["Terminals"].tap()
         drawerRow(firstID).swipeLeft()
-        XCTAssertTrue(app.buttons["End Shared Session"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Disconnect"].exists)
         XCTAssertTrue(app.buttons["Delete"].exists)
 
-        app.buttons["End Shared Session"].tap()
-        XCTAssertTrue(app.staticTexts["End shared session?"].waitForExistence(timeout: 2))
+        app.buttons["Rename"].tap()
+        XCTAssertTrue(app.staticTexts["Rename terminal"].waitForExistence(timeout: 2))
         app.buttons["Cancel"].tap()
 
         drawerRow(firstID).swipeLeft()
-        app.buttons["Delete"].tap()
-        XCTAssertTrue(app.staticTexts["Close terminal?"].waitForExistence(timeout: 2))
+        app.buttons["Disconnect"].tap()
+        drawerRow(firstID).swipeLeft()
+        XCTAssertTrue(app.buttons["Reconnect"].waitForExistence(timeout: 2))
+    }
+
+    func testDrawerShowsConnectedAndDisconnectedTerminalsTogether() {
+        app.buttons["Terminals"].tap()
+        XCTAssertTrue(app.images["terminal-status-\(firstID)"].exists)
+        XCTAssertTrue(app.images["catalog-terminal-status-00000000-0000-0000-0000-000000000003"].exists)
+        XCTAssertTrue(app.staticTexts["Detached shell"].exists)
+        XCTAssertFalse(app.staticTexts["Available on this Mac"].exists)
+    }
+
+    func testDeleteAllPermanentlyEndsLocalCliveTerminals() {
+        app.buttons["Terminals"].tap()
+        app.buttons["Delete All"].tap()
+        XCTAssertTrue(app.staticTexts["Delete all terminals?"].waitForExistence(timeout: 2))
+        XCTAssertTrue(text(containing: "permanently ends every Clive terminal").exists)
         app.buttons["Cancel"].tap()
     }
 
-    func testDrawerExposesVerticalEllipsisEditAndDeleteActionsAndHitTargets() {
-        app.buttons["Terminals"].tap()
-        let menu = app.buttons["terminal-actions-\(firstID)"]
-        menu.tap()
-        app.buttons["Edit"].tap()
-        app.buttons["Cancel"].tap()
-        menu.tap()
-        XCTAssertTrue(app.buttons["Delete"].exists)
-        app.buttons["Delete"].tap()
-        app.buttons["Cancel"].tap()
+    func testShortcutsUseNativeEditDeleteAndReorderActions() {
+        app.buttons["shortcuts-button"].tap()
+        let shortcut = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Status")).firstMatch
+        XCTAssertTrue(shortcut.waitForExistence(timeout: 2))
 
-        XCTAssertGreaterThanOrEqual(menu.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(menu.frame.height, 44)
+        shortcut.swipeLeft()
+        XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Delete"].exists)
+        app.buttons["Edit"].tap()
+        XCTAssertTrue(app.staticTexts["Edit shortcut"].waitForExistence(timeout: 2))
+        app.alerts["Edit shortcut"].buttons["Cancel"].tap()
+
+        app.buttons["shortcut-options"].tap()
+        XCTAssertTrue(app.buttons["Reorder Shortcuts"].waitForExistence(timeout: 2))
     }
 
     private func terminalSurface(_ id: String) -> XCUIElement {

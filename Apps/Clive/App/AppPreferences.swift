@@ -138,6 +138,18 @@ struct AppPreferencesStore {
         if let selected = value.newTerminalDefaultShortcutID, removed.contains(selected) { value.newTerminalDefaultShortcutID = nil }
     }
 
+    func deleteShortcut(id: UUID) {
+        guard let index = value.shortcuts.firstIndex(where: { $0.id == id }) else { return }
+        deleteShortcuts(at: IndexSet(integer: index))
+    }
+
+    func updateShortcut(id: UUID, name: String, command: String) {
+        guard let index = value.shortcuts.firstIndex(where: { $0.id == id }) else { return }
+        value.shortcuts[index].name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        value.shortcuts[index].command = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        value.normalizeDefaultSelection()
+    }
+
     func moveShortcuts(from offsets: IndexSet, to destination: Int) {
         value.shortcuts.move(fromOffsets: offsets, toOffset: destination)
     }
