@@ -2326,6 +2326,17 @@
         "AGENTS.md"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-stale-terminal-recovery",
+      "reason": "Stale local terminal recovery changes daemon session lifecycle behavior without changing mapped user interface components or their resource relationships.",
+      "paths": [
+        "Sources/CliveDaemon/DaemonRuntime.swift",
+        "Sources/CliveDaemon/TerminalSessionManager.swift",
+        "Tests/CliveDaemonTests/TerminalSessionManagerTests.swift",
+        "docs/architecture.md"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
