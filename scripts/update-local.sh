@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT_DIR=${0:A:h:h}
 IOS_DIR=${ROOT_DIR}/Apps/Clive
+MAC_DIR=${ROOT_DIR}/Apps/CliveMac
 LOCAL_CONFIG=${IOS_DIR}/Config/Local.xcconfig
+MAC_LOCAL_CONFIG=${MAC_DIR}/Config/Local.xcconfig
 RUN_DIR=${CLIVE_DEVICE_RUN_DIR:-/private/tmp/clive-device-run}
 DERIVED_DIR=${RUN_DIR}/DerivedData
 DAEMON_LOG=${RUN_DIR}/daemon.log
@@ -16,13 +18,31 @@ REFRESH_LABEL=com.clive.development-refresh
 REFRESH_SERVICE=${LAUNCH_DOMAIN}/${REFRESH_LABEL}
 REFRESH_PLIST=${RUN_DIR}/${REFRESH_LABEL}.plist
 REFRESH_LOG=${RUN_DIR}/refresh.log
+SIGNED_COMPANION=false
+WORKER=false
 
-if (( $# > 1 )) || [[ ${1:-} != "" && ${1:-} != "--worker" ]]; then
-    echo "Usage: ./scripts/update-local.sh" >&2
-    exit 64
-fi
+usage() {
+    cat <<'EOF'
+Usage: ./scripts/update-local.sh [--signed-companion]
 
-if [[ ${CLIVE_MANAGED_TERMINAL:-} == 1 && ${1:-} != --worker ]]; then
+Rebuild and install the iPhone app after replacing the local Mac owner.
+By default, starts the standalone development daemon. --signed-companion
+builds and launches the locally signed CliveMac.app, including its CloudKit
+entitlement, for cellular testing.
+EOF
+}
+
+while (( $# > 0 )); do
+    case $1 in
+    --signed-companion) SIGNED_COMPANION=true ;;
+    --worker) WORKER=true ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 64 ;;
+    esac
+    shift
+done
+
+if [[ ${CLIVE_MANAGED_TERMINAL:-} == 1 && ${WORKER} == false ]]; then
     mkdir -p "${RUN_DIR}"
 
     # A daemon restart sends SIGHUP to every Clive-managed terminal. Run the
@@ -32,7 +52,11 @@ if [[ ${CLIVE_MANAGED_TERMINAL:-} == 1 && ${1:-} != --worker ]]; then
     : > "${REFRESH_LOG}"
     plutil -create xml1 "${REFRESH_PLIST}"
     plutil -insert Label -string "${REFRESH_LABEL}" "${REFRESH_PLIST}"
-    plutil -insert ProgramArguments -json "[\"${0:A}\",\"--worker\"]" "${REFRESH_PLIST}"
+    if [[ ${SIGNED_COMPANION} == true ]]; then
+        plutil -insert ProgramArguments -json "[\"${0:A}\",\"--worker\",\"--signed-companion\"]" "${REFRESH_PLIST}"
+    else
+        plutil -insert ProgramArguments -json "[\"${0:A}\",\"--worker\"]" "${REFRESH_PLIST}"
+    fi
     plutil -insert RunAtLoad -bool true "${REFRESH_PLIST}"
     plutil -insert ProcessType -string Background "${REFRESH_PLIST}"
     plutil -insert EnvironmentVariables -json '{}' "${REFRESH_PLIST}"
@@ -58,12 +82,44 @@ if [[ ! -f ${LOCAL_CONFIG} ]]; then
     echo "Missing ${LOCAL_CONFIG}. Copy Local.xcconfig.example and set CLIVE_BUNDLE_ID and DEVELOPMENT_TEAM." >&2
     exit 78
 fi
+if [[ ${SIGNED_COMPANION} == true && ! -f ${MAC_LOCAL_CONFIG} ]]; then
+    echo "Missing ${MAC_LOCAL_CONFIG}. Copy Local.xcconfig.example and configure the macOS bundle ID, signing team, and CloudKit container." >&2
+    exit 78
+fi
 
 mkdir -p "${RUN_DIR}"
 
 echo "Building the current Clive daemon…"
 swift build --package-path "${ROOT_DIR}" --product clive
 DAEMON=${ROOT_DIR}/.build/debug/clive
+
+MAC_APP=""
+if [[ ${SIGNED_COMPANION} == true ]]; then
+    echo "Generating the macOS companion project…"
+    (cd "${MAC_DIR}" && xcodegen generate)
+    echo "Building the signed CliveMac companion…"
+    xcodebuild \
+        -project "${MAC_DIR}/CliveMac.xcodeproj" \
+        -scheme CliveMac \
+        -configuration Debug \
+        -destination platform=macOS \
+        -derivedDataPath "${DERIVED_DIR}/CliveMac" \
+        -allowProvisioningUpdates \
+        build
+    MAC_APP=${DERIVED_DIR}/CliveMac/Build/Products/Debug/Clive.app
+    if [[ ! -d ${MAC_APP} ]]; then
+        echo "Built macOS app was not found at ${MAC_APP}." >&2
+        exit 1
+    fi
+    if ! codesign --verify --deep --strict "${MAC_APP}"; then
+        echo "The macOS companion was not signed successfully." >&2
+        exit 1
+    fi
+    if ! codesign -d --entitlements :- "${MAC_APP}" 2>&1 | grep -q '<string>CloudKit</string>'; then
+        echo "The signed macOS companion is missing its CloudKit entitlement." >&2
+        exit 1
+    fi
+fi
 
 # Remove the previous development job before stopping any other daemon. A
 # missing job or control socket is expected on the first run.
@@ -104,22 +160,7 @@ if [[ ${listener_stopped} != true ]]; then
     exit 1
 fi
 
-echo "Registering the current Clive daemon with launchd…"
-: > "${DAEMON_LOG}"
-: > "${DAEMON_ERROR_LOG}"
-plutil -create xml1 "${DAEMON_PLIST}"
-plutil -insert Label -string "${DAEMON_LABEL}" "${DAEMON_PLIST}"
-plutil -insert ProgramArguments -json "[\"${DAEMON}\",\"start\",\"--allow-non-private-network\"]" "${DAEMON_PLIST}"
-plutil -insert RunAtLoad -bool true "${DAEMON_PLIST}"
-plutil -insert KeepAlive -json '{"SuccessfulExit":false}' "${DAEMON_PLIST}"
-plutil -insert ProcessType -string Background "${DAEMON_PLIST}"
-plutil -insert ThrottleInterval -integer 2 "${DAEMON_PLIST}"
-plutil -insert WorkingDirectory -string "${ROOT_DIR}" "${DAEMON_PLIST}"
-plutil -insert StandardOutPath -string "${DAEMON_LOG}" "${DAEMON_PLIST}"
-plutil -insert StandardErrorPath -string "${DAEMON_ERROR_LOG}" "${DAEMON_PLIST}"
-launchctl bootstrap "${LAUNCH_DOMAIN}" "${DAEMON_PLIST}"
-
-wait_for_daemon() {
+wait_for_control_socket() {
     for _ in {1..100}; do
         if "${DAEMON}" status >/dev/null 2>&1; then
             return 0
@@ -129,13 +170,37 @@ wait_for_daemon() {
     return 1
 }
 
-if ! wait_for_daemon; then
-    echo "The launchd development daemon did not become ready." >&2
-    launchctl print "${LAUNCH_SERVICE}" >&2 || true
-    echo "Standard error: ${DAEMON_ERROR_LOG}" >&2
-    tail -40 "${DAEMON_ERROR_LOG}" >&2
-    echo "Standard output: ${DAEMON_LOG}" >&2
-    tail -40 "${DAEMON_LOG}" >&2
+if [[ ${SIGNED_COMPANION} == true ]]; then
+    echo "Launching the signed CliveMac companion…"
+    /usr/bin/open -n "${MAC_APP}"
+else
+    echo "Registering the current Clive daemon with launchd…"
+    : > "${DAEMON_LOG}"
+    : > "${DAEMON_ERROR_LOG}"
+    plutil -create xml1 "${DAEMON_PLIST}"
+    plutil -insert Label -string "${DAEMON_LABEL}" "${DAEMON_PLIST}"
+    plutil -insert ProgramArguments -json "[\"${DAEMON}\",\"start\",\"--allow-non-private-network\"]" "${DAEMON_PLIST}"
+    plutil -insert RunAtLoad -bool true "${DAEMON_PLIST}"
+    plutil -insert KeepAlive -json '{"SuccessfulExit":false}' "${DAEMON_PLIST}"
+    plutil -insert ProcessType -string Background "${DAEMON_PLIST}"
+    plutil -insert ThrottleInterval -integer 2 "${DAEMON_PLIST}"
+    plutil -insert WorkingDirectory -string "${ROOT_DIR}" "${DAEMON_PLIST}"
+    plutil -insert StandardOutPath -string "${DAEMON_LOG}" "${DAEMON_PLIST}"
+    plutil -insert StandardErrorPath -string "${DAEMON_ERROR_LOG}" "${DAEMON_PLIST}"
+    launchctl bootstrap "${LAUNCH_DOMAIN}" "${DAEMON_PLIST}"
+fi
+
+if ! wait_for_control_socket; then
+    if [[ ${SIGNED_COMPANION} == true ]]; then
+        echo "The signed CliveMac companion did not make its control socket ready." >&2
+    else
+        echo "The launchd development daemon did not become ready." >&2
+        launchctl print "${LAUNCH_SERVICE}" >&2 || true
+        echo "Standard error: ${DAEMON_ERROR_LOG}" >&2
+        tail -40 "${DAEMON_ERROR_LOG}" >&2
+        echo "Standard output: ${DAEMON_LOG}" >&2
+        tail -40 "${DAEMON_LOG}" >&2
+    fi
     exit 1
 fi
 
@@ -216,14 +281,22 @@ xcrun devicectl device process launch \
     --terminate-existing \
     "${bundle_id}"
 
-if ! wait_for_daemon; then
-    echo "The development daemon stopped during the iPhone deployment." >&2
-    launchctl print "${LAUNCH_SERVICE}" >&2 || true
-    tail -40 "${DAEMON_ERROR_LOG}" >&2
+if ! wait_for_control_socket; then
+    if [[ ${SIGNED_COMPANION} == true ]]; then
+        echo "The signed CliveMac companion stopped during the iPhone deployment." >&2
+    else
+        echo "The development daemon stopped during the iPhone deployment." >&2
+        launchctl print "${LAUNCH_SERVICE}" >&2 || true
+        tail -40 "${DAEMON_ERROR_LOG}" >&2
+    fi
     exit 1
 fi
 
 echo "Clive is running on the iPhone."
-echo "Daemon log: ${DAEMON_LOG}"
-echo "Daemon error log: ${DAEMON_ERROR_LOG}"
-echo "Stop the daemon with: launchctl bootout ${LAUNCH_SERVICE}"
+if [[ ${SIGNED_COMPANION} == true ]]; then
+    echo "The signed CliveMac companion owns the local control socket and CloudKit rendezvous."
+else
+    echo "Daemon log: ${DAEMON_LOG}"
+    echo "Daemon error log: ${DAEMON_ERROR_LOG}"
+    echo "Stop the daemon with: launchctl bootout ${LAUNCH_SERVICE}"
+fi

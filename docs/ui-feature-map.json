@@ -2374,6 +2374,16 @@
         "AGENTS.md"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zz-signed-local-refresh",
+      "reason": "The opt-in physical-device refresh workflow changes development deployment behavior without changing mapped application components or resource relationships.",
+      "paths": [
+        "README.md",
+        "scripts/test-macos-integration.sh",
+        "scripts/update-local.sh"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }

@@ -19,6 +19,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+UPDATE_LOCAL_HELP=$("${ROOT_DIR}/scripts/update-local.sh" --help) || fail "update-local help failed"
+[[ ${UPDATE_LOCAL_HELP} == *"--signed-companion"* ]] || fail "update-local help omitted signed companion mode"
+if "${ROOT_DIR}/scripts/update-local.sh" --invalid-option >/dev/null 2>&1; then
+    fail "update-local accepted an invalid option"
+fi
+
 swift build --package-path "${ROOT_DIR}"
 CLIVE_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" start --allow-non-private-network >"${TEST_STATE}/daemon.log" 2>&1 &
 DAEMON_PID=$!
