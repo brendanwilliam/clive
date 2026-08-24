@@ -2455,6 +2455,14 @@
         "scripts/test-macos-integration.sh"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-issue-branch-names",
+      "reason": "Branch naming guidance affects contributor workflow only and does not change any mapped user interface component or resource relationship.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
