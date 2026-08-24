@@ -56,7 +56,7 @@
         "id": { "type": "string", "pattern": "^(ios|macos|widget)\\.[a-z0-9-]+\\.[a-z0-9-]+$" },
         "semantic_name": { "type": "string", "minLength": 1 },
         "platform": { "enum": ["ios", "macos", "widget"] },
-        "kind": { "enum": ["screen", "row", "column", "group", "repeated", "drawer", "sheet", "window", "menu", "widget", "alert", "overlay", "control"] },
+        "kind": { "enum": ["screen", "row", "column", "group", "repeated", "drawer", "sidebar", "sheet", "window", "menu", "widget", "alert", "overlay", "control"] },
         "parent": { "type": ["string", "null"] },
         "canonical_path": { "type": "string", "minLength": 1 },
         "order": { "type": "integer", "minimum": 1 },

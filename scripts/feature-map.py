@@ -23,7 +23,7 @@ COMPONENT_KEYS = (
     "order", "aliases", "presentation", "repetition", "related_components",
     "states", "resources",
 )
-KINDS = {"screen", "row", "column", "group", "repeated", "drawer", "sheet", "window", "menu", "widget", "alert", "overlay", "control"}
+KINDS = {"screen", "row", "column", "group", "repeated", "drawer", "sidebar", "sheet", "window", "menu", "widget", "alert", "overlay", "control"}
 ID_RE = re.compile(r"^(ios|macos|widget)\.[a-z0-9-]+\.[a-z0-9-]+$")
 REVIEW_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$")
 

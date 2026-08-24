@@ -4,6 +4,34 @@ import SwiftUI
 import CliveCore
 import WidgetKit
 
+private struct PreferenceCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}
+
+private func rejectUnknownKeys(
+    in decoder: Decoder,
+    allowed: Set<String>
+) throws {
+    let values = try decoder.container(keyedBy: PreferenceCodingKey.self)
+    let unknown = values.allKeys.map(\.stringValue).filter { !allowed.contains($0) }
+    guard unknown.isEmpty else {
+        throw DecodingError.dataCorrupted(
+            .init(codingPath: decoder.codingPath, debugDescription: "Unknown preference field")
+        )
+    }
+}
+
 struct CLIShortcut: Codable, Equatable, Identifiable {
     var id: UUID
     var name: String
@@ -17,6 +45,7 @@ struct CLIShortcut: Codable, Equatable, Identifiable {
 
     private enum CodingKeys: String, CodingKey { case id, name, command }
     init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(in: decoder, allowed: ["id", "name", "command"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id); name = try values.decode(String.self, forKey: .name)
         command = try values.decode(String.self, forKey: .command)
@@ -46,6 +75,10 @@ struct AppPreferences: Codable, Equatable {
     }
 
     init(from decoder: Decoder) throws {
+        try rejectUnknownKeys(
+            in: decoder,
+            allowed: ["allowsCellularConnections", "shortcuts", "newTerminalDefaultShortcutID"]
+        )
         let values = try decoder.container(keyedBy: CodingKeys.self)
         allowsCellularConnections = try values.decode(Bool.self, forKey: .allowsCellularConnections)
         shortcuts = try values.decode([CLIShortcut].self, forKey: .shortcuts)
