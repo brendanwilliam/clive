@@ -28,7 +28,21 @@ Clive combines a native SwiftUI terminal client with a user-started macOS menu b
 
 ## Install and pair
 
-macOS prerelease packages are available from [GitHub Releases](https://github.com/brendanwilliam/clive/releases). Download `clive.pkg` and `clive.pkg.sha256`, verify the checksum, and open the installer:
+Install the Apple-silicon macOS companion with Homebrew (macOS 14 or later):
+
+```sh
+brew install --cask brendanwilliam/tap/clive
+```
+
+This installs `/Applications/Clive.app` and `/usr/local/bin/clive`. Use `brew upgrade --cask brendanwilliam/tap/clive` to update. Ordinary uninstall preserves your local pairing state:
+
+```sh
+brew uninstall --cask clive
+```
+
+Use `brew uninstall --cask --zap clive` only when you want to erase Clive's local pairing state and pair every device again. The tap follows prereleases as well as stable releases, so prerelease updates may be offered before the next stable version.
+
+If Homebrew is unavailable, download `clive.pkg` and `clive.pkg.sha256` from [GitHub Releases](https://github.com/brendanwilliam/clive/releases), verify the checksum, and open the installer:
 
 ```sh
 shasum -a 256 -c clive.pkg.sha256
