@@ -50,6 +50,8 @@ Never weaken security controls, platform constraints, or assertions merely to ma
 
 ## Commit & Pull Request Guidelines
 
+Before using `gh` to inspect or change GitHub issues, pull requests, or repository state, run `gh auth status` and resolve any authentication failure first.
+
 Create every working branch for an issue and include its issue number in the branch name, using the format `<issue-number>-<short-description>` (for example, `123-improve-pairing-recovery`). Do not begin implementation without an associated issue, except for emergency operational recovery explicitly authorized by the repository owner.
 
 ## Issue Creation Guidelines

@@ -2368,6 +2368,14 @@
       "result": "no-component-impact"
     },
     {
+      "id": "2026-08-24-zz-github-cli-authentication-checks",
+      "reason": "GitHub CLI authentication guidance affects contributor workflow only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
+    },
+    {
       "id": "2026-08-24-zz-signed-local-refresh",
       "reason": "The opt-in physical-device refresh workflow changes development deployment behavior without changing mapped application components or resource relationships.",
       "paths": [
