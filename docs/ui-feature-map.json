@@ -2360,11 +2360,18 @@
     },
     {
       "id": "2026-08-24-z-repository-cleanup-skill",
-      "reason": "GitHub CLI authentication and repository cleanup guidance affect contributor workflow and remote GitHub maintenance only; they do not change mapped user interface components or resource relationships.",
+      "reason": "Repository cleanup guidance affects contributor workflow and remote GitHub maintenance only; it does not change mapped user interface components or resource relationships.",
       "paths": [
-        "AGENTS.md",
         "skills/repository-cleanup/SKILL.md",
         "skills/repository-cleanup/agents/openai.yaml"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zz-github-cli-authentication-checks",
+      "reason": "GitHub CLI authentication guidance affects contributor workflow only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
       ],
       "result": "no-component-impact"
     }
