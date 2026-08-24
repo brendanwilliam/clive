@@ -2357,6 +2357,15 @@
         "skills/clive-hig-audit/agents/openai.yaml"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-z-repository-cleanup-skill",
+      "reason": "Repository cleanup guidance affects contributor workflow and remote GitHub maintenance only; it does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "skills/repository-cleanup/SKILL.md",
+        "skills/repository-cleanup/agents/openai.yaml"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
