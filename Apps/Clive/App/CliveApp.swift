@@ -20,6 +20,10 @@ struct CliveApp: App {
 
     init() {
 #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing-setup-guide") {
+            _coordinator = State(initialValue: WorkspaceCoordinator.uiTestSetupGuideFixture())
+            return
+        }
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
             _coordinator = State(initialValue: WorkspaceCoordinator.uiTestFixture())
             return

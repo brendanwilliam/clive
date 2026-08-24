@@ -844,28 +844,44 @@
       "aliases": [
         "Current Mac"
       ],
-      "presentation": "Settings navigation destination currently showing a coming-soon empty state.",
+      "presentation": "Settings destination and automatic post-authentication guide while no Mac is paired; dismissal lasts for the current launch and pairing completion ends automatic presentation.",
       "repetition": null,
       "related_components": [
         "ios.pairing.scanner"
       ],
       "states": [
-        "coming-soon"
+        "install-mac",
+        "scan-secure-code",
+        "pairing-failed",
+        "paired"
       ],
       "resources": {
         "views": [
           "Apps/Clive/App/WorkspaceView.swift"
         ],
-        "state_actions_navigation": [],
-        "models_services_protocols": [],
-        "accessibility_ids": [],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/ConnectionSetupGuide.swift",
+          "Apps/Clive/App/PairedMacsModel.swift"
+        ],
+        "accessibility_ids": [
+          "setup-guide-screen",
+          "setup-guide-pair-mac-button",
+          "setup-guide-pairing-error"
+        ],
         "localization": [],
-        "tests": [],
+        "tests": [
+          "Apps/Clive/Tests/ConnectionSetupGuideTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
         "fixtures": [],
         "assets": [],
         "previews": [],
         "documentation": [
-          "README.md"
+          "README.md",
+          "docs/releases.md"
         ]
       }
     },
@@ -1128,6 +1144,7 @@
       "related_components": [
         "macos.menubar.device-menu",
         "macos.cellular.window",
+        "macos.connection-setup.window",
         "macos.pairing.window",
         "macos.menubar.end-session-alert"
       ],
@@ -1274,11 +1291,12 @@
         "Pairing window",
         "Secure pairing QR"
       ],
-      "presentation": "Window opened from the menu bar to create a one-attempt QR and approve or reject the scanning iPhone.",
+      "presentation": "Window opened from the menu bar or Connection Setup to create a one-attempt secure Pair this iPhone QR and approve or reject the scanning iPhone.",
       "repetition": null,
       "related_components": [
         "ios.pairing.scanner",
-        "macos.menubar.root"
+        "macos.menubar.root",
+        "macos.connection-setup.window"
       ],
       "states": [
         "creating-code",
@@ -1301,7 +1319,9 @@
           "Sources/CliveDaemon/ControlSocket.swift",
           "Sources/CliveCore/Pairing.swift"
         ],
-        "accessibility_ids": [],
+        "accessibility_ids": [
+          "secure-pairing-qr-label"
+        ],
         "localization": [],
         "tests": [
           "Tests/CliveDaemonTests/ControlSocketTests.swift"
@@ -2302,6 +2322,55 @@
           "docs/architecture.md",
           "docs/cellular-connectivity.md",
           "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.connection-setup.window",
+      "semantic_name": "Connection Setup",
+      "platform": "macos",
+      "kind": "window",
+      "parent": null,
+      "canonical_path": "Connection Setup",
+      "order": 4,
+      "aliases": [
+        "Get Clive for iPhone"
+      ],
+      "presentation": "Menu-bar window automatically opened once per launch while no iPhone is paired, and always available from Connection Setup in the menu.",
+      "repetition": null,
+      "related_components": [
+        "macos.menubar.root",
+        "macos.pairing.window",
+        "ios.settings.setup-guide"
+      ],
+      "states": [
+        "no-paired-iphone",
+        "paired-iphone"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [],
+        "accessibility_ids": [
+          "connection-setup-window",
+          "connection-setup-testflight-qr",
+          "connection-setup-testflight-link",
+          "connection-setup-pair-iphone-button"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/ConnectionSetupGuideTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "README.md",
+          "docs/releases.md"
         ]
       }
     }

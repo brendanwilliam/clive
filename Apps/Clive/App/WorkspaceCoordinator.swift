@@ -375,6 +375,7 @@ struct LocalStateResetter {
     private var isSceneActive = false
     private var hasCapturedForeground = false
     private var authenticationInFlight = false
+    private var connectionSetupPolicy = ConnectionSetupPresentationPolicy()
     private let isUITestFixture: Bool
 
     init(
@@ -502,6 +503,16 @@ struct LocalStateResetter {
 
     func showSettings() { presentedScreen = .settings }
     func showConnections() { showTerminalList() }
+
+    func shouldPresentConnectionSetupGuide() -> Bool {
+        connectionSetupPolicy.shouldAutoPresent(hasPairedDevice: !macs.devices.isEmpty)
+    }
+
+    func pairingDidSucceed() {
+        connectionSetupPolicy.completePairing()
+        recovery = nil
+        resolveExternalLaunch()
+    }
 
     func dismissPresentedScreen() {
         presentedScreen = nil
@@ -852,6 +863,13 @@ struct LocalStateResetter {
             )
         ]
         coordinator.selectedSessionID = coordinator.sessions.first?.id
+        return coordinator
+    }
+
+    static func uiTestSetupGuideFixture() -> WorkspaceCoordinator {
+        let coordinator = WorkspaceCoordinator(authenticate: {}, provideIdentity: { throw CocoaError(.userCancelled) }, isUITestFixture: true)
+        coordinator.state = .active
+        coordinator.recovery = .noPairedMac
         return coordinator
     }
 #endif
