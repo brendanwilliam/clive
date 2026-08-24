@@ -50,6 +50,7 @@ final class TerminalSessionManagerTests: XCTestCase {
 
         XCTAssertThrowsError(try manager.attachExisting(deviceID: "phone", serverSessionID: original.serverSessionID, size: size, attachmentID: UUID(), attachmentKind: .macCLI, lastReceivedOffset: 0, output: { _, done in done() }, onDetached: { _ in }, onShellExit: {})) { error in
             XCTAssertEqual(error as? TerminalSessionManager.AttachmentError, .attachedByDifferentEndpoint)
+            XCTAssertEqual(error.localizedDescription, "The requested session is still attached to an active terminal on a different endpoint. Disconnect it before trying again.")
         }
         XCTAssertEqual(manager.descriptors(deviceID: "phone").first?.attachmentCount, 1)
     }
@@ -168,6 +169,40 @@ final class TerminalSessionManagerTests: XCTestCase {
         while process.terminateCount == 0 && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }
 
         XCTAssertEqual(process.terminateCount, 1)
+    }
+
+    func testRepeatedDisconnectCleanupLeavesSessionAvailableForLocalResume() throws {
+        let process = FakeTerminalProcess()
+        let manager = TerminalSessionManager(registry: SessionRegistry(), graceInterval: 60, processFactory: { _, _, output, exit in
+            process.output = output; process.exit = exit; return process
+        })
+        let clientID = UUID()
+        let originalAttachment = UUID()
+        let original = try attach(manager, clientID: clientID, attachmentID: originalAttachment)
+
+        // A crashed local control socket can report disconnect more than once. The
+        // cleanup must release only its attachment and retain the underlying PTY.
+        manager.detach(deviceID: "phone", clientSessionID: clientID, attachmentID: originalAttachment)
+        manager.detach(deviceID: "phone", clientSessionID: clientID, attachmentID: originalAttachment)
+        manager.synchronize()
+
+        XCTAssertEqual(manager.descriptors(deviceID: "phone").first?.attachmentCount, 0)
+        let resumed = try manager.attachExisting(
+            deviceID: "phone",
+            serverSessionID: original.serverSessionID,
+            size: size,
+            attachmentID: UUID(),
+            attachmentKind: .macCLI,
+            lastReceivedOffset: 0,
+            output: { _, completion in completion() },
+            onDetached: { _ in },
+            onShellExit: {}
+        )
+
+        XCTAssertEqual(resumed?.serverSessionID, original.serverSessionID)
+        XCTAssertEqual(resumed?.disposition, .resumed)
+        XCTAssertEqual(manager.descriptors(deviceID: "phone").first?.attachmentCount, 1)
+        XCTAssertEqual(process.terminateCount, 0)
     }
 
     func testRepeatedRouteRacesKeepOnePTYAndOneLogicalSession() throws {

@@ -4,7 +4,16 @@ import CliveCore
 final class TerminalSessionManager: @unchecked Sendable {
     struct Attachment { let serverSessionID: UUID; let disposition: SessionOpened.Disposition; let replay: Data; let replayOffset: UInt64; let replayTruncated: Bool }
     enum DetachmentReason { case slowConsumer, replaced }
-    enum AttachmentError: Error, Equatable { case attachedByDifferentEndpoint }
+    enum AttachmentError: Error, Equatable, LocalizedError {
+        case attachedByDifferentEndpoint
+
+        var errorDescription: String? {
+            switch self {
+            case .attachedByDifferentEndpoint:
+                "The requested session is still attached to an active terminal on a different endpoint. Disconnect it before trying again."
+            }
+        }
+    }
     typealias Output = @Sendable (TerminalOutputChunk, @escaping @Sendable () -> Void) -> Void
     typealias CatalogUpdate = @Sendable ([SessionDescriptor]) -> Void
     typealias StateUpdate = @Sendable (AttachmentState) -> Void
