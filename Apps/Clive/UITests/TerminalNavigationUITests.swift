@@ -69,8 +69,8 @@ final class TerminalNavigationUITests: XCTestCase {
     func testConnectionDetailsContainSafeTrustAndReplayMessaging() {
         app.buttons["connection-details-button"].tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 2))
-        XCTAssertTrue(text(containing: "Open sessions").exists)
-        XCTAssertTrue(text(containing: "Active sessions").exists)
+        XCTAssertTrue(text(containing: "Open Terminals").exists)
+        XCTAssertTrue(text(containing: "Active Terminals").exists)
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Test Mac")).firstMatch.tap()
         XCTAssertTrue(text(containing: "Local network").waitForExistence(timeout: 2))
         XCTAssertTrue(text(containing: "TLS 1.3").exists)

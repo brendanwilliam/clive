@@ -43,6 +43,71 @@ def canonical(value: dict) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
 
 
+def validate_schema(instance: object, schema: dict, root: dict, path: str = "$") -> None:
+    """Validate the JSON Schema vocabulary used by the feature-map schema."""
+    if "$ref" in schema:
+        reference = schema["$ref"]
+        if not isinstance(reference, str) or not reference.startswith("#/"):
+            raise MapError(f"unsupported schema reference at {path}: {reference!r}")
+        target: object = root
+        for part in reference[2:].split("/"):
+            if not isinstance(target, dict) or part not in target:
+                raise MapError(f"unresolved schema reference at {path}: {reference}")
+            target = target[part]
+        if not isinstance(target, dict):
+            raise MapError(f"schema reference is not an object at {path}: {reference}")
+        validate_schema(instance, target, root, path)
+        return
+
+    expected_type = schema.get("type")
+    if expected_type is not None:
+        names = expected_type if isinstance(expected_type, list) else [expected_type]
+        matches = {
+            "object": lambda value: isinstance(value, dict),
+            "array": lambda value: isinstance(value, list),
+            "string": lambda value: isinstance(value, str),
+            "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
+            "null": lambda value: value is None,
+        }
+        if not all(name in matches for name in names):
+            raise MapError(f"unsupported schema type at {path}: {names!r}")
+        if not any(matches[name](instance) for name in names):
+            raise MapError(f"schema type mismatch at {path}: expected {' or '.join(names)}")
+
+    if "const" in schema and instance != schema["const"]:
+        raise MapError(f"schema const mismatch at {path}")
+    if "enum" in schema and instance not in schema["enum"]:
+        raise MapError(f"schema enum mismatch at {path}")
+    if isinstance(instance, str):
+        if len(instance) < schema.get("minLength", 0):
+            raise MapError(f"schema minLength mismatch at {path}")
+        if "pattern" in schema and re.fullmatch(schema["pattern"], instance) is None:
+            raise MapError(f"schema pattern mismatch at {path}")
+    if isinstance(instance, int) and not isinstance(instance, bool):
+        if "minimum" in schema and instance < schema["minimum"]:
+            raise MapError(f"schema minimum mismatch at {path}")
+    if isinstance(instance, list):
+        if len(instance) < schema.get("minItems", 0):
+            raise MapError(f"schema minItems mismatch at {path}")
+        if "items" in schema:
+            for index, value in enumerate(instance):
+                validate_schema(value, schema["items"], root, f"{path}[{index}]")
+    if isinstance(instance, dict):
+        required = schema.get("required", [])
+        missing = [key for key in required if key not in instance]
+        if missing:
+            raise MapError(f"schema required properties missing at {path}: {missing!r}")
+        properties = schema.get("properties", {})
+        additional = schema.get("additionalProperties", True)
+        for key, value in instance.items():
+            if key in properties:
+                validate_schema(value, properties[key], root, f"{path}.{key}")
+            elif isinstance(additional, dict):
+                validate_schema(value, additional, root, f"{path}.{key}")
+            elif additional is False:
+                raise MapError(f"schema additional property at {path}: {key}")
+
+
 def safe_path(value: str, *, must_exist: bool = True) -> None:
     path = PurePosixPath(value)
     if not value or path.is_absolute() or ".." in path.parts or value.startswith(".git/"):
@@ -176,10 +241,9 @@ def check_change_data(old: dict | None, new: dict, changed_paths: list[str], map
 def command_validate(args: argparse.Namespace) -> None:
     path = Path(args.map).resolve()
     data = load(path)
-    validate_data(data, source=path, canonical_text=path.read_text(encoding="utf-8"))
     schema = load(SCHEMA)
-    if schema.get("properties", {}).get("schema_version", {}).get("const") != data["schema_version"]:
-        raise MapError("schema and map versions disagree")
+    validate_schema(data, schema, schema)
+    validate_data(data, source=path, canonical_text=path.read_text(encoding="utf-8"))
     print(f"valid: {path.relative_to(ROOT)} ({len(data['components'])} reachable, {len(data['legacy_components'])} legacy)")
 
 

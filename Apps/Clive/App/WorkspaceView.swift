@@ -60,7 +60,7 @@ struct WorkspaceView: View {
             Button("Cancel", role: .cancel) { deleteTarget = nil }
             Button("Close Terminal", role: .destructive) { coordinator.close(session); deleteTarget = nil }
         } message: { session in
-            Text("Closing \(session.descriptor.label) only detaches this iPhone. The shared shell remains available on the Mac.")
+            Text("Closing \(session.descriptor.label) only detaches this iPhone. The shared Terminal remains available on the Mac.")
         }
         .alert("Delete all terminals?", isPresented: $showingClearAllConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -182,9 +182,9 @@ struct WorkspaceView: View {
                         ContentUnavailableView {
                             Label("No terminal", systemImage: "terminal")
                         } description: {
-                            Text("Start a new shell on your paired Mac.")
+                            Text("Start a new Terminal on your Connection.")
                         } actions: {
-                            Button("New terminal") { coordinator.addShell() }
+                            Button("New Terminal") { coordinator.addShell() }
                                 .buttonStyle(.borderedProminent)
                         }
                         .tag(TerminalPagerPage.empty)
@@ -335,7 +335,7 @@ struct WorkspaceView: View {
         }
         .buttonStyle(.plain)
         .disabled(session.attachmentCount != 0)
-        .accessibilityIdentifier("reconnect-session-\(session.id.uuidString)")
+        .accessibilityIdentifier("reconnect-terminal-\(session.id.uuidString)")
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
                 .tint(.green)
@@ -395,10 +395,10 @@ struct WorkspaceView: View {
             List {
                 if let mac = coordinator.selectedMac {
                     Section("Connection") {
-                        LabeledContent("Device", value: mac.displayName)
-                        LabeledContent("Session health", value: ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
+                        LabeledContent("Connection", value: mac.displayName)
+                        LabeledContent("Connection health", value: ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
                         LabeledContent("Route", value: ConnectionPresentation.routeLabel(for: coordinator.selectedSession?.activeRouteKind))
-                        LabeledContent("Session", value: connectionPresentation.activity)
+                        LabeledContent("Terminal", value: connectionPresentation.activity)
                         LabeledContent("Attachments", value: coordinator.selectedSession?.attachmentState.map { "\($0.attachmentCount) connected" } ?? "Unavailable")
                         LabeledContent("Resize owner", value: coordinator.selectedSession?.attachmentState?.resizeOwner?.rawValue ?? "None")
                         if let warning = connectionPresentation.replayWarning { Text(warning).foregroundStyle(.orange) }
@@ -564,7 +564,7 @@ struct WorkspaceView: View {
         switch session.state {
         case .active(_, _, let replayTruncated):
             VStack(spacing: 6) {
-                if session.showsReconnectNotice { Text("Reconnected to the existing shell.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
+                if session.showsReconnectNotice { Text("Reconnected to the existing Terminal.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
                 if replayTruncated { Text("Some output produced while disconnected was discarded.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
             }
         case .connecting: ProgressView("Connecting…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12))
@@ -572,7 +572,7 @@ struct WorkspaceView: View {
             ProgressView(waitingForWiFi ? "Waiting for Wi-Fi…" : "Reconnecting…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12))
         case .disconnected: ContentUnavailableView("Disconnected", systemImage: "network.slash")
         case .resumeUnavailable:
-            ContentUnavailableView { Label("Session no longer available", systemImage: "terminal.fill") } description: { Text("The detached shell could not be resumed.") } actions: { Button("Start New Terminal") { coordinator.addShell() } }
+            ContentUnavailableView { Label("Terminal no longer available", systemImage: "terminal.fill") } description: { Text("The detached Terminal could not be resumed.") } actions: { Button("Start New Terminal") { coordinator.addShell() } }
         case .revoked:
             ContentUnavailableView { Label("Access revoked", systemImage: "lock.slash") } description: { Text("Pair this iPhone with the Mac again.") } actions: { Button("Pair Again") { showingScanner = true } }
         case .workingDirectoryUnavailable:
@@ -596,7 +596,7 @@ private struct SettingsView: View {
         NavigationStack {
             List {
                 if let connection = coordinator.selectedMac {
-                    Section("Current Mac") {
+                    Section("Current Connection") {
                         NavigationLink {
                             ConnectionDetailsView(coordinator: coordinator, connection: connection)
                         } label: {
@@ -604,9 +604,9 @@ private struct SettingsView: View {
                         }
                     }
                 }
-                Section("Sessions") {
-                    LabeledContent("Open sessions", value: "\(coordinator.openSessionCount)")
-                    LabeledContent("Active sessions", value: "\(coordinator.activeSessionCount)")
+                Section("Terminals") {
+                    LabeledContent("Open Terminals", value: "\(coordinator.openSessionCount)")
+                    LabeledContent("Active Terminals", value: "\(coordinator.activeSessionCount)")
                 }
                 Section {
                     Toggle("Cellular connections", isOn: Binding(
@@ -713,7 +713,7 @@ private struct ConnectionDetailsView: View {
     var body: some View {
         List {
             Section("Connection") {
-                LabeledContent("Device", value: connection.displayName)
+                LabeledContent("Connection", value: connection.displayName)
                 LabeledContent("Status", value: ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
                 LabeledContent("Route", value: ConnectionPresentation.routeLabel(for: coordinator.selectedSession?.activeRouteKind))
             }

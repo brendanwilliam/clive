@@ -20,6 +20,17 @@ class FeatureMapTests(unittest.TestCase):
         text = (ROOT / "docs/ui-feature-map.json").read_text()
         feature_map.validate_data(self.data, canonical_text=text)
 
+    def test_repository_map_matches_documented_schema(self):
+        schema = json.loads((ROOT / "docs/ui-feature-map.schema.json").read_text())
+        feature_map.validate_schema(self.data, schema, schema)
+
+    def test_schema_validation_rejects_a_documented_constraint_violation(self):
+        value = copy.deepcopy(self.data)
+        value["components"][0]["kind"] = "implementation-detail"
+        schema = json.loads((ROOT / "docs/ui-feature-map.schema.json").read_text())
+        with self.assertRaisesRegex(feature_map.MapError, "schema enum mismatch"):
+            feature_map.validate_schema(value, schema, schema)
+
     def test_dangling_relationship_is_rejected(self):
         value = copy.deepcopy(self.data)
         value["components"][0]["related_components"] = ["ios.missing.value"]
