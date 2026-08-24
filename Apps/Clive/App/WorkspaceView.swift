@@ -11,33 +11,24 @@ struct WorkspaceView: View {
     @State private var deleteTarget: WorkspaceSession?
     @State private var showingClearAllConfirmation = false
     @State private var showingDisconnectConfirmation = false
-    @State private var showingShortcuts = false
-    @State private var shortcutEditTarget: CLIShortcut?
-    @State private var shortcutEditName = ""
-    @State private var shortcutEditCommand = ""
-    @State private var isReorderingShortcuts = false
-    @State private var pagerSelection = TerminalPagerPage.empty
-    @State private var pagerPolicy = TerminalPagerPolicy()
+    @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        GeometryReader { proxy in
-            let drawerWidth = min(proxy.size.width * 0.86, 380)
-            ZStack(alignment: .leading) {
-                navigation
-                    .offset(x: coordinator.presentedScreen == .terminalList ? drawerWidth : 0)
-                    .disabled(coordinator.presentedScreen == .terminalList)
-
-                if coordinator.presentedScreen == .terminalList {
-                    Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { coordinator.dismissPresentedScreen() }
-                    terminalDrawer.frame(width: drawerWidth).transition(.move(edge: .leading))
-                }
-            }
-            .animation(.snappy(duration: 0.18, extraBounce: 0), value: coordinator.presentedScreen)
+        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+            terminalSidebar
+                .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 380)
+        } detail: {
+            navigation
         }
         .task { coordinator.start(); ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() }
         .onOpenURL { url in if let action = ExternalLaunchURL.action(for: url) { coordinator.handleExternalLaunch(action) } }
         .onReceive(NotificationCenter.default.publisher(for: .externalTerminalLaunchRequested)) { _ in coordinator.handleExternalLaunch() }
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
+        .onChange(of: coordinator.presentedScreen) { _, screen in
+            guard screen == .terminalList else { return }
+            sidebarVisibility = .all
+            coordinator.dismissPresentedScreen()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { coordinator.sceneWillLeaveForeground() }
             else if coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
@@ -47,7 +38,6 @@ struct WorkspaceView: View {
             SettingsView(coordinator: coordinator)
         }
         .fullScreenCover(isPresented: $showingScanner) { scanner }
-        .sheet(isPresented: $showingShortcuts) { shortcutsSheet }
         .alert("Rename terminal", isPresented: renameBinding) {
             TextField("Terminal name", text: $renameText)
             Button("Cancel", role: .cancel) { renameTarget = nil }
@@ -110,7 +100,7 @@ struct WorkspaceView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { terminalButton }
-                ToolbarItem(placement: .principal) { connectionStatusButton }
+                ToolbarItem(placement: .principal) { terminalTitleButton }
                 ToolbarItem(placement: .topBarTrailing) { terminalActions }
             }
             .toolbarBackground(Color.black.opacity(0.18), for: .navigationBar)
@@ -119,7 +109,7 @@ struct WorkspaceView: View {
     }
 
     private var terminalButton: some View {
-        Button { navigate { coordinator.showTerminalList() } } label: {
+        Button { sidebarVisibility = .all } label: {
             HStack(spacing: 3) {
                 Image(systemName: "chevron.left")
                 Text("\(coordinator.sessions.count)").monospacedDigit()
@@ -134,24 +124,12 @@ struct WorkspaceView: View {
         .accessibilityValue("\(coordinator.sessions.count) open")
     }
 
-    private var connectionStatusButton: some View {
-        let presentation = connectionPresentation
-        return Button { navigate { coordinator.showSettings() } } label: {
-            HStack(spacing: 6) {
-                Image(systemName: presentation.icon)
-                    .foregroundStyle(connectionHealthColor)
-                Text(coordinator.selectedMac?.displayName ?? "No Mac")
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .font(.subheadline.weight(.semibold))
-            .frame(height: 44)
-        }
-        .buttonStyle(.plain)
-        .disabled(coordinator.selectedMac == nil)
-        .accessibilityLabel("Settings")
-        .accessibilityValue(presentation.accessibilityValue)
-        .accessibilityIdentifier("connection-details-button")
+    private var terminalTitleButton: some View {
+        TerminalTitleControl(
+            title: coordinator.selectedSession?.descriptor.label ?? "No terminal",
+            isEnabled: coordinator.selectedSession != nil,
+            rename: { if let session = coordinator.selectedSession { beginRename(session) } }
+        )
     }
 
     private var connectionPresentation: ConnectionStatusPresentation {
@@ -168,12 +146,8 @@ struct WorkspaceView: View {
     }
 
     private var terminalActions: some View {
-        HStack(spacing: 0) {
-            Button { navigate { showingShortcuts = true } } label: { Image(systemName: "bolt.fill").frame(width: 38, height: 34) }
-                .accessibilityLabel("Shortcuts").accessibilityIdentifier("shortcuts-button")
-            Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus.rectangle.on.rectangle").frame(width: 38, height: 34) }
-                .accessibilityLabel("New Terminal").accessibilityIdentifier("new-terminal-button")
-        }
+        Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus.rectangle.on.rectangle").frame(width: 38, height: 34) }
+            .accessibilityLabel("New Terminal").accessibilityIdentifier("new-terminal-button")
         .buttonStyle(.plain)
         .background(.thinMaterial, in: Capsule())
     }
@@ -182,51 +156,38 @@ struct WorkspaceView: View {
         VStack(spacing: 0) {
             if let recovery = coordinator.recovery { recoveryView(recovery) }
             else {
-                TabView(selection: $pagerSelection) {
-                    Color.clear
-                        .tag(TerminalPagerPage.leading)
-                        .accessibilityHidden(true)
-                    if coordinator.sessions.isEmpty {
-                        ContentUnavailableView {
-                            Label("No terminal", systemImage: "terminal")
-                        } description: {
-                            Text("Start a new Terminal on your Connection.")
-                        } actions: {
-                            Button("New Terminal") { coordinator.addShell() }
-                                .buttonStyle(.borderedProminent)
-                        }
-                        .tag(TerminalPagerPage.empty)
-                    } else {
-                        ForEach(coordinator.sessions) { session in
-                            ZStack {
-                                TerminalSurfaceView(
-                                    session: session.client,
-                                    accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
-                                    isSelected: session.id == coordinator.selectedSessionID
-                                )
-                                sessionOverlay(session)
-                            }
-                            .padding(TerminalSurfaceConfiguration.contentPadding)
-                            .tag(TerminalPagerPage.terminal(session.id))
-                            .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
-                            .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
-                        }
+                if coordinator.sessions.isEmpty {
+                    ContentUnavailableView {
+                        Label("No terminal", systemImage: "terminal")
+                    } description: {
+                        Text("Start a new Terminal on your Connection.")
+                    } actions: {
+                        Button("New Terminal") { coordinator.addShell() }.buttonStyle(.borderedProminent)
                     }
-                    Color.clear
-                        .tag(TerminalPagerPage.trailing)
-                        .accessibilityHidden(true)
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .onAppear { pagerSelection = coordinator.selectedSessionID.map(TerminalPagerPage.terminal) ?? .empty }
-                .onChange(of: pagerSelection) { _, page in handlePagerSelection(page) }
-                .onChange(of: coordinator.selectedSessionID) { _, id in
-                    pagerSelection = id.map(TerminalPagerPage.terminal) ?? .empty
+                } else if let session = coordinator.selectedSession {
+                    ZStack {
+                        TerminalSurfaceView(
+                            session: session.client,
+                            accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
+                            isSelected: true,
+                            shortcuts: coordinator.preferences.value.shortcuts,
+                            openDrawer: { coordinator.showTerminalList() },
+                            selectAdjacentTerminal: selectAdjacentTerminal,
+                            runShortcut: coordinator.runShortcut,
+                            manageShortcuts: { coordinator.showSettings() }
+                        )
+                        .id(session.id)
+                        sessionOverlay(session)
+                    }
+                    .padding(TerminalSurfaceConfiguration.contentPadding)
+                    .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
+                    .accessibilityValue("Selected")
                 }
             }
         }
     }
 
-    private var terminalDrawer: some View {
+    private var terminalSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             List {
                 Section {
@@ -379,23 +340,15 @@ struct WorkspaceView: View {
         renameText = session.descriptor.label; renameTarget = session
     }
 
-    private func handlePagerSelection(_ page: TerminalPagerPage) {
-        let before = coordinator.sessions.map(\.id)
-        switch pagerPolicy.transition(to: page, terminalIDs: before) {
-        case .select(let id):
-            pagerSelection = .terminal(id); coordinator.selectSession(id)
-        case .openDrawer(let restoring):
-            pagerSelection = restoring.map(TerminalPagerPage.terminal) ?? .empty
-            coordinator.selectSession(restoring)
-            coordinator.showTerminalList()
-        case .createTerminal:
-            coordinator.addShell()
-            if let id = coordinator.selectedSessionID { pagerSelection = .terminal(id) }
-        case .restore(let id):
-            pagerSelection = id.map(TerminalPagerPage.terminal) ?? .empty
-            coordinator.selectSession(id)
-        case nil: break
-        }
+    private func selectAdjacentTerminal(forward: Bool) {
+        guard let selected = coordinator.selectedSessionID,
+              let index = coordinator.sessions.firstIndex(where: { $0.id == selected }),
+              let adjacent = TerminalTwoFingerNavigationPolicy.adjacentIndex(
+                  current: index,
+                  count: coordinator.sessions.count,
+                  forward: forward
+              ) else { return }
+        coordinator.selectSession(coordinator.sessions[adjacent].id)
     }
 
     private var connectionDetailsSheet: some View {
@@ -432,85 +385,6 @@ struct WorkspaceView: View {
         }
     }
 
-    private var shortcutsSheet: some View {
-        NavigationStack {
-            List {
-                if coordinator.preferences.value.shortcuts.isEmpty {
-                    ContentUnavailableView("No shortcuts", systemImage: "bolt", description: Text("Add commands in Settings to run them here."))
-                } else {
-                    ForEach(coordinator.preferences.value.shortcuts) { shortcut in
-                        Button {
-                            if coordinator.runShortcut(shortcut) { showingShortcuts = false }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "terminal")
-                                    .foregroundStyle(.tint)
-                                    .frame(width: 20, height: 20)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
-                                    Text(shortcut.command.isEmpty ? "No command" : shortcut.command)
-                                        .font(.caption.monospaced())
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer(minLength: 4)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .disabled(isReorderingShortcuts || shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityIdentifier("shortcut-row-\(shortcut.id.uuidString)")
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button("Delete", systemImage: "trash", role: .destructive) {
-                                coordinator.preferences.deleteShortcut(id: shortcut.id)
-                            }
-                            Button("Edit", systemImage: "pencil") { beginEditing(shortcut) }
-                                .tint(.blue)
-                        }
-                    }
-                    .onMove(perform: coordinator.preferences.moveShortcuts)
-                }
-            }
-            .environment(\.editMode, .constant(isReorderingShortcuts ? .active : .inactive))
-            .navigationTitle("Shortcuts")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { showingShortcuts = false }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button(isReorderingShortcuts ? "Done Reordering" : "Reorder Shortcuts", systemImage: "arrow.up.arrow.down") {
-                            isReorderingShortcuts.toggle()
-                        }
-                        Button("Manage in Settings", systemImage: "gearshape") {
-                            showingShortcuts = false
-                            DispatchQueue.main.async { coordinator.showSettings() }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                    .accessibilityLabel("Shortcut options")
-                    .accessibilityIdentifier("shortcut-options")
-                }
-            }
-            .accessibilityIdentifier("shortcuts-sheet")
-            .presentationDetents([.medium, .large])
-            .alert("Edit shortcut", isPresented: shortcutEditBinding) {
-                TextField("Name", text: $shortcutEditName)
-                TextField("Command", text: $shortcutEditCommand)
-                Button("Cancel", role: .cancel) { shortcutEditTarget = nil }
-                Button("Save") {
-                    if let shortcutEditTarget {
-                        coordinator.preferences.updateShortcut(
-                            id: shortcutEditTarget.id,
-                            name: shortcutEditName,
-                            command: shortcutEditCommand
-                        )
-                    }
-                    shortcutEditTarget = nil
-                }
-            }
-        }
-    }
 
     private var scanner: some View {
         PairingScannerView(
@@ -521,7 +395,6 @@ struct WorkspaceView: View {
     }
 
     private var renameBinding: Binding<Bool> { Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } }) }
-    private var shortcutEditBinding: Binding<Bool> { Binding(get: { shortcutEditTarget != nil }, set: { if !$0 { shortcutEditTarget = nil } }) }
     private var deleteBinding: Binding<Bool> { Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }) }
     private var disconnectErrorBinding: Binding<Bool> { Binding(get: { coordinator.disconnectError != nil }, set: { if !$0 { coordinator.disconnectError = nil } }) }
     private var deleteAllErrorBinding: Binding<Bool> { Binding(get: { coordinator.deleteAllError != nil }, set: { if !$0 { coordinator.deleteAllError = nil } }) }
@@ -530,12 +403,6 @@ struct WorkspaceView: View {
     private func navigate(_ action: () -> Void) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         action()
-    }
-
-    private func beginEditing(_ shortcut: CLIShortcut) {
-        shortcutEditName = shortcut.name
-        shortcutEditCommand = shortcut.command
-        shortcutEditTarget = shortcut
     }
 
     @ViewBuilder private func recoveryView(_ recovery: WorkspaceCoordinator.Recovery) -> some View {
@@ -591,6 +458,42 @@ struct WorkspaceView: View {
         case .networkError(let message):
             ContentUnavailableView { Label("Connection unavailable", systemImage: "wifi.exclamationmark") } description: { Text(message) } actions: { Button("Retry") { coordinator.retryConnection() }; Button("Choose Mac") { coordinator.showConnections() } }
         }
+    }
+}
+
+private struct TerminalTitleControl: UIViewRepresentable {
+    let title: String
+    let isEnabled: Bool
+    let rename: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(rename: rename) }
+
+    func makeUIView(context: Context) -> UIButton {
+        let button = UIButton(type: .system)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.titleLabel?.lineBreakMode = .byTruncatingTail
+        button.accessibilityLabel = "Terminal title"
+        button.accessibilityIdentifier = "terminal-title-button"
+        button.addTarget(context.coordinator, action: #selector(Coordinator.renameTerminal), for: .touchUpInside)
+        button.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        return button
+    }
+
+    func updateUIView(_ button: UIButton, context: Context) {
+        context.coordinator.rename = rename
+        button.setTitle(title, for: .normal)
+        button.isEnabled = isEnabled
+    }
+
+    @MainActor final class Coordinator: NSObject {
+        var rename: () -> Void
+
+        init(rename: @escaping () -> Void) {
+            self.rename = rename
+        }
+
+        @objc func renameTerminal() { rename() }
     }
 }
 

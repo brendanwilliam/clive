@@ -97,6 +97,13 @@ enum ShortcutExecutionPolicy {
     }
 }
 
+enum TerminalTwoFingerNavigationPolicy {
+    static func adjacentIndex(current: Int, count: Int, forward: Bool) -> Int? {
+        let adjacent = forward ? current + 1 : current - 1
+        return (0..<count).contains(adjacent) ? adjacent : nil
+    }
+}
+
 enum DrawerRowRevealPolicy {
     static let actionWidth: CGFloat = 56
     static let revealWidth = actionWidth * 2

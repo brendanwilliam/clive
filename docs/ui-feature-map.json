@@ -156,28 +156,25 @@
     },
     {
       "id": "ios.workspace.current-connection",
-      "semantic_name": "Current Connection",
+      "semantic_name": "Terminal Title",
       "platform": "ios",
       "kind": "column",
       "parent": "ios.workspace.header-row",
-      "canonical_path": "Workspace/Header Row/Current Connection",
+      "canonical_path": "Workspace/Header Row/Terminal Title",
       "order": 2,
       "aliases": [
+        "Current Connection",
         "Connection status",
         "Mac status"
       ],
-      "presentation": "Centered header control showing Connection health and opening Settings.",
+      "presentation": "Centered title for the selected Terminal; tapping opens rename only.",
       "repetition": null,
       "related_components": [
-        "ios.settings.root",
-        "ios.settings.connection-details"
+        "ios.workspace.terminal-pager"
       ],
       "states": [
-        "connected",
-        "connecting",
-        "reconnecting",
-        "disconnected",
-        "attention"
+        "selected-terminal",
+        "rename"
       ],
       "resources": {
         "views": [
@@ -191,7 +188,7 @@
           "Apps/Clive/App/SessionClient.swift"
         ],
         "accessibility_ids": [
-          "connection-details-button"
+          "terminal-title-button"
         ],
         "localization": [],
         "tests": [
@@ -215,10 +212,9 @@
       "aliases": [
         "Terminal actions group"
       ],
-      "presentation": "Trailing capsule grouping the Shortcut and New Terminal controls.",
+      "presentation": "Trailing capsule containing the New Terminal control.",
       "repetition": null,
       "related_components": [
-        "ios.workspace.shortcut-button",
         "ios.workspace.new-terminal-button"
       ],
       "states": [],
@@ -246,13 +242,13 @@
       "semantic_name": "Shortcut Button",
       "platform": "ios",
       "kind": "control",
-      "parent": "ios.workspace.terminal-actions",
-      "canonical_path": "Workspace/Header Row/Terminal Actions/Shortcut Button",
-      "order": 1,
+      "parent": "ios.workspace.keyboard-row",
+      "canonical_path": "Workspace/Keyboard Row/Shortcut Button",
+      "order": 2,
       "aliases": [
         "Shortcuts button"
       ],
-      "presentation": "Opens the Shortcuts sheet for the selected Terminal.",
+      "presentation": "Lower-right persistent control that hides keyboard controls and opens the selected Terminal's Shortcuts panel.",
       "repetition": null,
       "related_components": [
         "ios.shortcuts.sheet"
@@ -260,7 +256,7 @@
       "states": [],
       "resources": {
         "views": [
-          "Apps/Clive/App/WorkspaceView.swift"
+          "Apps/Clive/App/TerminalSurfaceView.swift"
         ],
         "state_actions_navigation": [
           "Apps/Clive/App/WorkspaceCoordinator.swift"
@@ -269,7 +265,7 @@
           "Apps/Clive/App/AppPreferences.swift"
         ],
         "accessibility_ids": [
-          "shortcuts-button"
+          "terminal-shortcuts-button"
         ],
         "localization": [],
         "tests": [
@@ -288,7 +284,7 @@
       "kind": "control",
       "parent": "ios.workspace.terminal-actions",
       "canonical_path": "Workspace/Header Row/Terminal Actions/New Terminal Button",
-      "order": 2,
+      "order": 1,
       "aliases": [
         "New shell button"
       ],
@@ -378,15 +374,15 @@
       "aliases": [
         "Terminal keyboard row"
       ],
-      "presentation": "Software-keyboard input accessory row shown while a Terminal accepts input.",
+      "presentation": "Persistent bottom control bar anchored to the Terminal keyboard layout guide.",
       "repetition": null,
       "related_components": [
         "ios.workspace.terminal-keyboard"
       ],
       "states": [
-        "hidden",
         "compact",
-        "expanded"
+        "keyboard-visible",
+        "shortcuts-presented"
       ],
       "resources": {
         "views": [
@@ -421,8 +417,8 @@
         "Shell pages",
         "Session pages"
       ],
-      "presentation": "Horizontally paged Terminal surfaces with leading and trailing navigation sentinels.",
-      "repetition": "One page per open WorkspaceSession.",
+      "presentation": "Selected Terminal surface with ordinary vertical scrolling; two-finger horizontal swipes select adjacent Terminals while the title remains rename-only.",
+      "repetition": "One selected WorkspaceSession is presented at a time.",
       "related_components": [
         "ios.workspace.terminal-keyboard",
         "ios.workspace.recovery-overlay",
@@ -435,7 +431,7 @@
         "connecting",
         "reconnecting",
         "disconnected",
-        "link-actions"
+        "normal-scrolling"
       ],
       "resources": {
         "views": [
@@ -443,7 +439,6 @@
           "Apps/Clive/App/TerminalSurfaceView.swift"
         ],
         "state_actions_navigation": [
-          "Apps/Clive/App/TerminalPagerPolicy.swift",
           "Apps/Clive/App/TerminalLinkPolicy.swift",
           "Apps/Clive/App/WorkspaceCoordinator.swift"
         ],
@@ -475,7 +470,7 @@
       "id": "ios.workspace.terminal-drawer",
       "semantic_name": "Terminal Drawer",
       "platform": "ios",
-      "kind": "drawer",
+      "kind": "sidebar",
       "parent": "ios.workspace.root",
       "canonical_path": "Workspace/Terminal Drawer",
       "order": 4,
@@ -483,7 +478,7 @@
         "Terminal list",
         "Session drawer"
       ],
-      "presentation": "Leading drawer opened from the Terminal count button and dismissed by selection or backdrop.",
+      "presentation": "Adaptive native sidebar listing terminals and terminal-management actions.",
       "repetition": "Rows repeat for open and resumable detached Terminals.",
       "related_components": [
         "ios.workspace.terminal-pager",
@@ -531,25 +526,23 @@
     },
     {
       "id": "ios.workspace.terminal-keyboard",
-      "semantic_name": "Terminal Keyboard Accessory",
+      "semantic_name": "Terminal Key Row",
       "platform": "ios",
       "kind": "overlay",
       "parent": "ios.workspace.keyboard-row",
-      "canonical_path": "Workspace/Keyboard Row/Terminal Keyboard Accessory",
+      "canonical_path": "Workspace/Keyboard Row/Terminal Key Row",
       "order": 1,
       "aliases": [
-        "Special keys",
-        "Additional keys palette"
+        "Terminal keyboard accessory"
       ],
-      "presentation": "Input accessory row with a popover-like palette for modifiers, arrows, and CLI symbols.",
+      "presentation": "Fixed Down, Up, and Enter toolbar visible only while the software keyboard is shown.",
       "repetition": "Key controls repeat from fixed key definitions.",
       "related_components": [
         "ios.workspace.terminal-pager",
         "ios.shortcuts.sheet"
       ],
       "states": [
-        "compact",
-        "expanded",
+        "keyboard-visible",
         "modifier-active"
       ],
       "resources": {
@@ -563,9 +556,16 @@
           "Apps/Clive/App/SessionClient.swift"
         ],
         "accessibility_ids": [
-          "terminalKeyCapsule",
-          "additionalKeysPalette",
-          "special:<key>"
+          "escape",
+          "tab",
+          "shift",
+          "control",
+          "option",
+          "command",
+          "left",
+          "down",
+          "up",
+          "right"
         ],
         "localization": [],
         "tests": [
@@ -880,7 +880,7 @@
       "aliases": [
         "Saved commands"
       ],
-      "presentation": "Workspace sheet used to launch, reorder, edit, or delete a saved shortcut and jump to Settings.",
+      "presentation": "Keyboard-area panel used to launch a saved shortcut or jump to Settings management.",
       "repetition": "One row per saved shortcut.",
       "related_components": [
         "ios.workspace.root",
@@ -890,8 +890,7 @@
       "states": [
         "empty",
         "list",
-        "reordering",
-        "editing"
+        "dismissed-after-run"
       ],
       "resources": {
         "views": [
@@ -905,9 +904,8 @@
           "Apps/Clive/App/AppPreferences.swift"
         ],
         "accessibility_ids": [
-          "shortcuts-sheet",
-          "shortcut-row-<shortcut-id>",
-          "shortcut-options"
+          "shortcuts-panel",
+          "shortcut-row-<shortcut-id>"
         ],
         "localization": [],
         "tests": [
