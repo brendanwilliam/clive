@@ -91,6 +91,14 @@ final class TerminalSessionManager: @unchecked Sendable {
     func unsubscribe(identifier: UUID) { queue.async { self.catalogSubscribers.removeValue(forKey: identifier) } }
     func clientSessionID(deviceID: String, serverSessionID: UUID) -> UUID? { queue.sync { entries.first { $0.key.deviceID == deviceID && $0.value.session.id == serverSessionID }?.key.clientSessionID } }
     func end(deviceID: String, serverSessionID: UUID) -> Bool { queue.sync { guard let key = entries.first(where: { $0.key.deviceID == deviceID && $0.value.session.id == serverSessionID })?.key else { return false }; terminate(key); return true } }
+    func endMany(deviceID: String, serverSessionIDs: [UUID]) -> [UUID] { queue.sync {
+        let requested = Set(serverSessionIDs)
+        let matches = entries.compactMap { key, entry in
+            key.deviceID == deviceID && requested.contains(entry.session.id) ? (key, entry.session.id) : nil
+        }
+        matches.forEach { terminate($0.0) }
+        return matches.map(\.1).sorted { $0.uuidString < $1.uuidString }
+    } }
 
     private func current(_ deviceID: String, _ clientSessionID: UUID, _ attachmentID: UUID) -> Entry? { let entry = entries[Key(deviceID: deviceID, clientSessionID: clientSessionID)]; return entry?.sinks[attachmentID] == nil ? nil : entry }
     private func receive(_ bytes: Data, for key: Key) {

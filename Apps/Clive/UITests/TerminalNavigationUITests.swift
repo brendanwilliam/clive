@@ -68,16 +68,13 @@ final class TerminalNavigationUITests: XCTestCase {
 
     func testConnectionDetailsContainSafeTrustAndReplayMessaging() {
         app.buttons["connection-details-button"].tap()
-        XCTAssertTrue(text(containing: "Connected").waitForExistence(timeout: 2))
-        XCTAssertTrue(text(containing: "Local network").exists)
-        XCTAssertTrue(text(containing: "Existing session resumed").exists)
-        XCTAssertTrue(text(containing: "Some output produced while disconnected was discarded.").exists)
-        let details = app.collectionViews["connection-details-sheet"]
-        XCTAssertTrue(revealText("TLS 1.3", in: details))
-        XCTAssertTrue(revealText("Mutual authentication", in: details))
-        XCTAssertTrue(revealText("Certificate pin", in: details))
-        XCTAssertTrue(revealText("private key", in: details, caseInsensitive: true))
-        XCTAssertTrue(revealText("SHA-256 fingerprint", in: details))
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 2))
+        XCTAssertTrue(text(containing: "Open sessions").exists)
+        XCTAssertTrue(text(containing: "Active sessions").exists)
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Test Mac")).firstMatch.tap()
+        XCTAssertTrue(text(containing: "Local network").waitForExistence(timeout: 2))
+        XCTAssertTrue(text(containing: "TLS 1.3").exists)
+        XCTAssertTrue(text(containing: "Mutual authentication").exists)
     }
 
     func testDrawerUsesNativeRenameDisconnectAndDeleteSwipeActions() {
@@ -107,6 +104,7 @@ final class TerminalNavigationUITests: XCTestCase {
 
     func testDeleteAllPermanentlyEndsLocalCliveTerminals() {
         app.buttons["Terminals"].tap()
+        app.buttons["Terminal actions"].tap()
         app.buttons["Delete All"].tap()
         XCTAssertTrue(app.staticTexts["Delete all terminals?"].waitForExistence(timeout: 2))
         XCTAssertTrue(text(containing: "permanently ends every Clive terminal").exists)

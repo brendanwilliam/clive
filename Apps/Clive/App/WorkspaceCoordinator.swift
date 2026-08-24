@@ -331,6 +331,8 @@ struct AuthenticationGracePolicy: Equatable {
     var recovery: Recovery?
     var isDisconnecting = false
     var disconnectError: String?
+    var isDeletingAllVisibleSessions = false
+    var deleteAllError: String?
 
     private var snapshot = WorkspaceSnapshot(selectedMacID: nil, sessionsByMac: [:])
     private var restorableDestination: RestorableDestination?
@@ -480,6 +482,20 @@ struct AuthenticationGracePolicy: Equatable {
         }
     }
 
+    var openSessionCount: Int {
+        Set(catalogSessions.map(\.id)).union(sessions.compactMap(\.descriptor.serverSessionID)).count
+            + sessions.filter { $0.descriptor.serverSessionID == nil }.count
+    }
+
+    var activeSessionCount: Int {
+        let activeCatalog = Set(catalogSessions.filter { $0.attachmentCount > 0 }.map(\.id))
+        let activeLocal = sessions.filter { session in
+            guard case .active = session.state else { return false }
+            return session.descriptor.serverSessionID.map { !activeCatalog.contains($0) } ?? true
+        }.count
+        return activeCatalog.count + activeLocal
+    }
+
     func reconnect(_ catalogSession: CliveCore.SessionDescriptor) {
         guard catalogSession.attachmentCount == 0,
               let mac = selectedMac,
@@ -521,12 +537,37 @@ struct AuthenticationGracePolicy: Equatable {
         if sessions.isEmpty { clearDestination() }
     }
 
-    func deleteAll() {
-        sessions.forEach { $0.terminate() }
-        sessions.removeAll()
-        selectSession(nil)
+    func disconnectAll() {
+        sessions.forEach { $0.disconnect() }
         saveCurrentDescriptors(); persist()
-        clearDestination()
+    }
+
+    func deleteAllVisibleSessions() async {
+        guard !isDeletingAllVisibleSessions else { return }
+        let visibleIDs = Array(Set(catalogSessions.map(\.id)).union(sessions.compactMap(\.descriptor.serverSessionID)))
+        isDeletingAllVisibleSessions = true; deleteAllError = nil
+        defer { isDeletingAllVisibleSessions = false }
+#if DEBUG
+        if isUITestFixture { sessions.forEach { $0.terminate() }; sessions.removeAll(); catalogSessions.removeAll(); selectSession(nil); return }
+#endif
+        if visibleIDs.isEmpty {
+            sessions.forEach { $0.terminate() }; sessions.removeAll(); selectSession(nil)
+            saveCurrentDescriptors(); persist(); clearDestination()
+            return
+        }
+        let result: Result<[UUID], Error> = await withCheckedContinuation { continuation in
+            sessionCatalog.terminate(sessionIDs: visibleIDs) { result in continuation.resume(returning: result) }
+        }
+        switch result {
+        case .success(let terminated) where Set(terminated) == Set(visibleIDs):
+            sessions.filter { $0.descriptor.serverSessionID == nil }.forEach { $0.terminate() }
+            sessions.removeAll(); catalogSessions.removeAll(); selectSession(nil)
+            saveCurrentDescriptors(); persist(); clearDestination()
+        case .success(let terminated):
+            deleteAllError = "Deleted \(terminated.count) of \(visibleIDs.count) terminals. Refresh and try again."
+        case .failure:
+            deleteAllError = "Couldn’t delete all terminals. Check the connection and try again."
+        }
     }
 
     func end(_ session: WorkspaceSession) {

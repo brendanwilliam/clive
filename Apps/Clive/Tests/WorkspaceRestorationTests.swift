@@ -3,10 +3,10 @@ import XCTest
 @testable import Clive
 
 final class WorkspaceRestorationTests: XCTestCase {
-    @MainActor func testDeleteAllEndsEveryOpenWorkspaceSession() {
+    @MainActor func testDeleteAllEndsEveryOpenWorkspaceSession() async {
         let coordinator = WorkspaceCoordinator.uiTestFixture()
 
-        coordinator.deleteAll()
+        await coordinator.deleteAllVisibleSessions()
 
         XCTAssertTrue(coordinator.sessions.isEmpty)
         XCTAssertNil(coordinator.selectedSessionID)

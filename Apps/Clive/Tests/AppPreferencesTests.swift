@@ -9,8 +9,6 @@ final class AppPreferencesTests: XCTestCase {
 
         XCTAssertFalse(preferences.allowsCellularConnections)
         XCTAssertTrue(preferences.shortcuts.isEmpty)
-        XCTAssertTrue(preferences.connectionIndicators.isEmpty)
-        XCTAssertTrue(preferences.connectionIndicatorColors.isEmpty)
     }
 
     func testStoreRoundTripsOrderedShortcuts() throws {
@@ -22,9 +20,7 @@ final class AppPreferencesTests: XCTestCase {
             shortcuts: [
                 CLIShortcut(name: "Status", command: "git status --short"),
                 CLIShortcut(name: "Tests", command: "swift test")
-            ],
-            connectionIndicators: ["mac-1": "🧑‍💻"],
-            connectionIndicatorColors: ["mac-1": "#3366CCFF"]
+            ]
         )
 
         try store.save(preferences)
@@ -60,8 +56,6 @@ final class AppPreferencesTests: XCTestCase {
 
         XCTAssertTrue(preferences.allowsCellularConnections)
         XCTAssertEqual(preferences.shortcuts, [CLIShortcut(id: shortcutID, name: "Status", command: "git status")])
-        XCTAssertTrue(preferences.connectionIndicators.isEmpty)
-        XCTAssertTrue(preferences.connectionIndicatorColors.isEmpty)
         let encoded = try JSONEncoder().encode(preferences)
         XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("workingDirectory"))
         XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("defaultDirectoryPath"))
@@ -83,24 +77,12 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertNil(preferences.newTerminalDefaultShortcutID)
     }
 
-    @MainActor
-    func testConnectionIndicatorDefaultsToInitialsAndCanUseEmoji() {
-        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let model = AppPreferencesModel(store: AppPreferencesStore(rootURL: root))
-        let mac = PairedMac(
-            id: "mac-1",
-            displayName: "Brendan's MacBook Pro",
-            serviceID: "service",
-            certificateFingerprint: "fingerprint",
-            createdAt: Date()
-        )
-
-        XCTAssertEqual(model.indicator(for: mac), "BM")
-
-        model.setIndicator("🧑‍💻", for: mac)
-
-        XCTAssertEqual(model.indicator(for: mac), "🧑‍💻")
+    func testRetiredConnectionAppearanceKeysAreIgnoredAndNotReencoded() throws {
+        let data = Data(##"{"connectionIndicators":{"mac":"M"},"connectionIndicatorColors":{"mac":"#FFFFFFFF"}}"##.utf8)
+        let preferences = try JSONDecoder().decode(AppPreferences.self, from: data)
+        let encoded = String(decoding: try JSONEncoder().encode(preferences), as: UTF8.self)
+        XCTAssertFalse(encoded.contains("connectionIndicators"))
+        XCTAssertFalse(encoded.contains("connectionIndicatorColors"))
     }
 
     @MainActor

@@ -55,6 +55,16 @@ final class SessionConnectionHandler: @unchecked Sendable {
 
     private func handle(_ frame: ProtocolFrame) {
         if sessionID == nil {
+            if subscribed, frame.kind == .sessionTerminateMany {
+                guard let request = try? ProtocolPayload.decode(SessionTerminateManyRequest.self, from: frame.payload),
+                      request.isValid else { return fail(.protocolError, "Invalid bulk termination request") }
+                let terminated = sessions.endMany(deviceID: deviceID, serverSessionIDs: request.sessionIDs)
+                guard let payload = try? ProtocolPayload.encode(SessionTerminateManyResult(terminatedSessionIDs: terminated)) else {
+                    return fail(.protocolError, "Unable to encode bulk termination result")
+                }
+                framed?.send(ProtocolFrame(kind: .sessionTerminateManyResult, payload: payload))
+                return
+            }
             if !opening, frame.kind == .sessionList,
                let request = try? ProtocolPayload.decode(SessionListRequest.self, from: frame.payload) {
                 opening = true

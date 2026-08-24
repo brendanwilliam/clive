@@ -11,7 +11,6 @@ struct WorkspaceView: View {
     @State private var deleteTarget: WorkspaceSession?
     @State private var showingClearAllConfirmation = false
     @State private var showingDisconnectConfirmation = false
-    @State private var showingConnectionDetails = false
     @State private var showingShortcuts = false
     @State private var shortcutEditTarget: CLIShortcut?
     @State private var shortcutEditName = ""
@@ -45,10 +44,9 @@ struct WorkspaceView: View {
             else if ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
         }
         .fullScreenCover(isPresented: settingsBinding) {
-            SettingsView(preferences: coordinator.preferences, connection: coordinator.selectedMac)
+            SettingsView(coordinator: coordinator)
         }
         .fullScreenCover(isPresented: $showingScanner) { scanner }
-        .sheet(isPresented: $showingConnectionDetails) { connectionDetailsSheet }
         .sheet(isPresented: $showingShortcuts) { shortcutsSheet }
         .alert("Rename terminal", isPresented: renameBinding) {
             TextField("Terminal name", text: $renameText)
@@ -66,7 +64,7 @@ struct WorkspaceView: View {
         }
         .alert("Delete all terminals?", isPresented: $showingClearAllConfirmation) {
             Button("Cancel", role: .cancel) {}
-            Button("Delete All", role: .destructive) { coordinator.deleteAll() }
+            Button("Delete All", role: .destructive) { Task { await coordinator.deleteAllVisibleSessions() } }
         } message: {
             Text("This permanently ends every Clive terminal currently open from this iPhone.")
         }
@@ -79,6 +77,9 @@ struct WorkspaceView: View {
         .alert("Couldn’t disconnect", isPresented: disconnectErrorBinding) {
             Button("OK") { coordinator.disconnectError = nil }
         } message: { Text(coordinator.disconnectError ?? "The Mac did not confirm the request.") }
+        .alert("Couldn’t delete all terminals", isPresented: deleteAllErrorBinding) {
+            Button("OK") { coordinator.deleteAllError = nil }
+        } message: { Text(coordinator.deleteAllError ?? "Try again.") }
     }
 
     private var navigation: some View {
@@ -102,7 +103,7 @@ struct WorkspaceView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { terminalButton }
                 ToolbarItem(placement: .principal) { connectionStatusButton }
-                ToolbarItem(placement: .topBarTrailing) { shortcutsButton }
+                ToolbarItem(placement: .topBarTrailing) { terminalActions }
             }
             .toolbarBackground(Color.black.opacity(0.18), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -110,7 +111,7 @@ struct WorkspaceView: View {
     }
 
     private var terminalButton: some View {
-        Button { coordinator.showTerminalList() } label: {
+        Button { navigate { coordinator.showTerminalList() } } label: {
             HStack(spacing: 3) {
                 Image(systemName: "chevron.left")
                 Text("\(coordinator.sessions.count)").monospacedDigit()
@@ -127,7 +128,7 @@ struct WorkspaceView: View {
 
     private var connectionStatusButton: some View {
         let presentation = connectionPresentation
-        return Button { showingConnectionDetails = true } label: {
+        return Button { navigate { coordinator.showSettings() } } label: {
             HStack(spacing: 6) {
                 Image(systemName: presentation.icon)
                     .foregroundStyle(connectionHealthColor)
@@ -140,7 +141,7 @@ struct WorkspaceView: View {
         }
         .buttonStyle(.plain)
         .disabled(coordinator.selectedMac == nil)
-        .accessibilityLabel("Connection details")
+        .accessibilityLabel("Settings")
         .accessibilityValue(presentation.accessibilityValue)
         .accessibilityIdentifier("connection-details-button")
     }
@@ -158,11 +159,15 @@ struct WorkspaceView: View {
         }
     }
 
-    private var shortcutsButton: some View {
-        Button { showingShortcuts = true } label: { Image(systemName: "bolt.fill").frame(width: 36, height: 36) }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Shortcuts")
-            .accessibilityIdentifier("shortcuts-button")
+    private var terminalActions: some View {
+        HStack(spacing: 0) {
+            Button { navigate { showingShortcuts = true } } label: { Image(systemName: "bolt.fill").frame(width: 38, height: 34) }
+                .accessibilityLabel("Shortcuts").accessibilityIdentifier("shortcuts-button")
+            Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus.rectangle.on.rectangle").frame(width: 38, height: 34) }
+                .accessibilityLabel("New Terminal").accessibilityIdentifier("new-terminal-button")
+        }
+        .buttonStyle(.plain)
+        .background(.thinMaterial, in: Capsule())
     }
 
     private var workspace: some View {
@@ -194,7 +199,6 @@ struct WorkspaceView: View {
                                 sessionOverlay(session)
                             }
                             .padding(TerminalSurfaceConfiguration.contentPadding)
-                            .padding(.top, TerminalSurfaceConfiguration.navigationContentPadding)
                             .tag(TerminalPagerPage.terminal(session.id))
                             .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
                             .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
@@ -205,7 +209,6 @@ struct WorkspaceView: View {
                         .accessibilityHidden(true)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                .ignoresSafeArea(edges: .top)
                 .onAppear { pagerSelection = coordinator.selectedSessionID.map(TerminalPagerPage.terminal) ?? .empty }
                 .onChange(of: pagerSelection) { _, page in handlePagerSelection(page) }
                 .onChange(of: coordinator.selectedSessionID) { _, id in
@@ -217,36 +220,28 @@ struct WorkspaceView: View {
 
     private var terminalDrawer: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button {
-                coordinator.addShell()
-                coordinator.dismissPresentedScreen()
-            } label: {
-                Label("New terminal", systemImage: "plus").font(.headline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20).padding(.vertical, 18)
-            }
-            .disabled(coordinator.selectedMac == nil || coordinator.state != .active)
-            Divider()
             List {
                 Section {
                     ForEach(coordinator.sessions) { session in
                         terminalRow(session)
                             .listRowBackground(Color.clear)
-                            .listRowSeparator(.visible)
-                            .listRowSeparatorTint(.secondary.opacity(0.28))
+                            .listRowSeparator(.hidden)
                     }
                     ForEach(coordinator.unrepresentedCatalogSessions) { session in
                         catalogSessionRow(session)
                             .listRowBackground(Color.clear)
-                            .listRowSeparator(.visible)
-                            .listRowSeparatorTint(.secondary.opacity(0.28))
+                            .listRowSeparator(.hidden)
                     }
                 } header: {
                     HStack {
-                        Label("Terminals", systemImage: "terminal")
+                        Text("Terminals")
                         Spacer()
-                        Button("Delete All", role: .destructive) { showingClearAllConfirmation = true }
-                            .disabled(coordinator.sessions.isEmpty)
+                        Menu {
+                            Button("Disconnect All", systemImage: "network.slash") { coordinator.disconnectAll() }
+                            Button("Delete All", systemImage: "trash", role: .destructive) { showingClearAllConfirmation = true }
+                        } label: { Image(systemName: "ellipsis").frame(width: 44, height: 32) }
+                        .accessibilityLabel("Terminal actions")
+                        .disabled(coordinator.openSessionCount == 0)
                     }
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -259,24 +254,18 @@ struct WorkspaceView: View {
             if let current = coordinator.selectedMac {
                 Divider()
                 HStack(spacing: 12) {
-                    ConnectionIndicatorView(value: coordinator.preferences.indicator(for: current), color: coordinator.preferences.indicatorColor(for: current), size: 38)
+                    Button { navigate { coordinator.showSettings() } } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "laptopcomputer").frame(width: 38, height: 38)
                     Text(current.displayName)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(2)
-                    Spacer(minLength: 8)
-                    Menu {
-                        ForEach(coordinator.macs.devices) { mac in
-                            Button { coordinator.selectMac(mac) } label: {
-                                Label(mac.displayName, systemImage: mac.id == current.id ? "checkmark" : "laptopcomputer")
-                            }
+                            Spacer(minLength: 8)
                         }
-                        Divider()
-                        Button("Add connection", systemImage: "qrcode.viewfinder") { coordinator.dismissPresentedScreen(); showingScanner = true }
-                        Button("Settings", systemImage: "gearshape") { coordinator.showSettings() }
-                        Button("Disconnect and unpair", systemImage: "network.slash", role: .destructive) { showingDisconnectConfirmation = true }
-                    } label: { Image(systemName: "ellipsis.circle").font(.title3).frame(width: 44, height: 44) }
-                    .accessibilityLabel("Connection menu")
-                    .accessibilityIdentifier("connection-menu")
+                    }.buttonStyle(.plain).accessibilityIdentifier("drawer-settings-button")
+                    Button { navigate { coordinator.addShell(); coordinator.dismissPresentedScreen() } } label: {
+                        Image(systemName: "plus.rectangle.on.rectangle").font(.title3).frame(width: 44, height: 44)
+                    }.accessibilityLabel("New Terminal")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -302,10 +291,6 @@ struct WorkspaceView: View {
                     .accessibilityIdentifier("terminal-status-\(session.id.uuidString)")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.descriptor.label)
-                    Text(terminalStatusText(for: session.state, attachment: session.attachmentState))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let preview = session.preview { Text(preview).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary) }
                 }
                 Spacer(minLength: 4)
             }
@@ -330,6 +315,7 @@ struct WorkspaceView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 2)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
+        .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func catalogSessionRow(_ session: CliveCore.SessionDescriptor) -> some View {
@@ -340,12 +326,7 @@ struct WorkspaceView: View {
                     .frame(width: 20, height: 20)
                     .accessibilityLabel("Disconnected")
                     .accessibilityIdentifier("catalog-terminal-status-\(session.id.uuidString)")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.label ?? "Detached terminal")
-                    Text(session.attachmentCount == 0 ? "Disconnected — ready to reconnect" : "Attached elsewhere")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(session.label ?? "Detached terminal")
                 Spacer(minLength: 4)
                 if session.attachmentCount == 0 {
                     Image(systemName: "arrow.clockwise")
@@ -537,7 +518,13 @@ struct WorkspaceView: View {
     private var shortcutEditBinding: Binding<Bool> { Binding(get: { shortcutEditTarget != nil }, set: { if !$0 { shortcutEditTarget = nil } }) }
     private var deleteBinding: Binding<Bool> { Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }) }
     private var disconnectErrorBinding: Binding<Bool> { Binding(get: { coordinator.disconnectError != nil }, set: { if !$0 { coordinator.disconnectError = nil } }) }
+    private var deleteAllErrorBinding: Binding<Bool> { Binding(get: { coordinator.deleteAllError != nil }, set: { if !$0 { coordinator.deleteAllError = nil } }) }
     private var settingsBinding: Binding<Bool> { Binding(get: { coordinator.presentedScreen == .settings }, set: { if !$0 { coordinator.dismissPresentedScreen() } }) }
+
+    private func navigate(_ action: () -> Void) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        action()
+    }
 
     private func beginEditing(_ shortcut: CLIShortcut) {
         shortcutEditName = shortcut.name
@@ -577,7 +564,7 @@ struct WorkspaceView: View {
 
     @ViewBuilder private func sessionOverlay(_ session: WorkspaceSession) -> some View {
         switch session.state {
-        case .active(_, let disposition, let replayTruncated):
+        case .active(_, _, let replayTruncated):
             VStack(spacing: 6) {
                 if session.showsReconnectNotice { Text("Reconnected to the existing shell.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
                 if replayTruncated { Text("Some output produced while disconnected was discarded.").font(.caption).padding(8).background(.regularMaterial, in: .capsule) }
@@ -602,35 +589,29 @@ struct WorkspaceView: View {
 }
 
 private struct SettingsView: View {
-    @Bindable var preferences: AppPreferencesModel
-    let connection: PairedMac?
+    @Bindable var coordinator: WorkspaceCoordinator
     @Environment(\.dismiss) private var dismiss
+
+    private var preferences: AppPreferencesModel { coordinator.preferences }
 
     var body: some View {
         NavigationStack {
             List {
-                if let connection {
-                    Section {
-                        HStack(spacing: 14) {
-                            ConnectionIndicatorView(value: preferences.indicator(for: connection), color: preferences.indicatorColor(for: connection), size: 48)
-                            TextField("Initials or emoji", text: Binding(
-                                get: { preferences.value.connectionIndicators[connection.id] ?? "" },
-                                set: { preferences.setIndicator($0, for: connection) }
-                            ))
-                            .textInputAutocapitalization(.characters)
+                if let connection = coordinator.selectedMac {
+                    Section("Current Mac") {
+                        NavigationLink {
+                            ConnectionDetailsView(coordinator: coordinator, connection: connection)
+                        } label: {
+                            LabeledContent(connection.displayName, value: ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
                         }
-                        ColorPicker("Background color", selection: Binding(
-                            get: { preferences.indicatorColor(for: connection) },
-                            set: { preferences.setIndicatorColor($0, for: connection) }
-                        ), supportsOpacity: false)
-                    } header: {
-                        Text("Connection indicator")
-                    } footer: {
-                        Text("Enter up to two initials or emoji. Leave blank to use initials from the connection name.")
                     }
                 }
+                Section("Sessions") {
+                    LabeledContent("Open sessions", value: "\(coordinator.openSessionCount)")
+                    LabeledContent("Active sessions", value: "\(coordinator.activeSessionCount)")
+                }
                 Section {
-                    Toggle("Enable connections over cellular", isOn: Binding(
+                    Toggle("Cellular connections", isOn: Binding(
                         get: { preferences.value.allowsCellularConnections },
                         set: { preferences.value.allowsCellularConnections = $0 }
                     ))
@@ -642,7 +623,7 @@ private struct SettingsView: View {
                         get: { preferences.value.newTerminalDefaultShortcutID },
                         set: { preferences.value.newTerminalDefaultShortcutID = $0 }
                     )) {
-                        Text("Login shell in Home").tag(nil as UUID?)
+                        Text("None").tag(nil as UUID?)
                         ForEach(preferences.value.shortcuts.filter { !$0.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) { shortcut in
                             Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name).tag(Optional(shortcut.id))
                         }
@@ -651,32 +632,53 @@ private struct SettingsView: View {
                     Text("Ordinary new terminals use the selected shortcut. With no selection, Clive starts a login shell in your Home directory.")
                 }
                 Section {
-                    ForEach(preferences.value.shortcuts) { shortcut in
-                        VStack(alignment: .leading, spacing: 8) {
-                            TextField("Name", text: shortcutBinding(shortcut.id, \.name))
-                                .font(.headline)
-                            CLITextField(text: shortcutBinding(shortcut.id, \.command), placeholder: "Command")
-                                .frame(minHeight: 34)
-                        }
-                        .padding(.vertical, 4)
+                    NavigationLink {
+                        ShortcutManagementView(preferences: preferences)
+                    } label: {
+                        LabeledContent("Shortcuts", value: "\(preferences.value.shortcuts.count)")
                     }
-                    .onDelete(perform: preferences.deleteShortcuts)
-                    .onMove(perform: preferences.moveShortcuts)
-                    Button("Add shortcut", systemImage: "plus") { preferences.addShortcut() }
-                } header: {
-                    Text("CLI shortcuts")
-                } footer: {
-                    Text("Shortcuts insert their command into the active terminal. The selected new-terminal default runs after a new shell opens. Avoid storing secrets in commands.")
+                    NavigationLink("Setup Guide") { SetupGuideView() }
                 }
             }
             .navigationTitle("Settings")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) { EditButton() }
             }
         }
     }
+}
 
+private struct ShortcutManagementView: View {
+    @Bindable var preferences: AppPreferencesModel
+    var body: some View {
+        List {
+            ForEach(preferences.value.shortcuts) { shortcut in
+                NavigationLink(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name) {
+                    ShortcutEditorView(preferences: preferences, shortcutID: shortcut.id)
+                }
+            }
+            .onDelete(perform: preferences.deleteShortcuts)
+            .onMove(perform: preferences.moveShortcuts)
+        }
+        .navigationTitle("Shortcuts")
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { EditButton() }
+            ToolbarItem(placement: .topBarTrailing) { Button("Add", systemImage: "plus") { preferences.addShortcut() } }
+        }
+    }
+}
+
+private struct ShortcutEditorView: View {
+    @Bindable var preferences: AppPreferencesModel
+    let shortcutID: UUID
+    var body: some View {
+        Form {
+            TextField("Title", text: shortcutBinding(\.name))
+            TextField("Command", text: shortcutBinding(\.command), axis: .vertical)
+                .font(.body.monospaced())
+        }
+        .navigationTitle("Edit Shortcut")
+    }
     private func shortcutBinding(_ id: UUID, _ keyPath: WritableKeyPath<CLIShortcut, String>) -> Binding<String> {
         Binding(
             get: { preferences.value.shortcuts.first(where: { $0.id == id })?[keyPath: keyPath] ?? "" },
@@ -686,21 +688,34 @@ private struct SettingsView: View {
             }
         )
     }
+    private func shortcutBinding(_ keyPath: WritableKeyPath<CLIShortcut, String>) -> Binding<String> {
+        shortcutBinding(shortcutID, keyPath)
+    }
 }
 
-private struct ConnectionIndicatorView: View {
-    let value: String
-    let color: Color
-    let size: CGFloat
-
+private struct SetupGuideView: View {
     var body: some View {
-        Text(value)
-            .font(.system(size: size * 0.4, weight: .bold, design: .rounded))
-            .lineLimit(1)
-            .minimumScaleFactor(0.55)
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(color.gradient, in: .circle)
-            .accessibilityHidden(true)
+        ContentUnavailableView("Setup Guide", systemImage: "book", description: Text("Guided setup is coming soon."))
+            .navigationTitle("Setup Guide")
+    }
+}
+
+private struct ConnectionDetailsView: View {
+    @Bindable var coordinator: WorkspaceCoordinator
+    let connection: PairedMac
+    var body: some View {
+        List {
+            Section("Connection") {
+                LabeledContent("Device", value: connection.displayName)
+                LabeledContent("Status", value: ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
+                LabeledContent("Route", value: ConnectionPresentation.routeLabel(for: coordinator.selectedSession?.activeRouteKind))
+            }
+            Section("Security") {
+                LabeledContent("Transport", value: "TLS 1.3")
+                LabeledContent("Authentication", value: "Mutual authentication")
+                Text(FingerprintFormatter.formatted(connection.certificateFingerprint)).font(.footnote.monospaced()).textSelection(.enabled)
+            }
+        }
+        .navigationTitle("Connection Details")
     }
 }

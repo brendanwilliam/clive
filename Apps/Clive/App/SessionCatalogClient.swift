@@ -10,6 +10,9 @@ final class SessionCatalogClient: @unchecked Sendable {
     private var connection: NWConnection?
     private var decoder = FrameDecoder()
     private var generation = 0
+    private var pendingTermination: ((Result<[UUID], Error>) -> Void)?
+
+    enum CatalogError: Error { case notConnected, invalidRequest, connectionClosed }
 
     func connect(host: String, port: UInt16, pinnedFingerprint: String, identity: SecIdentity, wanGateToken: Data?) {
         generation += 1
@@ -55,8 +58,21 @@ final class SessionCatalogClient: @unchecked Sendable {
 
     func close() {
         generation += 1
+        pendingTermination?(.failure(CatalogError.connectionClosed)); pendingTermination = nil
         connection?.cancel()
         connection = nil
+    }
+
+    func terminate(sessionIDs: [UUID], completion: @escaping (Result<[UUID], Error>) -> Void) {
+        guard !sessionIDs.isEmpty, sessionIDs.count <= SessionTerminateManyRequest.maximumSessionCount,
+              let connection else { completion(.failure(CatalogError.notConnected)); return }
+        guard pendingTermination == nil,
+              let payload = try? ProtocolPayload.encode(SessionTerminateManyRequest(sessionIDs: sessionIDs)),
+              let data = try? ProtocolFrame(kind: .sessionTerminateMany, payload: payload).encoded() else {
+            completion(.failure(CatalogError.invalidRequest)); return
+        }
+        pendingTermination = completion
+        connection.send(content: data, completion: .idempotent)
     }
 
     private func receive(on connection: NWConnection, generation attempt: Int) {
@@ -66,6 +82,11 @@ final class SessionCatalogClient: @unchecked Sendable {
                 for frame in frames where frame.kind == .sessionListResult {
                     guard let result = try? ProtocolPayload.decode(SessionListResult.self, from: frame.payload) else { continue }
                     self.onSessions?(result.sessions)
+                }
+                for frame in frames where frame.kind == .sessionTerminateManyResult {
+                    guard let result = try? ProtocolPayload.decode(SessionTerminateManyResult.self, from: frame.payload) else { continue }
+                    let completion = self.pendingTermination; self.pendingTermination = nil
+                    completion?(.success(result.terminatedSessionIDs))
                 }
             }
             if !complete && error == nil { self.receive(on: connection, generation: attempt) }

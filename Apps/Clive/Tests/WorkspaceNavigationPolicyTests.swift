@@ -44,7 +44,6 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
         XCTAssertEqual(TerminalSurfaceConfiguration.keyboardDismissMode, .none)
         XCTAssertFalse(TerminalSurfaceConfiguration.scrollsToTop)
         XCTAssertEqual(TerminalSurfaceConfiguration.contentPadding, 2)
-        XCTAssertEqual(TerminalSurfaceConfiguration.navigationContentPadding, 48)
     }
 
     func testDrawerRevealPolicyOpensClosesAndKeepsOneRowOpen() {
