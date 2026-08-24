@@ -151,13 +151,13 @@ final class DaemonRuntime: @unchecked Sendable {
 
     private func runLocalAttachment(deviceID: String, clientSessionID: UUID?, serverSessionID: UUID? = nil, channel: ControlChannel, size: TerminalSize) async {
         let attachmentID = UUID()
+        var resolvedClientSessionID: UUID?
         do {
             let sendOutput: TerminalSessionManager.Output = { chunk, completion in
                 do { try channel.send(ProtocolFrame(kind: .terminalOutput, payload: ProtocolPayload.encode(chunk))); completion() }
                 catch { completion() }
             }
             let attachment: TerminalSessionManager.Attachment
-            let resolvedClientSessionID: UUID
             if let serverSessionID {
                 guard let existingClientID = terminalSessions.clientSessionID(deviceID: deviceID, serverSessionID: serverSessionID),
                       let existing = try terminalSessions.attachExisting(deviceID: deviceID, serverSessionID: serverSessionID, size: size, attachmentID: attachmentID, attachmentKind: .macCLI, lastReceivedOffset: 0, output: sendOutput, onDetached: { _ in try? channel.send(ProtocolFrame(kind: .sessionClose)) }, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) }) else {
@@ -169,6 +169,7 @@ final class DaemonRuntime: @unchecked Sendable {
                 resolvedClientSessionID = clientSessionID
                 attachment = try terminalSessions.attach(deviceID: deviceID, clientSessionID: clientSessionID, size: size, workingDirectory: nil, attachmentID: attachmentID, attachmentKind: .macCLI, output: sendOutput, onSuperseded: { try? channel.send(ProtocolFrame(kind: .sessionClose)) }, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) })
             }
+            guard let resolvedClientSessionID else { throw ControlSocketError.malformedMessage }
             try channel.send(ControlResponse(success: true, sessions: [SessionDescriptor(id: attachment.serverSessionID, attachmentCount: 1, resizeOwner: .macCLI, outputOffset: attachment.replayOffset)]))
             if !attachment.replay.isEmpty { try channel.send(ProtocolFrame(kind: .terminalOutput, payload: ProtocolPayload.encode(TerminalOutputChunk(offset: attachment.replayOffset, bytes: attachment.replay)))) }
             while true {
@@ -184,7 +185,9 @@ final class DaemonRuntime: @unchecked Sendable {
                 }
             }
         } catch {
-            if let clientSessionID { terminalSessions.detach(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: attachmentID) }
+            if let resolvedClientSessionID {
+                terminalSessions.detach(deviceID: deviceID, clientSessionID: resolvedClientSessionID, attachmentID: attachmentID)
+            }
             try? channel.send(ControlResponse(success: false, message: error.localizedDescription))
         }
     }
