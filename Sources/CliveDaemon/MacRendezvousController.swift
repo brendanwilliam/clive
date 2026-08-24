@@ -15,10 +15,10 @@ actor MacRendezvousController {
         init() {}
         init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
-            enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+            enabled = try values.decode(Bool.self, forKey: .enabled)
             manualEndpoint = try values.decodeIfPresent(RemoteEndpoint.self, forKey: .manualEndpoint)
-            endpointMode = try values.decodeIfPresent(CellularEndpointMode.self, forKey: .endpointMode) ?? (manualEndpoint == nil ? .automatic : .manual)
-            allowsRouterMapping = try values.decodeIfPresent(Bool.self, forKey: .allowsRouterMapping) ?? false
+            endpointMode = try values.decode(CellularEndpointMode.self, forKey: .endpointMode)
+            allowsRouterMapping = try values.decode(Bool.self, forKey: .allowsRouterMapping)
         }
     }
 
@@ -43,8 +43,11 @@ actor MacRendezvousController {
     init(state: DaemonState, trustStore: TrustStore, baseURL: URL) throws {
         self.state = state; self.trustStore = trustStore
         settingsURL = baseURL.appending(path: "cellular.json")
-        if let data = try? Data(contentsOf: settingsURL) { settings = (try? JSONDecoder().decode(Settings.self, from: data)) ?? Settings() }
-        else { settings = Settings() }
+        if FileManager.default.fileExists(atPath: settingsURL.path) {
+            settings = try JSONDecoder().decode(Settings.self, from: Data(contentsOf: settingsURL))
+        } else {
+            settings = Settings()
+        }
         let bundledContainer = Bundle.main.object(forInfoDictionaryKey: "CliveCloudContainer") as? String
         let container = ProcessInfo.processInfo.environment["CLIVE_ICLOUD_CONTAINER"]
             ?? bundledContainer

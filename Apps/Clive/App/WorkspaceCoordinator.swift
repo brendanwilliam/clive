@@ -315,8 +315,34 @@ struct AuthenticationGracePolicy: Equatable {
     }
 }
 
+struct LocalStateResetter {
+    let removePairedMacs: () throws -> Void
+    let removeWorkspace: () throws -> Void
+    let removeRestoration: () throws -> Void
+    let removePreferences: () throws -> Void
+
+    init(
+        removePairedMacs: @escaping () throws -> Void = { try PairedMacStore().removeAll() },
+        removeWorkspace: @escaping () throws -> Void = { try WorkspaceStore().remove() },
+        removeRestoration: @escaping () throws -> Void = { try RestorableDestinationStore().remove() },
+        removePreferences: @escaping () throws -> Void = { try AppPreferencesStore().remove() }
+    ) {
+        self.removePairedMacs = removePairedMacs
+        self.removeWorkspace = removeWorkspace
+        self.removeRestoration = removeRestoration
+        self.removePreferences = removePreferences
+    }
+
+    func reset() throws {
+        try removePairedMacs()
+        try removeWorkspace()
+        try removeRestoration()
+        try removePreferences()
+    }
+}
+
 @MainActor @Observable final class WorkspaceCoordinator {
-    enum State: Equatable { case locked, authenticating, active, authenticationCancelled, failed(String) }
+    enum State: Equatable { case locked, authenticating, active, authenticationCancelled, unsupportedLocalState, failed(String) }
     enum PresentedScreen: Equatable { case terminalList, settings }
     enum Recovery: Equatable { case unavailableMac(String), noPairedMac, disconnected }
 
@@ -344,6 +370,7 @@ struct AuthenticationGracePolicy: Equatable {
     private let provideIdentity: @MainActor () throws -> IPhoneIdentity
     private let authenticationGracePolicy: AuthenticationGracePolicy
     private let now: () -> Date
+    private let localStateResetter: LocalStateResetter
     private var lastSuccessfulAuthentication: Date?
     private var isSceneActive = false
     private var hasCapturedForeground = false
@@ -355,12 +382,14 @@ struct AuthenticationGracePolicy: Equatable {
         provideIdentity: @escaping @MainActor () throws -> IPhoneIdentity = { try IPhoneIdentityProvider().loadOrCreate() },
         authenticationGracePolicy: AuthenticationGracePolicy = .standard,
         now: @escaping () -> Date = Date.init,
+        localStateResetter: LocalStateResetter = LocalStateResetter(),
         isUITestFixture: Bool = false
     ) {
         self.authenticate = authenticate
         self.provideIdentity = provideIdentity
         self.authenticationGracePolicy = authenticationGracePolicy
         self.now = now
+        self.localStateResetter = localStateResetter
         self.isUITestFixture = isUITestFixture
         sessionCatalog.onSessions = { [weak self] sessions in
             DispatchQueue.main.async { self?.applyCatalog(sessions) }
@@ -369,11 +398,34 @@ struct AuthenticationGracePolicy: Equatable {
 
     func start() {
         if isUITestFixture { return }
+        do {
+            snapshot = try WorkspaceStore().loadIfPresent() ?? snapshot
+            restorableDestination = try RestorableDestinationStore().loadIfPresent()
+            _ = try AppPreferencesStore().loadIfPresent()
+        } catch {
+            state = .unsupportedLocalState
+            return
+        }
         macs.start()
         macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
-        snapshot = (try? WorkspaceStore().load()) ?? snapshot
-        restorableDestination = try? RestorableDestinationStore().load()
         selectedMacID = snapshot.selectedMacID
+    }
+
+    func resetUnsupportedLocalState() {
+        guard state == .unsupportedLocalState else { return }
+        do {
+            try localStateResetter.reset()
+            snapshot = WorkspaceSnapshot(selectedMacID: nil, sessionsByMac: [:])
+            restorableDestination = nil
+            selectedMacID = nil
+            sessions = []
+            catalogSessions = []
+            state = .locked
+            macs.start()
+            macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
+        } catch {
+            state = .unsupportedLocalState
+        }
     }
 
     func stop() { sessionCatalog.close(); detachLiveSessions(); macs.stop() }
@@ -814,10 +866,15 @@ struct WorkspaceStore {
 
     private var url: URL { rootURL.appending(path: "workspace.json") }
     func load() throws -> WorkspaceSnapshot { try JSONDecoder().decode(WorkspaceSnapshot.self, from: Data(contentsOf: url)) }
+    func loadIfPresent() throws -> WorkspaceSnapshot? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try load()
+    }
     func save(_ snapshot: WorkspaceSnapshot) throws {
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
         try JSONEncoder().encode(snapshot).write(to: url, options: [.atomic, .completeFileProtection])
     }
+    func remove() throws { if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) } }
 }
 
 struct RestorableDestinationStore {
@@ -832,6 +889,10 @@ struct RestorableDestinationStore {
         let destination = try JSONDecoder().decode(RestorableDestination.self, from: Data(contentsOf: url))
         guard destination.isSupported else { throw CocoaError(.fileReadCorruptFile) }
         return destination
+    }
+    func loadIfPresent() throws -> RestorableDestination? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try load()
     }
     func save(_ destination: RestorableDestination) throws {
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)

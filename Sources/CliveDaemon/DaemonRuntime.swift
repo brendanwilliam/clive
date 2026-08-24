@@ -271,4 +271,10 @@ struct RuntimePaths: Sendable {
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "clive")
         return RuntimePaths(baseURL: base)
     }
+
+    /// Removes only Clive's user-scoped state after the caller verifies no daemon owns it.
+    func removeLocalState(fileManager: FileManager = .default) throws {
+        guard fileManager.fileExists(atPath: baseURL.path) else { return }
+        try fileManager.removeItem(at: baseURL)
+    }
 }

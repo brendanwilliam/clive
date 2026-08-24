@@ -94,6 +94,14 @@ struct WorkspaceView: View {
                     } actions: {
                         Button("Try Again") { Task { await coordinator.authorize() } }
                     }
+                case .unsupportedLocalState:
+                    ContentUnavailableView {
+                        Label("Clive needs to reset local data", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text("This version cannot safely read local data from an older Clive version. Resetting removes saved connections and terminal restoration data from this iPhone. Pair again afterward.")
+                    } actions: {
+                        Button("Reset local data", role: .destructive) { coordinator.resetUnsupportedLocalState() }
+                    }
                 case .failed(let message):
                     ContentUnavailableView("Connection failed", systemImage: "exclamationmark.triangle", description: Text(message))
                 }

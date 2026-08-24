@@ -85,26 +85,8 @@ public enum PairingPayload {
     }
 
     public static func decode(_ payload: String) throws -> PairingTicket {
-        if payload.hasPrefix(v2Prefix) { return try decodeV2(String(payload.dropFirst(v2Prefix.count))) }
-        return try decodeV1(payload)
-    }
-
-    private static func decodeV1(_ payload: String) throws -> PairingTicket {
-        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        guard payload.unicodeScalars.allSatisfy({ allowedCharacters.contains($0) }) else {
-            throw PairingPayloadError.malformed
-        }
-        let remainder = payload.count % 4
-        let padded = payload.replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/") + String(repeating: "=", count: remainder == 0 ? 0 : 4 - remainder)
-        guard let data = Data(base64Encoded: padded) else { throw PairingPayloadError.malformed }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        do {
-            return try decoder.decode(PairingTicket.self, from: data)
-        } catch {
-            throw PairingPayloadError.malformed
-        }
+        guard payload.hasPrefix(v2Prefix) else { throw PairingPayloadError.malformed }
+        return try decodeV2(String(payload.dropFirst(v2Prefix.count)))
     }
 
     private static func decodeV2(_ encoded: String) throws -> PairingTicket {

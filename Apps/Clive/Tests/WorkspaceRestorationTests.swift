@@ -140,6 +140,29 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertThrowsError(try RestorableDestinationStore(rootURL: root).load())
     }
 
+    func testWorkspaceStoreRejectsOldShape() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data(#"{"selectedMacID":"mac-1"}"#.utf8).write(to: root.appending(path: "workspace.json"))
+
+        XCTAssertThrowsError(try WorkspaceStore(rootURL: root).load())
+    }
+
+    func testLocalStateResetterClearsOnlyCliveLocalRecords() throws {
+        var removed: [String] = []
+        let resetter = LocalStateResetter(
+            removePairedMacs: { removed.append("paired-macs") },
+            removeWorkspace: { removed.append("workspace") },
+            removeRestoration: { removed.append("restoration") },
+            removePreferences: { removed.append("preferences") }
+        )
+
+        try resetter.reset()
+
+        XCTAssertEqual(removed, ["paired-macs", "workspace", "restoration", "preferences"])
+    }
+
     func testDestinationStoreRoundTripsWithoutWorkspaceContent() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

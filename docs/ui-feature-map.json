@@ -552,8 +552,7 @@
       ],
       "resources": {
         "views": [
-          "Apps/Clive/App/TerminalKeyboardAccessory.swift",
-          "Apps/Clive/App/CLITextField.swift"
+          "Apps/Clive/App/TerminalKeyboardAccessory.swift"
         ],
         "state_actions_navigation": [
           "Apps/Clive/App/TerminalKeyboardAccessory.swift"
@@ -808,8 +807,7 @@
       ],
       "resources": {
         "views": [
-          "Apps/Clive/App/WorkspaceView.swift",
-          "Apps/Clive/App/CLITextField.swift"
+          "Apps/Clive/App/WorkspaceView.swift"
         ],
         "state_actions_navigation": [
           "Apps/Clive/App/AppPreferences.swift"
@@ -895,8 +893,7 @@
       ],
       "resources": {
         "views": [
-          "Apps/Clive/App/WorkspaceView.swift",
-          "Apps/Clive/App/CLITextField.swift"
+          "Apps/Clive/App/WorkspaceView.swift"
         ],
         "state_actions_navigation": [
           "Apps/Clive/App/WorkspaceCoordinator.swift",
@@ -2309,141 +2306,7 @@
       }
     }
   ],
-  "legacy_components": [
-    {
-      "id": "ios.legacy.mac-list",
-      "semantic_name": "Legacy Paired Mac List",
-      "platform": "ios",
-      "kind": "screen",
-      "parent": null,
-      "canonical_path": "Legacy Paired Mac List",
-      "order": 1,
-      "aliases": [
-        "My Macs"
-      ],
-      "presentation": "Compiled PairedMacListView with no route from the current CliveApp entry point.",
-      "repetition": "One row per reachable paired Mac.",
-      "related_components": [
-        "ios.legacy.terminal-tabs",
-        "ios.pairing.scanner"
-      ],
-      "states": [
-        "empty",
-        "pairing",
-        "failed",
-        "paired"
-      ],
-      "resources": {
-        "views": [
-          "Apps/Clive/App/PairedMacListView.swift"
-        ],
-        "state_actions_navigation": [
-          "Apps/Clive/App/PairedMacsModel.swift"
-        ],
-        "models_services_protocols": [
-          "Apps/Clive/App/BonjourDiscovery.swift",
-          "Apps/Clive/App/PairingClient.swift"
-        ],
-        "accessibility_ids": [],
-        "localization": [],
-        "tests": [],
-        "fixtures": [],
-        "assets": [],
-        "previews": [],
-        "documentation": [
-          "docs/architecture.md"
-        ]
-      }
-    },
-    {
-      "id": "ios.legacy.terminal-tabs",
-      "semantic_name": "Legacy Terminal Tabs",
-      "platform": "ios",
-      "kind": "screen",
-      "parent": null,
-      "canonical_path": "Legacy Terminal Tabs",
-      "order": 2,
-      "aliases": [
-        "Shell tabs",
-        "Session picker"
-      ],
-      "presentation": "Compiled TerminalTabsView reachable only from the unreachable legacy Mac list.",
-      "repetition": "One segmented item per temporary Terminal tab.",
-      "related_components": [
-        "ios.legacy.mac-list"
-      ],
-      "states": [
-        "authenticating",
-        "active",
-        "cancelled",
-        "failed",
-        "obscured",
-        "connection-errors"
-      ],
-      "resources": {
-        "views": [
-          "Apps/Clive/App/TerminalTabsView.swift",
-          "Apps/Clive/App/TerminalSurfaceView.swift"
-        ],
-        "state_actions_navigation": [
-          "Apps/Clive/App/TerminalTabsView.swift"
-        ],
-        "models_services_protocols": [
-          "Apps/Clive/App/SessionClient.swift"
-        ],
-        "accessibility_ids": [
-          "terminal-surface-<tab-id>"
-        ],
-        "localization": [],
-        "tests": [],
-        "fixtures": [],
-        "assets": [],
-        "previews": [],
-        "documentation": [
-          "docs/architecture.md"
-        ]
-      }
-    },
-    {
-      "id": "ios.legacy.connection-details",
-      "semantic_name": "Legacy Connection Details",
-      "platform": "ios",
-      "kind": "screen",
-      "parent": null,
-      "canonical_path": "Legacy Connection Details",
-      "order": 3,
-      "aliases": [
-        "ConnectionDetailsView"
-      ],
-      "presentation": "Compiled older details view with no navigation link; the reachable details sheet is mapped separately.",
-      "repetition": null,
-      "related_components": [
-        "ios.settings.connection-details"
-      ],
-      "states": [
-        "connected",
-        "disconnected"
-      ],
-      "resources": {
-        "views": [
-          "Apps/Clive/App/WorkspaceView.swift"
-        ],
-        "state_actions_navigation": [],
-        "models_services_protocols": [
-          "Apps/Clive/App/PairedMacStore.swift"
-        ],
-        "accessibility_ids": [],
-        "localization": [],
-        "tests": [],
-        "fixtures": [],
-        "assets": [],
-        "previews": [],
-        "documentation": [
-          "docs/security.md"
-        ]
-      }
-    }
-  ],
+  "legacy_components": [],
   "reviews": [
     {
       "id": "2026-08-23-daemon-control-socket-ownership",

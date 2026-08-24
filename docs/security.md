@@ -36,6 +36,10 @@ Physical access to an unlocked iPhone or Mac user session remains a risk. V1 has
 
 The macOS identity password and encrypted identity share the same user-scoped directory, so filesystem access as that macOS user can recover the identity. This prototype does not claim protection from compromise of the invoking user account.
 
+## Compatibility recovery
+
+Clive accepts only current persisted schemas and `CL2:` Base45 pairing payloads. Unsupported historical local state fails closed: the iOS app hides connection and terminal data, explains the reset, and clears only Clive local stores after confirmation before pairing again. `clive reset` also requires an interactive confirmation and refuses while a daemon is active; it removes only Clive user-scoped daemon state, never unrelated files or system Keychain entries.
+
 ## Validation requirements
 
 Automated tests must demonstrate rejection of expired/reused pairing secrets, untrusted or changed certificates, malformed/oversized frames, and revoked clients. Manual security review must include local-network spoofing attempts, QR interception during the pairing window, biometric cancellation, process termination, and secret/log inspection.

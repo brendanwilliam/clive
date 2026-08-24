@@ -70,6 +70,21 @@ class FeatureMapTests(unittest.TestCase):
         new["components"][0]["aliases"].append("App workspace")
         self.assertIn("component mappings", feature_map.check_change_data(old, new, ["Apps/Clive/App/WorkspaceView.swift", "docs/ui-feature-map.json"], "docs/ui-feature-map.json"))
 
+    def test_component_change_allows_deleting_a_resource_mapped_at_base(self):
+        old = copy.deepcopy(self.data)
+        old["components"][0]["resources"]["views"].append("Apps/Clive/App/CLITextField.swift")
+        new = copy.deepcopy(self.data)
+
+        self.assertIn(
+            "component mappings",
+            feature_map.check_change_data(
+                old,
+                new,
+                ["Apps/Clive/App/CLITextField.swift", "docs/ui-feature-map.json"],
+                "docs/ui-feature-map.json",
+            ),
+        )
+
     def test_valid_no_impact_review_passes(self):
         old = copy.deepcopy(self.data); new = copy.deepcopy(old)
         new["reviews"].append({"id": "2099-01-01-doc-fix", "reason": "Documentation wording only.", "paths": ["README.md"], "result": "no-component-impact"})
@@ -95,9 +110,9 @@ class FeatureMapTests(unittest.TestCase):
         self.assertEqual(["ios.workspace.root"], [value["id"] for value in feature_map.query_matches(self.data, "ios.workspace.root")])
         self.assertEqual(["ios.workspace.root"], [value["id"] for value in feature_map.query_matches(self.data, "Terminal workspace")])
         value = copy.deepcopy(self.data)
-        value["legacy_components"][0]["aliases"].append("Terminal workspace")
+        value["components"][1]["aliases"].append("Terminal workspace")
         self.assertEqual(
-            ["ios.workspace.root", "ios.legacy.mac-list"],
+            ["ios.workspace.root", value["components"][1]["id"]],
             [item["id"] for item in feature_map.query_matches(value, "Terminal workspace")],
         )
 

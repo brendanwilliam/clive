@@ -128,8 +128,8 @@ public struct SessionOpenRequest: Codable, Equatable, Sendable {
         rendezvousCapability = try values.decodeIfPresent(RendezvousCapability.self, forKey: .rendezvousCapability)
         wanGateToken = try values.decodeIfPresent(Data.self, forKey: .wanGateToken)
         workingDirectory = try values.decodeIfPresent(String.self, forKey: .workingDirectory)
-        lastReceivedOffset = try values.decodeIfPresent(UInt64.self, forKey: .lastReceivedOffset) ?? 0
-        attachmentKind = try values.decodeIfPresent(AttachmentKind.self, forKey: .attachmentKind) ?? .iPhone
+        lastReceivedOffset = try values.decode(UInt64.self, forKey: .lastReceivedOffset)
+        attachmentKind = try values.decode(AttachmentKind.self, forKey: .attachmentKind)
     }
 }
 
@@ -152,8 +152,8 @@ public struct SessionOpened: Codable, Equatable, Sendable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         serverSessionID = try values.decode(UUID.self, forKey: .serverSessionID)
         rendezvousCapability = try values.decodeIfPresent(RendezvousCapability.self, forKey: .rendezvousCapability)
-        disposition = try values.decodeIfPresent(Disposition.self, forKey: .disposition) ?? .created
-        replayTruncated = try values.decodeIfPresent(Bool.self, forKey: .replayTruncated) ?? false
+        disposition = try values.decode(Disposition.self, forKey: .disposition)
+        replayTruncated = try values.decode(Bool.self, forKey: .replayTruncated)
     }
 }
 
