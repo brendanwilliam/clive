@@ -123,12 +123,12 @@ class FeatureMapTests(unittest.TestCase):
             "ios.workspace.terminal-list-button": ("column", "ios.workspace.header-row", 1),
             "ios.workspace.current-connection": ("column", "ios.workspace.header-row", 2),
             "ios.workspace.terminal-actions": ("group", "ios.workspace.header-row", 3),
-            "ios.workspace.shortcut-button": ("control", "ios.workspace.terminal-actions", 1),
-            "ios.workspace.new-terminal-button": ("control", "ios.workspace.terminal-actions", 2),
+            "ios.workspace.new-terminal-button": ("control", "ios.workspace.terminal-actions", 1),
             "ios.workspace.terminal-row": ("row", "ios.workspace.root", 2),
             "ios.workspace.terminal-pager": ("repeated", "ios.workspace.terminal-row", 1),
             "ios.workspace.keyboard-row": ("row", "ios.workspace.root", 3),
             "ios.workspace.terminal-keyboard": ("overlay", "ios.workspace.keyboard-row", 1),
+            "ios.workspace.shortcut-button": ("control", "ios.workspace.keyboard-row", 2),
         }
         for component_id, (kind, parent, order) in expected.items():
             with self.subTest(component_id=component_id):

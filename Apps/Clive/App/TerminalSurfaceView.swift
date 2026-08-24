@@ -6,89 +6,110 @@ struct TerminalSurfaceView: UIViewRepresentable {
     let session: SessionClient?
     let accessibilityIdentifier: String
     let isSelected: Bool
-    func makeCoordinator() -> Coordinator { Coordinator(session: session) }
-    func makeUIView(context: Context) -> TerminalView {
-        let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
-        view.linkReporting = .implicit
-        view.linkHighlightMode = .hoverWithModifier
-        view.accessibilityIdentifier = accessibilityIdentifier
-        view.accessibilityLabel = "Terminal"
-        view.accessibilityValue = isSelected ? "Selected" : "Not selected"
-        context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installControls(on: view)
-        view.keyboardDismissMode = TerminalSurfaceConfiguration.keyboardDismissMode
-        view.scrollsToTop = TerminalSurfaceConfiguration.scrollsToTop
-        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
-            let fixtureOutput = (1...80).map {
-                $0 == 80 ? "https://example.com" : "fixture line \($0)"
-            }.joined(separator: "\r\n")
-            view.feed(byteArray: ArraySlice(("\u{1b}[2 q" + fixtureOutput).utf8))
-        }
-        session?.onOutput = { [weak view] data in DispatchQueue.main.async { view?.feed(byteArray: ArraySlice(data)) } }
-        return view
+    let shortcuts: [CLIShortcut]
+    let openDrawer: () -> Void
+    let selectAdjacentTerminal: (Bool) -> Void
+    let runShortcut: (CLIShortcut) -> Bool
+    let manageShortcuts: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            session: session,
+            shortcuts: shortcuts,
+            openDrawer: openDrawer,
+            selectAdjacentTerminal: selectAdjacentTerminal,
+            runShortcut: runShortcut,
+            manageShortcuts: manageShortcuts
+        )
     }
-    func updateUIView(_ uiView: TerminalView, context: Context) {
+
+    func makeUIView(context: Context) -> TerminalSurfaceContainer {
+        let container = TerminalSurfaceContainer()
+        let terminal = container.terminal
+        terminal.terminalDelegate = context.coordinator
+        terminal.linkReporting = .implicit
+        terminal.linkHighlightMode = .hoverWithModifier
+        terminal.accessibilityIdentifier = accessibilityIdentifier
+        terminal.accessibilityLabel = "Terminal"
+        terminal.accessibilityValue = isSelected ? "Selected" : "Not selected"
+        terminal.keyboardDismissMode = TerminalSurfaceConfiguration.keyboardDismissMode
+        terminal.scrollsToTop = TerminalSurfaceConfiguration.scrollsToTop
+        context.coordinator.install(on: container)
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+            let fixtureOutput = (1...80).map { $0 == 80 ? "https://example.com" : "fixture line \($0)" }.joined(separator: "\r\n")
+            terminal.feed(byteArray: ArraySlice(("\u{1b}[2 q" + fixtureOutput).utf8))
+        }
+        session?.onOutput = { [weak terminal] data in DispatchQueue.main.async { terminal?.feed(byteArray: ArraySlice(data)) } }
+        return container
+    }
+
+    func updateUIView(_ uiView: TerminalSurfaceContainer, context: Context) {
         context.coordinator.session = session
-        uiView.accessibilityIdentifier = accessibilityIdentifier
-        uiView.accessibilityValue = isSelected ? "Selected" : "Not selected"
+        context.coordinator.shortcuts = shortcuts
+        context.coordinator.openDrawer = openDrawer
+        context.coordinator.selectAdjacentTerminal = selectAdjacentTerminal
+        context.coordinator.runShortcut = runShortcut
+        context.coordinator.manageShortcuts = manageShortcuts
+        uiView.terminal.accessibilityIdentifier = accessibilityIdentifier
+        uiView.terminal.accessibilityValue = isSelected ? "Selected" : "Not selected"
     }
 
     final class Coordinator: NSObject, TerminalViewDelegate, @unchecked Sendable {
-        var session: SessionClient?; weak var view: TerminalView?
-        fileprivate var accessory: TerminalKeyboardAccessory?
-        fileprivate var keyboardDismissObserver: TerminalKeyboardDismissObserver?
-        fileprivate var linkLongPressObserver: TerminalLinkLongPressObserver?
-        init(session: SessionClient?) { self.session = session }
-        @MainActor func installAccessory(on view: TerminalView) {
-            let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
+        var session: SessionClient?
+        var shortcuts: [CLIShortcut]
+        var openDrawer: () -> Void
+        var selectAdjacentTerminal: (Bool) -> Void
+        var runShortcut: (CLIShortcut) -> Bool
+        var manageShortcuts: () -> Void
+        private weak var container: TerminalSurfaceContainer?
+        private var accessory: TerminalKeyboardAccessory?
+        private var edgeObserver: TerminalLeftEdgeObserver?
+        private var twoFingerObserver: TerminalTwoFingerSwitchObserver?
+
+        init(
+            session: SessionClient?,
+            shortcuts: [CLIShortcut],
+            openDrawer: @escaping () -> Void,
+            selectAdjacentTerminal: @escaping (Bool) -> Void,
+            runShortcut: @escaping (CLIShortcut) -> Bool,
+            manageShortcuts: @escaping () -> Void
+        ) {
+            self.session = session
+            self.shortcuts = shortcuts
+            self.openDrawer = openDrawer
+            self.selectAdjacentTerminal = selectAdjacentTerminal
+            self.runShortcut = runShortcut
+            self.manageShortcuts = manageShortcuts
+        }
+
+        @MainActor func install(on container: TerminalSurfaceContainer) {
+            self.container = container
+            let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.sendInput(data) })
             self.accessory = accessory
-            view.inputAccessoryView = accessory
-            // SwiftTerm installs a default accessory during its initialization. Reload the
-            // responder so UIKit replaces that view even if the terminal is already focused.
-            view.reloadInputViews()
-            _ = view.becomeFirstResponder()
-        }
-        @MainActor func installControls(on view: TerminalView) {
-            keyboardDismissObserver = TerminalKeyboardDismissObserver.install(on: view)
-            linkLongPressObserver = TerminalLinkLongPressObserver.install(on: view) { [weak self] url, source, point in
-                self?.presentLinkActions(for: url, from: source, at: point)
+            container.installKeyRow(accessory)
+            container.onKeyboardRequested = { [weak container] in _ = container?.terminal.becomeFirstResponder() }
+            container.onKeyboardDismissRequested = { [weak container] in _ = container?.terminal.resignFirstResponder() }
+            container.onShortcutsRequested = { [weak self] in
+                guard let self, let container = self.container else { return }
+                container.presentShortcuts(
+                    self.shortcuts,
+                    run: self.runShortcut,
+                    manage: self.manageShortcuts
+                )
             }
-            view.accessibilityCustomActions = [
-                ("Cursor up", "\u{1b}[A"), ("Cursor down", "\u{1b}[B"),
-                ("Cursor left", "\u{1b}[D"), ("Cursor right", "\u{1b}[C")
-            ].map { name, sequence in UIAccessibilityCustomAction(name: name) { [weak self] _ in self?.session?.sendInput(Data(sequence.utf8)); return true } }
-        }
-        @MainActor private func performCommand(_ key: String) {
-            switch key.lowercased() {
-            case "k": view?.feed(byteArray: ArraySlice("\u{1b}[2J\u{1b}[H".utf8))
-            case "w": session?.close()
-            default: break // C/V/A/T/[ / ] are handled by the workspace command router.
+            edgeObserver = TerminalLeftEdgeObserver.install(on: container.terminal) { [weak self] in self?.openDrawer() }
+            twoFingerObserver = TerminalTwoFingerSwitchObserver.install(on: container.terminal) { [weak self] forward in
+                self?.selectAdjacentTerminal(forward)
             }
-            accessory?.resetModifiers()
         }
+
         func send(source: TerminalView, data: ArraySlice<UInt8>) {
             let input = Data(data)
             MainActor.assumeIsolated {
-                if let accessory {
-                    guard let transformed = accessory.transformSoftwareInput(input) else { return }
-                    sendInput(transformed)
-                } else {
-                    session?.sendInput(input)
-                }
+                sendInput(input)
             }
         }
-        @MainActor private func sendInput(_ data: Data) {
-            session?.sendInput(data)
-        }
-        @MainActor private func presentLinkActions(for url: URL, from view: UIView, at point: CGPoint) {
-            let alert = UIAlertController(title: url.absoluteString, message: nil, preferredStyle: .actionSheet)
-            alert.addAction(UIAlertAction(title: "Open Link", style: .default) { _ in
-                UIApplication.shared.open(url)
-            })
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            alert.popoverPresentationController?.sourceView = view
-            alert.popoverPresentationController?.sourceRect = CGRect(origin: point, size: .zero)
-            view.topMostViewController?.present(alert, animated: true)
-        }
+        @MainActor private func sendInput(_ data: Data) { session?.sendInput(data) }
         func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
             guard newCols > 0, newRows > 0, newCols <= Int(UInt16.max), newRows <= Int(UInt16.max) else { return }
             session?.resize(TerminalSize(columns: UInt16(newCols), rows: UInt16(newRows)))
@@ -98,11 +119,241 @@ struct TerminalSurfaceView: UIViewRepresentable {
         func scrolled(source: TerminalView, position: Double) {}
         func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
             guard let url = TerminalLinkPolicy.destination(for: link) else { return }
-            MainActor.assumeIsolated {
-                UIApplication.shared.open(url)
-            }
+            MainActor.assumeIsolated { UIApplication.shared.open(url) }
         }
         func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
+    }
+}
+
+@MainActor final class TerminalSurfaceContainer: UIView {
+    let terminal = TerminalView(frame: .zero)
+    var onKeyboardRequested: (() -> Void)?
+    var onKeyboardDismissRequested: (() -> Void)?
+    var onShortcutsRequested: (() -> Void)?
+    private let controls = TerminalBottomControls()
+    private weak var shortcutPanel: UIViewController?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        terminal.translatesAutoresizingMaskIntoConstraints = false
+        controls.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(terminal)
+        addSubview(controls)
+        NSLayoutConstraint.activate([
+            terminal.topAnchor.constraint(equalTo: topAnchor), terminal.leadingAnchor.constraint(equalTo: leadingAnchor), terminal.trailingAnchor.constraint(equalTo: trailingAnchor),
+            terminal.bottomAnchor.constraint(equalTo: controls.topAnchor),
+            controls.leadingAnchor.constraint(equalTo: leadingAnchor), controls.trailingAnchor.constraint(equalTo: trailingAnchor),
+            controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor), controls.heightAnchor.constraint(equalToConstant: 48),
+        ])
+        controls.onKeyboard = { [weak self] shown in shown ? self?.onKeyboardDismissRequested?() : self?.onKeyboardRequested?() }
+        controls.onShortcuts = { [weak self] in self?.onShortcutsRequested?() }
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    func installKeyRow(_ row: TerminalKeyboardAccessory) { controls.installKeyRow(row) }
+
+    func presentShortcuts(
+        _ shortcuts: [CLIShortcut],
+        run: @escaping (CLIShortcut) -> Bool,
+        manage: @escaping () -> Void
+    ) {
+        guard shortcutPanel == nil,
+              let viewController = window?.rootViewController?.topMostViewController else { return }
+        controls.beginShortcuts()
+        let panel = ShortcutPanelViewController(
+            shortcuts: shortcuts,
+            run: run,
+            manage: manage,
+            dismissed: { [weak self] in
+                self?.controls.endShortcuts()
+                self?.shortcutPanel = nil
+            }
+        )
+        panel.modalPresentationStyle = .popover
+        panel.popoverPresentationController?.sourceView = controls.shortcutButton
+        panel.popoverPresentationController?.sourceRect = controls.shortcutButton.bounds
+        panel.popoverPresentationController?.permittedArrowDirections = .down
+        panel.popoverPresentationController?.delegate = panel
+        panel.preferredContentSize = CGSize(width: 320, height: 320)
+        shortcutPanel = panel
+        viewController.present(panel, animated: true)
+    }
+
+    @objc private func keyboardChanged(_ notification: Notification) {
+        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let window else { return }
+        let keyboardVisible = window.convert(frame, from: nil).intersects(window.bounds) && frame.minY < window.bounds.height
+        controls.setKeyboardVisible(keyboardVisible)
+    }
+}
+
+@MainActor private final class TerminalBottomControls: UIView {
+    var onKeyboard: ((Bool) -> Void)?
+    var onShortcuts: (() -> Void)?
+    private let keyboardButton = UIButton(type: .system)
+    let shortcutButton = UIButton(type: .system)
+    private let rowHost = UIView()
+    private var keyRow: TerminalKeyboardAccessory?
+    private var keyboardVisible = false
+    private var policy = TerminalInputControlPolicy()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .systemGroupedBackground
+        keyboardButton.accessibilityIdentifier = "terminal-keyboard-button"
+        shortcutButton.accessibilityIdentifier = "terminal-shortcuts-button"
+        shortcutButton.accessibilityLabel = "Shortcuts"
+        keyboardButton.addTarget(self, action: #selector(toggleKeyboard), for: .touchUpInside)
+        shortcutButton.addTarget(self, action: #selector(showShortcuts), for: .touchUpInside)
+        keyboardButton.translatesAutoresizingMaskIntoConstraints = false
+        shortcutButton.translatesAutoresizingMaskIntoConstraints = false
+        rowHost.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(keyboardButton); addSubview(rowHost); addSubview(shortcutButton)
+        NSLayoutConstraint.activate([
+            keyboardButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), keyboardButton.centerYAnchor.constraint(equalTo: centerYAnchor), keyboardButton.widthAnchor.constraint(equalToConstant: 44), keyboardButton.heightAnchor.constraint(equalToConstant: 44),
+            shortcutButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), shortcutButton.centerYAnchor.constraint(equalTo: centerYAnchor), shortcutButton.widthAnchor.constraint(equalToConstant: 44), shortcutButton.heightAnchor.constraint(equalToConstant: 44),
+            rowHost.leadingAnchor.constraint(equalTo: keyboardButton.trailingAnchor, constant: 4), rowHost.trailingAnchor.constraint(equalTo: shortcutButton.leadingAnchor, constant: -4), rowHost.topAnchor.constraint(equalTo: topAnchor, constant: 4), rowHost.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+        ])
+        shortcutButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
+        updateAppearance()
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func installKeyRow(_ row: TerminalKeyboardAccessory) {
+        keyRow = row; row.translatesAutoresizingMaskIntoConstraints = false; rowHost.addSubview(row)
+        NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo: rowHost.leadingAnchor), row.trailingAnchor.constraint(equalTo: rowHost.trailingAnchor), row.topAnchor.constraint(equalTo: rowHost.topAnchor), row.bottomAnchor.constraint(equalTo: rowHost.bottomAnchor)])
+    }
+    func setKeyboardVisible(_ visible: Bool) { keyboardVisible = visible; policy.keyboardChanged(visible: visible); updateAppearance() }
+    func beginShortcuts() { policy.openShortcuts(); if keyboardVisible { onKeyboard?(true) }; rowHost.isHidden = true }
+    func endShortcuts() {
+        policy.dismissShortcuts()
+        if policy.state == .keyboard { onKeyboard?(false) }
+        updateAppearance()
+    }
+
+    @objc private func toggleKeyboard() { onKeyboard?(keyboardVisible) }
+    @objc private func showShortcuts() { onShortcuts?() }
+    private func updateAppearance() {
+        keyboardButton.setImage(UIImage(systemName: keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"), for: .normal)
+        keyboardButton.accessibilityLabel = keyboardVisible ? "Hide keyboard" : "Show keyboard"
+        rowHost.isHidden = policy.state != .keyboard
+    }
+}
+
+@MainActor private final class ShortcutPanelViewController: UIViewController, UIPopoverPresentationControllerDelegate {
+    private let shortcuts: [CLIShortcut]
+    private let run: (CLIShortcut) -> Bool
+    private let manage: () -> Void
+    private var dismissed: (() -> Void)?
+
+    init(
+        shortcuts: [CLIShortcut],
+        run: @escaping (CLIShortcut) -> Bool,
+        manage: @escaping () -> Void,
+        dismissed: @escaping () -> Void
+    ) {
+        self.shortcuts = shortcuts
+        self.run = run
+        self.manage = manage
+        self.dismissed = dismissed
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        presentationController?.delegate = self
+        let content = ShortcutPanelContent(
+            shortcuts: shortcuts,
+            run: { [weak self] shortcut in
+                guard let self, self.run(shortcut) else { return }
+                self.dismiss(animated: true)
+            },
+            manage: { [weak self] in
+                guard let self else { return }
+                self.dismiss(animated: true) {
+                    DispatchQueue.main.async { self.manage() }
+                }
+            },
+            dismiss: { [weak self] in self?.dismiss(animated: true) }
+        )
+        let host = UIHostingController(rootView: content)
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
+    }
+
+    func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle { .none }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) { finishDismissal() }
+
+    override func dismiss(animated flag: Bool, completion: (() -> Void)? = nil) {
+        super.dismiss(animated: flag) { [weak self] in
+            self?.finishDismissal()
+            completion?()
+        }
+    }
+
+    private func finishDismissal() {
+        dismissed?()
+        dismissed = nil
+    }
+}
+
+private struct ShortcutPanelContent: View {
+    let shortcuts: [CLIShortcut]
+    let run: (CLIShortcut) -> Void
+    let manage: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if shortcuts.isEmpty {
+                    ContentUnavailableView("No shortcuts", systemImage: "bolt", description: Text("Add commands in Settings to run them here."))
+                } else {
+                    ForEach(shortcuts) { shortcut in
+                        Button { run(shortcut) } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
+                                Text(shortcut.command.isEmpty ? "No command" : shortcut.command)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .disabled(shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("shortcut-row-\(shortcut.id.uuidString)")
+                    }
+                }
+                Button("Manage in Settings", systemImage: "gearshape", action: manage)
+                    .accessibilityIdentifier("manage-shortcuts-button")
+            }
+            .navigationTitle("Shortcuts")
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Done", action: dismiss) } }
+        }
+        .accessibilityIdentifier("shortcuts-panel")
+    }
+}
+
+private extension UIViewController {
+    var topMostViewController: UIViewController {
+        if let presentedViewController { return presentedViewController.topMostViewController }
+        if let navigationController = self as? UINavigationController,
+           let visibleViewController = navigationController.visibleViewController {
+            return visibleViewController.topMostViewController
+        }
+        return self
     }
 }
 
@@ -112,113 +363,69 @@ enum TerminalSurfaceConfiguration {
     static let contentPadding: CGFloat = 2
 }
 
-private extension UIView {
-    var topMostViewController: UIViewController? {
-        var controller = window?.rootViewController
-        while let presented = controller?.presentedViewController {
-            controller = presented
-        }
-        return controller
+@MainActor private final class TerminalLeftEdgeObserver: NSObject, UIGestureRecognizerDelegate {
+    private weak var view: TerminalView?
+    private let open: () -> Void
+    private lazy var gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handle(_:)))
+
+    static func install(on view: TerminalView, open: @escaping () -> Void) -> TerminalLeftEdgeObserver {
+        let observer = TerminalLeftEdgeObserver(view: view, open: open)
+        observer.gesture.edges = .left
+        observer.gesture.delegate = observer
+        view.addGestureRecognizer(observer.gesture)
+        return observer
     }
+    private init(view: TerminalView, open: @escaping () -> Void) { self.view = view; self.open = open }
+    @objc private func handle(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        if gesture.state == .began { open() }
+    }
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { view != nil }
 }
 
-@MainActor private final class TerminalLinkLongPressObserver: NSObject, UIGestureRecognizerDelegate {
+@MainActor private final class TerminalTwoFingerSwitchObserver: NSObject, UIGestureRecognizerDelegate {
     private weak var view: TerminalView?
-    private let activate: (URL, UIView, CGPoint) -> Void
-    private var destination: URL?
-    private lazy var longPressGestureRecognizer = UILongPressGestureRecognizer(
-        target: self,
-        action: #selector(handleLongPress(_:))
-    )
+    private let selectAdjacent: (Bool) -> Void
+    private lazy var gesture = UIPanGestureRecognizer(target: self, action: #selector(handle(_:)))
+    private var handledCurrentGesture = false
 
     static func install(
         on view: TerminalView,
-        activate: @escaping (URL, UIView, CGPoint) -> Void
-    ) -> TerminalLinkLongPressObserver {
-        let observer = TerminalLinkLongPressObserver(view: view, activate: activate)
-        observer.longPressGestureRecognizer.delegate = observer
-        view.addGestureRecognizer(observer.longPressGestureRecognizer)
-        (view.gestureRecognizers ?? [])
-            .compactMap { $0 as? UILongPressGestureRecognizer }
-            .filter { $0 !== observer.longPressGestureRecognizer }
-            .forEach { $0.require(toFail: observer.longPressGestureRecognizer) }
+        selectAdjacent: @escaping (Bool) -> Void
+    ) -> TerminalTwoFingerSwitchObserver {
+        let observer = TerminalTwoFingerSwitchObserver(view: view, selectAdjacent: selectAdjacent)
+        observer.gesture.minimumNumberOfTouches = 2
+        observer.gesture.maximumNumberOfTouches = 2
+        observer.gesture.delegate = observer
+        view.addGestureRecognizer(observer.gesture)
         return observer
     }
 
-    private init(view: TerminalView, activate: @escaping (URL, UIView, CGPoint) -> Void) {
+    private init(view: TerminalView, selectAdjacent: @escaping (Bool) -> Void) {
         self.view = view
-        self.activate = activate
+        self.selectAdjacent = selectAdjacent
     }
 
-    @objc private func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began,
-              let destination,
-              let view else {
-            return
+    @objc private func handle(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            handledCurrentGesture = false
+        case .changed, .ended:
+            let translation = gesture.translation(in: view)
+            guard !handledCurrentGesture,
+                  abs(translation.x) > 20,
+                  abs(translation.x) > abs(translation.y) else { return }
+            handledCurrentGesture = true
+            selectAdjacent(translation.x < 0)
+        case .cancelled, .failed:
+            handledCurrentGesture = false
+        default:
+            break
         }
-        activate(destination, view, gesture.location(in: view))
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let view,
-              let destination = destination(at: gestureRecognizer.location(in: view), in: view) else {
-            destination = nil
-            return false
-        }
-        self.destination = destination
-        return true
-    }
-
-    private func destination(at point: CGPoint, in view: TerminalView) -> URL? {
-        let terminal = view.getTerminal()
-        guard terminal.cols > 0,
-              view.contentSize.width > 0,
-              terminal.rows > 0 else {
-            return nil
-        }
-        let columnWidth = view.contentSize.width / CGFloat(terminal.cols)
-        let rowHeight = view.getOptimalFrameSize().height / CGFloat(terminal.rows)
-        guard columnWidth > 0, rowHeight > 0 else { return nil }
-        let position = Position(
-            col: min(max(0, Int(point.x / columnWidth)), terminal.cols - 1),
-            row: max(0, Int(point.y / rowHeight))
-        )
-        guard let link = terminal.link(at: .buffer(position), mode: .explicitAndImplicit) else {
-            return nil
-        }
-        return TerminalLinkPolicy.destination(for: link)
-    }
-}
-
-@MainActor private final class TerminalKeyboardDismissObserver: NSObject, UIGestureRecognizerDelegate {
-    private weak var view: TerminalView?
-    private lazy var dismissPanGestureRecognizer = UIPanGestureRecognizer(
-        target: self,
-        action: #selector(handlePan(_:))
-    )
-
-    static func install(on view: TerminalView) -> TerminalKeyboardDismissObserver {
-        let observer = TerminalKeyboardDismissObserver(view: view)
-        observer.dismissPanGestureRecognizer.delegate = observer
-        observer.dismissPanGestureRecognizer.cancelsTouchesInView = true
-        view.addGestureRecognizer(observer.dismissPanGestureRecognizer)
-        // Let an intentional downward keyboard-dismiss gesture win before SwiftTerm's
-        // scroll view begins moving terminal history.
-        view.panGestureRecognizer.require(toFail: observer.dismissPanGestureRecognizer)
-        return observer
-    }
-
-    private init(view: TerminalView) { self.view = view }
-
-    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard gesture.state == .began else { return }
-        _ = view?.resignFirstResponder()
-    }
-
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let view, view.isFirstResponder,
-              let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
-        let velocity = pan.velocity(in: view)
-        return velocity.y > 0 && velocity.y > abs(velocity.x) * 1.25
+        guard let view, gesture.numberOfTouches == 2 else { return false }
+        let velocity = gesture.velocity(in: view)
+        return abs(velocity.x) > abs(velocity.y)
     }
 }
