@@ -85,6 +85,15 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertFalse(app.navigationBars["Settings"].exists)
     }
 
+    func testKeyboardDismissalThenPagingRemainAvailable() {
+        let first = terminalSurface(firstID)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
+        first.swipeDown(velocity: .slow)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        first.swipeLeft()
+        XCTAssertTrue(waitForSelection(of: terminalSurface(secondID)))
+    }
+
     func testDrawerRowSelectionOutsideMenu() {
         app.buttons["Terminals"].tap()
         drawerRow(secondID).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
