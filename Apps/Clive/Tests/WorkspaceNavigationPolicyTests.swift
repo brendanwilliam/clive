@@ -3,44 +3,33 @@ import XCTest
 @testable import Clive
 
 final class WorkspaceNavigationPolicyTests: XCTestCase {
-    func testPagerSelectsNormalPagesBidirectionally() {
-        let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
-        XCTAssertEqual(policy.transition(to: .terminal(last), terminalIDs: [first, last]), .select(last))
-        XCTAssertEqual(policy.transition(to: .terminal(first), terminalIDs: [first, last]), .select(first))
+    func testTitleSwipeSelectsAdjacentTerminalWithoutWrapping() {
+        let first = UUID(), second = UUID(), last = UUID()
+        let terminalIDs = [first, second, last]
+        XCTAssertEqual(TerminalTitleNavigationPolicy.adjacentTerminal(from: second, terminalIDs: terminalIDs, direction: .left), last)
+        XCTAssertEqual(TerminalTitleNavigationPolicy.adjacentTerminal(from: second, terminalIDs: terminalIDs, direction: .right), first)
+        XCTAssertNil(TerminalTitleNavigationPolicy.adjacentTerminal(from: first, terminalIDs: terminalIDs, direction: .right))
+        XCTAssertNil(TerminalTitleNavigationPolicy.adjacentTerminal(from: last, terminalIDs: terminalIDs, direction: .left))
     }
 
-    func testPagerRestoresFirstPageBeforeOpeningDrawer() {
-        let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
-        XCTAssertEqual(policy.transition(to: .leading, terminalIDs: [first, last]), .openDrawer(restoring: first))
-        XCTAssertEqual(policy.transition(to: .leading, terminalIDs: [first, last]), .restore(first))
+    func testTitleSwipeRequiresDistanceAndHorizontalDominance() {
+        XCTAssertEqual(TerminalTitleNavigationPolicy.direction(translation: CGSize(width: 50, height: 10)), .right)
+        XCTAssertEqual(TerminalTitleNavigationPolicy.direction(translation: CGSize(width: -50, height: 10)), .left)
+        XCTAssertNil(TerminalTitleNavigationPolicy.direction(translation: CGSize(width: 30, height: 0)))
+        XCTAssertNil(TerminalTitleNavigationPolicy.direction(translation: CGSize(width: 50, height: 48)))
     }
 
-    func testPagerCreatesAtTrailingBoundary() {
-        let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
-        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)
+    func testTerminalDoubleTapRegionsMapToOneKeyEach() {
+        XCTAssertEqual(TerminalContentGesturePolicy.region(forDoubleTapAt: 10, height: 90), .up)
+        XCTAssertEqual(TerminalContentGesturePolicy.region(forDoubleTapAt: 45, height: 90), .enter)
+        XCTAssertEqual(TerminalContentGesturePolicy.region(forDoubleTapAt: 80, height: 90), .down)
+        XCTAssertEqual(TerminalContentGesturePolicy.input(for: .up), Data("\u{1b}[A".utf8))
+        XCTAssertEqual(TerminalContentGesturePolicy.input(for: .enter), Data("\r".utf8))
+        XCTAssertEqual(TerminalContentGesturePolicy.input(for: .down), Data("\u{1b}[B".utf8))
+        XCTAssertNil(TerminalContentGesturePolicy.region(forDoubleTapAt: 0, height: 0))
     }
 
-    func testPagerKeepsDrawerAndNewTerminalGesturesAvailableWithoutSessions() {
-        var policy = TerminalPagerPolicy()
-        XCTAssertEqual(policy.transition(to: .leading, terminalIDs: []), .openDrawer(restoring: nil))
-        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: []), .createTerminal)
-    }
-
-    func testPagerPreventsDuplicateSentinelEventsAndCreatesOnlyOnce() {
-        let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
-        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)
-        let created = UUID()
-        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last, created]), .restore(created))
-    }
-
-    func testHorizontalDirectionRequiresDistanceAndHorizontalDominance() {
-        XCTAssertEqual(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: 50, height: 10)), .right)
-        XCTAssertEqual(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: -50, height: 10)), .left)
-        XCTAssertNil(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: 30, height: 0)))
-        XCTAssertNil(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: 50, height: 48)))
-    }
-
-    func testTerminalKeepsScrollHistoryStillDuringKeyboardDismissal() {
+    func testTerminalKeepsScrollHistoryConfiguration() {
         XCTAssertEqual(TerminalSurfaceConfiguration.keyboardDismissMode, .none)
         XCTAssertFalse(TerminalSurfaceConfiguration.scrollsToTop)
         XCTAssertEqual(TerminalSurfaceConfiguration.contentPadding, 2)

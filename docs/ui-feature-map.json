@@ -156,42 +156,41 @@
     },
     {
       "id": "ios.workspace.current-connection",
-      "semantic_name": "Current Connection",
+      "semantic_name": "Current Terminal Title",
       "platform": "ios",
       "kind": "column",
       "parent": "ios.workspace.header-row",
-      "canonical_path": "Workspace/Header Row/Current Connection",
+      "canonical_path": "Workspace/Header Row/Current Terminal Title",
       "order": 2,
       "aliases": [
+        "Current Connection",
         "Connection status",
-        "Mac status"
+        "Mac status",
+        "Terminal name"
       ],
-      "presentation": "Centered header control showing Connection health and opening Settings.",
+      "presentation": "Centered header control showing the selected Terminal name; tap renames it and horizontal swipes select an adjacent Terminal.",
       "repetition": null,
       "related_components": [
-        "ios.settings.root",
-        "ios.settings.connection-details"
+        "ios.workspace.terminal-pager",
+        "ios.workspace.terminal-drawer"
       ],
       "states": [
-        "connected",
-        "connecting",
-        "reconnecting",
-        "disconnected",
-        "attention"
+        "terminal-selected",
+        "no-terminal"
       ],
       "resources": {
         "views": [
           "Apps/Clive/App/WorkspaceView.swift"
         ],
         "state_actions_navigation": [
-          "Apps/Clive/App/WorkspaceCoordinator.swift",
-          "Apps/Clive/App/WorkspacePresentation.swift"
+          "Apps/Clive/App/TerminalPagerPolicy.swift",
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
         ],
         "models_services_protocols": [
-          "Apps/Clive/App/SessionClient.swift"
+          "Sources/CliveCore/Protocol.swift"
         ],
         "accessibility_ids": [
-          "connection-details-button"
+          "terminal-title-button"
         ],
         "localization": [],
         "tests": [
@@ -421,12 +420,14 @@
         "Shell pages",
         "Session pages"
       ],
-      "presentation": "Horizontally paged Terminal surfaces with leading and trailing navigation sentinels.",
-      "repetition": "One page per open WorkspaceSession.",
+      "presentation": "Selected Terminal surface with scrolling-preserving double taps that send Up, Enter, or Down by vertical third, plus left/right screen-edge gestures for the Terminal Drawer and Shortcuts sheet.",
+      "repetition": "One surface for the selected WorkspaceSession.",
       "related_components": [
         "ios.workspace.terminal-keyboard",
         "ios.workspace.recovery-overlay",
-        "ios.workspace.terminal-drawer"
+        "ios.workspace.terminal-drawer",
+        "ios.shortcuts.sheet",
+        "ios.workspace.current-connection"
       ],
       "states": [
         "empty",

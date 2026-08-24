@@ -16,8 +16,6 @@ struct WorkspaceView: View {
     @State private var shortcutEditName = ""
     @State private var shortcutEditCommand = ""
     @State private var isReorderingShortcuts = false
-    @State private var pagerSelection = TerminalPagerPage.empty
-    @State private var pagerPolicy = TerminalPagerPolicy()
 
     var body: some View {
         GeometryReader { proxy in
@@ -110,7 +108,7 @@ struct WorkspaceView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { terminalButton }
-                ToolbarItem(placement: .principal) { connectionStatusButton }
+                ToolbarItem(placement: .principal) { terminalTitleButton }
                 ToolbarItem(placement: .topBarTrailing) { terminalActions }
             }
             .toolbarBackground(Color.black.opacity(0.18), for: .navigationBar)
@@ -134,24 +132,34 @@ struct WorkspaceView: View {
         .accessibilityValue("\(coordinator.sessions.count) open")
     }
 
-    private var connectionStatusButton: some View {
-        let presentation = connectionPresentation
-        return Button { navigate { coordinator.showSettings() } } label: {
-            HStack(spacing: 6) {
-                Image(systemName: presentation.icon)
-                    .foregroundStyle(connectionHealthColor)
-                Text(coordinator.selectedMac?.displayName ?? "No Mac")
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .font(.subheadline.weight(.semibold))
-            .frame(height: 44)
+    private var terminalTitleButton: some View {
+        Button {
+            guard let session = coordinator.selectedSession else { return }
+            beginRename(session)
+        } label: {
+            Text(coordinator.selectedSession?.descriptor.label ?? "No terminal")
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .font(.subheadline.weight(.semibold))
+                .frame(height: 44)
         }
         .buttonStyle(.plain)
-        .disabled(coordinator.selectedMac == nil)
-        .accessibilityLabel("Settings")
-        .accessibilityValue(presentation.accessibilityValue)
-        .accessibilityIdentifier("connection-details-button")
+        .disabled(coordinator.selectedSession == nil)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: TerminalTitleNavigationPolicy.horizontalThreshold)
+                .onEnded { value in
+                    guard let direction = TerminalTitleNavigationPolicy.direction(translation: value.translation),
+                          let adjacent = TerminalTitleNavigationPolicy.adjacentTerminal(
+                            from: coordinator.selectedSessionID,
+                            terminalIDs: coordinator.sessions.map(\.id),
+                            direction: direction
+                          ) else { return }
+                    coordinator.selectSession(adjacent)
+                }
+        )
+        .accessibilityLabel("Terminal name")
+        .accessibilityValue(coordinator.selectedSession?.descriptor.label ?? "No terminal")
+        .accessibilityIdentifier("terminal-title-button")
     }
 
     private var connectionPresentation: ConnectionStatusPresentation {
@@ -182,45 +190,29 @@ struct WorkspaceView: View {
         VStack(spacing: 0) {
             if let recovery = coordinator.recovery { recoveryView(recovery) }
             else {
-                TabView(selection: $pagerSelection) {
-                    Color.clear
-                        .tag(TerminalPagerPage.leading)
-                        .accessibilityHidden(true)
-                    if coordinator.sessions.isEmpty {
-                        ContentUnavailableView {
-                            Label("No terminal", systemImage: "terminal")
-                        } description: {
-                            Text("Start a new Terminal on your Connection.")
-                        } actions: {
-                            Button("New Terminal") { coordinator.addShell() }
-                                .buttonStyle(.borderedProminent)
-                        }
-                        .tag(TerminalPagerPage.empty)
-                    } else {
-                        ForEach(coordinator.sessions) { session in
-                            ZStack {
-                                TerminalSurfaceView(
-                                    session: session.client,
-                                    accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
-                                    isSelected: session.id == coordinator.selectedSessionID
-                                )
-                                sessionOverlay(session)
-                            }
-                            .padding(TerminalSurfaceConfiguration.contentPadding)
-                            .tag(TerminalPagerPage.terminal(session.id))
-                            .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
-                            .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
-                        }
+                if let session = coordinator.selectedSession {
+                    ZStack {
+                        TerminalSurfaceView(
+                            session: session.client,
+                            accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
+                            isSelected: true,
+                            onOpenDrawer: { coordinator.showTerminalList() },
+                            onOpenShortcuts: { showingShortcuts = true }
+                        )
+                        sessionOverlay(session)
                     }
-                    Color.clear
-                        .tag(TerminalPagerPage.trailing)
-                        .accessibilityHidden(true)
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .onAppear { pagerSelection = coordinator.selectedSessionID.map(TerminalPagerPage.terminal) ?? .empty }
-                .onChange(of: pagerSelection) { _, page in handlePagerSelection(page) }
-                .onChange(of: coordinator.selectedSessionID) { _, id in
-                    pagerSelection = id.map(TerminalPagerPage.terminal) ?? .empty
+                    .padding(.vertical, TerminalSurfaceConfiguration.contentPadding)
+                    .accessibilityIdentifier("terminal-page-\(session.id.uuidString)")
+                    .accessibilityValue("Selected")
+                } else {
+                    ContentUnavailableView {
+                        Label("No terminal", systemImage: "terminal")
+                    } description: {
+                        Text("Start a new Terminal on your Connection.")
+                    } actions: {
+                        Button("New Terminal") { coordinator.addShell() }
+                            .buttonStyle(.borderedProminent)
+                    }
                 }
             }
         }
@@ -377,25 +369,6 @@ struct WorkspaceView: View {
 
     private func beginRename(_ session: WorkspaceSession) {
         renameText = session.descriptor.label; renameTarget = session
-    }
-
-    private func handlePagerSelection(_ page: TerminalPagerPage) {
-        let before = coordinator.sessions.map(\.id)
-        switch pagerPolicy.transition(to: page, terminalIDs: before) {
-        case .select(let id):
-            pagerSelection = .terminal(id); coordinator.selectSession(id)
-        case .openDrawer(let restoring):
-            pagerSelection = restoring.map(TerminalPagerPage.terminal) ?? .empty
-            coordinator.selectSession(restoring)
-            coordinator.showTerminalList()
-        case .createTerminal:
-            coordinator.addShell()
-            if let id = coordinator.selectedSessionID { pagerSelection = .terminal(id) }
-        case .restore(let id):
-            pagerSelection = id.map(TerminalPagerPage.terminal) ?? .empty
-            coordinator.selectSession(id)
-        case nil: break
-        }
     }
 
     private var connectionDetailsSheet: some View {

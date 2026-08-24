@@ -1,63 +1,52 @@
 import CoreGraphics
 import Foundation
 
-enum TerminalPagerPage: Hashable {
-    case leading
-    case empty
-    case terminal(UUID)
-    case trailing
+enum TerminalTitleSwipeDirection: Equatable {
+    case left
+    case right
 }
 
-enum TerminalPagerAction: Equatable {
-    case select(UUID)
-    case openDrawer(restoring: UUID?)
-    case createTerminal
-    case restore(UUID?)
-}
-
-struct TerminalPagerPolicy {
+struct TerminalTitleNavigationPolicy {
     static let horizontalThreshold: CGFloat = 44
     static let dominanceRatio: CGFloat = 1.25
 
-    private var consumedBoundary: TerminalPagerPage?
-    private var restorationTarget: UUID?
-
-    static func horizontalDirection(translation: CGSize) -> HorizontalDirection? {
+    static func direction(translation: CGSize) -> TerminalTitleSwipeDirection? {
         guard abs(translation.width) >= horizontalThreshold,
               abs(translation.width) >= abs(translation.height) * dominanceRatio else { return nil }
         return translation.width > 0 ? .right : .left
     }
 
-    mutating func transition(to page: TerminalPagerPage, terminalIDs: [UUID]) -> TerminalPagerAction? {
-        guard let first = terminalIDs.first, let last = terminalIDs.last else {
-            switch page {
-            case .empty: return nil
-            case .leading:
-                guard consumedBoundary != .leading else { return .restore(nil) }
-                consumedBoundary = .leading; restorationTarget = nil
-                return .openDrawer(restoring: nil)
-            case .trailing:
-                guard consumedBoundary != .trailing else { return .restore(nil) }
-                consumedBoundary = .trailing; restorationTarget = nil
-                return .createTerminal
-            case .terminal: return nil
-            }
-        }
-        switch page {
-        case .empty: return nil
-        case .terminal(let id):
-            if id != restorationTarget { consumedBoundary = nil; restorationTarget = nil }
-            return .select(id)
-        case .leading:
-            guard consumedBoundary != .leading else { return .restore(first) }
-            consumedBoundary = .leading; restorationTarget = first
-            return .openDrawer(restoring: first)
-        case .trailing:
-            guard consumedBoundary != .trailing else { return .restore(last) }
-            consumedBoundary = .trailing; restorationTarget = last
-            return .createTerminal
+    static func adjacentTerminal(from selectedID: UUID?, terminalIDs: [UUID], direction: TerminalTitleSwipeDirection) -> UUID? {
+        guard let selectedID, let index = terminalIDs.firstIndex(of: selectedID) else { return nil }
+        switch direction {
+        case .left:
+            let next = terminalIDs.index(after: index)
+            return next < terminalIDs.endIndex ? terminalIDs[next] : nil
+        case .right:
+            return index > terminalIDs.startIndex ? terminalIDs[terminalIDs.index(before: index)] : nil
         }
     }
 }
 
-enum HorizontalDirection: Equatable { case left, right }
+enum TerminalContentTapRegion: Equatable {
+    case up
+    case enter
+    case down
+}
+
+enum TerminalContentGesturePolicy {
+    static func region(forDoubleTapAt y: CGFloat, height: CGFloat) -> TerminalContentTapRegion? {
+        guard height > 0, y >= 0, y <= height else { return nil }
+        if y < height / 3 { return .up }
+        if y > height * 2 / 3 { return .down }
+        return .enter
+    }
+
+    static func input(for region: TerminalContentTapRegion) -> Data {
+        switch region {
+        case .up: Data("\u{1b}[A".utf8)
+        case .enter: Data("\r".utf8)
+        case .down: Data("\u{1b}[B".utf8)
+        }
+    }
+}

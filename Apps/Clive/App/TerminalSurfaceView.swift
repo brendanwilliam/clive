@@ -6,13 +6,15 @@ struct TerminalSurfaceView: UIViewRepresentable {
     let session: SessionClient?
     let accessibilityIdentifier: String
     let isSelected: Bool
+    let onOpenDrawer: @MainActor () -> Void
+    let onOpenShortcuts: @MainActor () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero); view.terminalDelegate = context.coordinator
         view.accessibilityIdentifier = accessibilityIdentifier
         view.accessibilityLabel = "Terminal"
         view.accessibilityValue = isSelected ? "Selected" : "Not selected"
-        context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installControls(on: view)
+        context.coordinator.view = view; context.coordinator.installAccessory(on: view); context.coordinator.installControls(on: view, onOpenDrawer: onOpenDrawer, onOpenShortcuts: onOpenShortcuts)
         view.keyboardDismissMode = TerminalSurfaceConfiguration.keyboardDismissMode
         view.scrollsToTop = TerminalSurfaceConfiguration.scrollsToTop
         if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
@@ -31,7 +33,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     final class Coordinator: NSObject, TerminalViewDelegate, @unchecked Sendable {
         var session: SessionClient?; weak var view: TerminalView?
         fileprivate var accessory: TerminalKeyboardAccessory?
-        fileprivate var keyboardDismissObserver: TerminalKeyboardDismissObserver?
+        fileprivate var gestureObserver: TerminalSurfaceGestureObserver?
         init(session: SessionClient?) { self.session = session }
         @MainActor func installAccessory(on view: TerminalView) {
             let accessory = TerminalKeyboardAccessory(send: { [weak self] data in self?.sendInput(data) }, command: { [weak self] key in self?.performCommand(key) }, onLayoutChanged: { [weak view] in view?.reloadInputViews() })
@@ -42,8 +44,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
             view.reloadInputViews()
             _ = view.becomeFirstResponder()
         }
-        @MainActor func installControls(on view: TerminalView) {
-            keyboardDismissObserver = TerminalKeyboardDismissObserver.install(on: view)
+        @MainActor func installControls(on view: TerminalView, onOpenDrawer: @escaping @MainActor () -> Void, onOpenShortcuts: @escaping @MainActor () -> Void) {
+            gestureObserver = TerminalSurfaceGestureObserver.install(on: view, sendInput: { [weak self] input in self?.sendInput(input) }, onOpenDrawer: onOpenDrawer, onOpenShortcuts: onOpenShortcuts)
             view.accessibilityCustomActions = [
                 ("Cursor up", "\u{1b}[A"), ("Cursor down", "\u{1b}[B"),
                 ("Cursor left", "\u{1b}[D"), ("Cursor right", "\u{1b}[C")
@@ -89,35 +91,58 @@ enum TerminalSurfaceConfiguration {
     static let contentPadding: CGFloat = 2
 }
 
-@MainActor private final class TerminalKeyboardDismissObserver: NSObject, UIGestureRecognizerDelegate {
+@MainActor private final class TerminalSurfaceGestureObserver: NSObject, UIGestureRecognizerDelegate {
     private weak var view: TerminalView?
-    private lazy var dismissPanGestureRecognizer = UIPanGestureRecognizer(
-        target: self,
-        action: #selector(handlePan(_:))
-    )
+    private let sendInput: (Data) -> Void
+    private let onOpenDrawer: () -> Void
+    private let onOpenShortcuts: () -> Void
+    private lazy var doubleTapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+    private lazy var leftEdgeGestureRecognizer = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgePan(_:)))
+    private lazy var rightEdgeGestureRecognizer = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgePan(_:)))
 
-    static func install(on view: TerminalView) -> TerminalKeyboardDismissObserver {
-        let observer = TerminalKeyboardDismissObserver(view: view)
-        observer.dismissPanGestureRecognizer.delegate = observer
-        observer.dismissPanGestureRecognizer.cancelsTouchesInView = true
-        view.addGestureRecognizer(observer.dismissPanGestureRecognizer)
-        // Let an intentional downward keyboard-dismiss gesture win before SwiftTerm's
-        // scroll view begins moving terminal history.
-        view.panGestureRecognizer.require(toFail: observer.dismissPanGestureRecognizer)
+    static func install(on view: TerminalView, sendInput: @escaping (Data) -> Void, onOpenDrawer: @escaping () -> Void, onOpenShortcuts: @escaping () -> Void) -> TerminalSurfaceGestureObserver {
+        let observer = TerminalSurfaceGestureObserver(view: view, sendInput: sendInput, onOpenDrawer: onOpenDrawer, onOpenShortcuts: onOpenShortcuts)
+        observer.doubleTapGestureRecognizer.numberOfTapsRequired = 2
+        observer.leftEdgeGestureRecognizer.edges = .left
+        observer.rightEdgeGestureRecognizer.edges = .right
+        [observer.doubleTapGestureRecognizer, observer.leftEdgeGestureRecognizer, observer.rightEdgeGestureRecognizer].forEach { gesture in
+            gesture.delegate = observer
+            gesture.cancelsTouchesInView = false
+            view.addGestureRecognizer(gesture)
+        }
         return observer
     }
 
-    private init(view: TerminalView) { self.view = view }
+    private init(view: TerminalView, sendInput: @escaping (Data) -> Void, onOpenDrawer: @escaping () -> Void, onOpenShortcuts: @escaping () -> Void) {
+        self.view = view
+        self.sendInput = sendInput
+        self.onOpenDrawer = onOpenDrawer
+        self.onOpenShortcuts = onOpenShortcuts
+    }
 
-    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard gesture.state == .began else { return }
-        _ = view?.resignFirstResponder()
+    @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+        guard let view,
+              let region = TerminalContentGesturePolicy.region(
+                forDoubleTapAt: gesture.location(in: view).y,
+                height: view.bounds.height
+              ) else { return }
+        sendInput(TerminalContentGesturePolicy.input(for: region))
+    }
+
+    @objc private func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        switch gesture.edges {
+        case .left: onOpenDrawer()
+        case .right: onOpenShortcuts()
+        default: break
+        }
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let view, view.isFirstResponder,
-              let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+        guard let pan = gestureRecognizer as? UIScreenEdgePanGestureRecognizer, let view else { return true }
         let velocity = pan.velocity(in: view)
-        return velocity.y > 0 && velocity.y > abs(velocity.x) * 1.25
+        return abs(velocity.x) > abs(velocity.y) * TerminalTitleNavigationPolicy.dominanceRatio
     }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
 }
