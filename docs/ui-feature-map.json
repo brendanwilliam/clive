@@ -2482,6 +2482,14 @@
         "Apps/Clive/UITests/TerminalNavigationUITests.swift"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzz-ios-ui-test-diagnostics",
+      "reason": "Local iOS test-result diagnostics improve developer troubleshooting without changing mapped user interface components or resource relationships.",
+      "paths": [
+        "scripts/verify-local.sh"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
