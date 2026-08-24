@@ -2499,6 +2499,14 @@
         "Apps/Clive/UITests/TerminalNavigationUITests.swift"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzz-serialized-xcode-verification",
+      "reason": "Verification scheduling avoids shared Xcode debugger-state contention without changing mapped user interface components or resource relationships.",
+      "paths": [
+        "scripts/verify-local.sh"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
