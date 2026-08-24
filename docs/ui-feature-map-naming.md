@@ -57,7 +57,9 @@ layout change. For a change with no component impact, append one immutable
 `no-component-impact` review whose sorted paths cover the complete pull-request diff
 except the map itself.
 
-Validate the result locally against the pull-request base:
+Validation executes the versioned JSON Schema, checks hierarchy and ordering invariants,
+and verifies every repository-relative resource path. Validate the result locally against
+the pull-request base:
 
 ```sh
 python3 scripts/feature-map.py validate

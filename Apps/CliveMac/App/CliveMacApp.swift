@@ -178,13 +178,13 @@ struct CliveMacApp: App {
                 Divider()
                 if model.devices.isEmpty { Text("No paired iPhones").foregroundStyle(.secondary) }
                 else { ForEach(model.devices, id: \.id) { device in
-                    Menu("\(device.displayName) — \(device.activeSessionCount) sessions") {
-                        if model.sessionsByDevice[device.id, default: []].isEmpty { Text("No active sessions") }
+                    Menu("\(device.displayName) — \(device.activeSessionCount) Terminals") {
+                        if model.sessionsByDevice[device.id, default: []].isEmpty { Text("No active Terminals") }
                         ForEach(model.sessionsByDevice[device.id, default: []]) { session in
-                            Menu("\(session.id.uuidString.prefix(8)) — \(session.attachmentCount) attached") {
+                            Menu("\(session.id.uuidString.prefix(8)) — \(session.attachmentCount) Attachments") {
                                 Text("Resize owner: \(session.resizeOwner?.rawValue ?? "none")")
                                 Button("Copy Attach Command") { copy("clive attach \(session.id.uuidString) --device \(device.id)") }
-                                Button("End Session…", role: .destructive) { pendingEnd = PendingEnd(sessionID: session.id, deviceID: device.id) }
+                                Button("End Terminal…", role: .destructive) { pendingEnd = PendingEnd(sessionID: session.id, deviceID: device.id) }
                             }
                         }
                     }
@@ -204,8 +204,8 @@ struct CliveMacApp: App {
                 Button("Quit Clive") { model.stop(); NSApplication.shared.terminate(nil) }
             }
             .task { while !Task.isCancelled { try? await Task.sleep(for: .seconds(10)); await model.refresh() } }
-            .confirmationDialog("End this shared session for every attached client?", isPresented: Binding(get: { pendingEnd != nil }, set: { if !$0 { pendingEnd = nil } }), titleVisibility: .visible) {
-                Button("End Shared Session", role: .destructive) { if let pendingEnd { model.end(sessionID: pendingEnd.sessionID, deviceID: pendingEnd.deviceID) }; pendingEnd = nil }
+            .confirmationDialog("End this shared Terminal for every Attachment?", isPresented: Binding(get: { pendingEnd != nil }, set: { if !$0 { pendingEnd = nil } }), titleVisibility: .visible) {
+                Button("End Shared Terminal", role: .destructive) { if let pendingEnd { model.end(sessionID: pendingEnd.sessionID, deviceID: pendingEnd.deviceID) }; pendingEnd = nil }
                 Button("Cancel", role: .cancel) { pendingEnd = nil }
             }
         } label: {
