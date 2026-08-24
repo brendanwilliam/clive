@@ -87,7 +87,6 @@ enum TerminalSurfaceConfiguration {
     static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     static let scrollsToTop = false
     static let contentPadding: CGFloat = 2
-    static let navigationContentPadding: CGFloat = 48
 }
 
 @MainActor private final class TerminalKeyboardDismissObserver: NSObject, UIGestureRecognizerDelegate {

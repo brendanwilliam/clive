@@ -103,6 +103,23 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(SessionError.Code.sessionUnavailable != .slowConsumer)
 }
 
+@Test func bulkSessionTerminationRoundTripsAndIsBounded() throws {
+    let ids = [UUID(), UUID()]
+    let request = SessionTerminateManyRequest(sessionIDs: ids)
+    #expect(request.isValid)
+    #expect(try ProtocolPayload.decode(SessionTerminateManyRequest.self, from: ProtocolPayload.encode(request)) == request)
+    let result = SessionTerminateManyResult(terminatedSessionIDs: ids)
+    #expect(try ProtocolPayload.decode(SessionTerminateManyResult.self, from: ProtocolPayload.encode(result)) == result)
+    #expect(!SessionTerminateManyRequest(sessionIDs: []).isValid)
+    #expect(!SessionTerminateManyRequest(sessionIDs: (0...SessionTerminateManyRequest.maximumSessionCount).map { _ in UUID() }).isValid)
+}
+
+@Test func malformedBulkSessionTerminationIsRejected() {
+    #expect(throws: (any Error).self) {
+        try ProtocolPayload.decode(SessionTerminateManyRequest.self, from: Data(#"{"sessionIDs":"invalid"}"#.utf8))
+    }
+}
+
 @Test func workspaceSessionIDReplacesOnlyMatchingPhoneSession() async {
     let registry = SessionRegistry()
     let stableID = UUID()

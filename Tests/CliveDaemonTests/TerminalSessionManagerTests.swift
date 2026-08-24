@@ -217,6 +217,20 @@ final class TerminalSessionManagerTests: XCTestCase {
         XCTAssertEqual(snapshots.value.last?.first?.attachmentCount, 0)
     }
 
+    func testBulkTerminationOnlyEndsOwnedKnownSessions() throws {
+        let first = FakeTerminalProcess(), other = FakeTerminalProcess()
+        let processes = Box([first, other])
+        let manager = TerminalSessionManager(registry: SessionRegistry(), processFactory: { _, _, output, exit in
+            let process = processes.value.removeFirst(); process.output = output; process.exit = exit; return process
+        })
+        let owned = try attach(manager, clientID: UUID(), attachmentID: UUID())
+        let foreign = try manager.attach(deviceID: "other-phone", clientSessionID: UUID(), size: size, workingDirectory: nil, attachmentID: UUID(), output: { _, done in done() }, onSuperseded: {}, onShellExit: {})
+        let terminated = manager.endMany(deviceID: "phone", serverSessionIDs: [owned.serverSessionID, foreign.serverSessionID, UUID()])
+        XCTAssertEqual(terminated, [owned.serverSessionID])
+        XCTAssertEqual(first.terminateCount, 1)
+        XCTAssertEqual(other.terminateCount, 0)
+    }
+
     func testNonOwnerViewportIsStoredAndAppliedWhenInputClaimsOwnership() throws {
         let process = FakeTerminalProcess(), manager = makeManager(process), client = UUID(), first = UUID(), second = UUID()
         _ = try attach(manager, clientID: client, attachmentID: first)

@@ -2,7 +2,6 @@ import Foundation
 import Observation
 import SwiftUI
 import CliveCore
-import UIKit
 import WidgetKit
 
 struct CLIShortcut: Codable, Equatable, Identifiable {
@@ -35,19 +34,15 @@ struct AppPreferences: Codable, Equatable {
     var allowsCellularConnections = false
     var shortcuts: [CLIShortcut] = []
     var newTerminalDefaultShortcutID: UUID?
-    var connectionIndicators: [String: String] = [:]
-    var connectionIndicatorColors: [String: String] = [:]
 
     private enum CodingKeys: String, CodingKey {
         case allowsCellularConnections, defaultDirectoryPath, shortcuts, newTerminalDefaultShortcutID, connectionIndicators, connectionIndicatorColors
     }
 
-    init(allowsCellularConnections: Bool = false, shortcuts: [CLIShortcut] = [], newTerminalDefaultShortcutID: UUID? = nil, connectionIndicators: [String: String] = [:], connectionIndicatorColors: [String: String] = [:]) {
+    init(allowsCellularConnections: Bool = false, shortcuts: [CLIShortcut] = [], newTerminalDefaultShortcutID: UUID? = nil) {
         self.allowsCellularConnections = allowsCellularConnections
         self.shortcuts = shortcuts; self.newTerminalDefaultShortcutID = newTerminalDefaultShortcutID
         normalizeDefaultSelection()
-        self.connectionIndicators = connectionIndicators
-        self.connectionIndicatorColors = connectionIndicatorColors
     }
 
     init(from decoder: Decoder) throws {
@@ -55,8 +50,6 @@ struct AppPreferences: Codable, Equatable {
         allowsCellularConnections = try values.decodeIfPresent(Bool.self, forKey: .allowsCellularConnections) ?? false
         shortcuts = try values.decodeIfPresent([CLIShortcut].self, forKey: .shortcuts) ?? []
         newTerminalDefaultShortcutID = try values.decodeIfPresent(UUID.self, forKey: .newTerminalDefaultShortcutID)
-        connectionIndicators = try values.decodeIfPresent([String: String].self, forKey: .connectionIndicators) ?? [:]
-        connectionIndicatorColors = try values.decodeIfPresent([String: String].self, forKey: .connectionIndicatorColors) ?? [:]
         normalizeDefaultSelection()
     }
 
@@ -65,8 +58,6 @@ struct AppPreferences: Codable, Equatable {
         try values.encode(allowsCellularConnections, forKey: .allowsCellularConnections)
         try values.encode(shortcuts, forKey: .shortcuts)
         try values.encodeIfPresent(newTerminalDefaultShortcutID, forKey: .newTerminalDefaultShortcutID)
-        try values.encode(connectionIndicators, forKey: .connectionIndicators)
-        try values.encode(connectionIndicatorColors, forKey: .connectionIndicatorColors)
     }
 
     mutating func normalizeDefaultSelection() {
@@ -154,32 +145,6 @@ struct AppPreferencesStore {
         value.shortcuts.move(fromOffsets: offsets, toOffset: destination)
     }
 
-    func indicator(for mac: PairedMac) -> String {
-        let saved = value.connectionIndicators[mac.id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !saved.isEmpty { return String(saved.prefix(2)) }
-        let words = mac.displayName.split(whereSeparator: { $0.isWhitespace || $0 == "-" })
-        let initials = words.prefix(2).compactMap { $0.first }.map(String.init).joined().uppercased()
-        return initials.isEmpty ? "⌘" : initials
-    }
-
-    func setIndicator(_ indicator: String, for mac: PairedMac) {
-        value.connectionIndicators[mac.id] = String(indicator.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2))
-    }
-
-    func indicatorColor(for mac: PairedMac) -> Color {
-        Color(hex: value.connectionIndicatorColors[mac.id] ?? "") ?? .accentColor
-    }
-
-    func setIndicatorColor(_ color: Color, for mac: PairedMac) {
-        guard let components = UIColor(color).cgColor.components else { return }
-        let red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat
-        if components.count >= 4 {
-            (red, green, blue, alpha) = (components[0], components[1], components[2], components[3])
-        } else {
-            (red, green, blue, alpha) = (components[0], components[0], components[0], components.count > 1 ? components[1] : 1)
-        }
-        value.connectionIndicatorColors[mac.id] = String(format: "#%02X%02X%02X%02X", Int(red * 255), Int(green * 255), Int(blue * 255), Int(alpha * 255))
-    }
 }
 
 enum WidgetShortcutStore {
@@ -198,18 +163,5 @@ enum WidgetShortcutStore {
               let defaults = UserDefaults(suiteName: group) else { return }
         defaults.set(choices(for: shortcuts), forKey: key)
         WidgetCenter.shared.reloadTimelines(ofKind: "CliveResumeWidget")
-    }
-}
-
-private extension Color {
-    init?(hex: String) {
-        let value = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        guard value.count == 8, let rgba = UInt64(value, radix: 16) else { return nil }
-        self.init(
-            red: Double((rgba >> 24) & 0xff) / 255,
-            green: Double((rgba >> 16) & 0xff) / 255,
-            blue: Double((rgba >> 8) & 0xff) / 255,
-            opacity: Double(rgba & 0xff) / 255
-        )
     }
 }
