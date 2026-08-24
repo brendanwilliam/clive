@@ -2337,6 +2337,18 @@
         "docs/architecture.md"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-ui-hig-agentic-workflow-guidance",
+      "reason": "HIG reference, naming guidance, and audit-skill documentation do not change mapped user interface components or their resource relationships.",
+      "paths": [
+        "AGENTS.md",
+        "docs/human-interface-guidelines.md",
+        "docs/ui-feature-map-naming.md",
+        "skills/clive-hig-audit/SKILL.md",
+        "skills/clive-hig-audit/agents/openai.yaml"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }

@@ -36,6 +36,13 @@ route, and **Attachment** for a client joined to a shared terminal. Record older
 conflicting labels as aliases. Protocol and CLI spellings such as `session.open`,
 `terminal.resize`, and `clive attach` are exact interfaces and must not be renamed.
 
+For user-facing agentic workflows, use the shared terms in
+[the Human Interface Guidelines reference](human-interface-guidelines.md). In particular,
+use **Task**, **Proposal**, **Approval**, **Run**, **Needs attention**, **Paused**,
+**Completed**, **Failed**, **Cancelled**, and **Result** consistently across component
+names, states, accessibility identifiers, and documentation. Platform-native terminology
+and exact protocol or CLI spellings take precedence.
+
 ## Safety
 
 Record source paths, type names, static localization keys, and identifier patterns only.

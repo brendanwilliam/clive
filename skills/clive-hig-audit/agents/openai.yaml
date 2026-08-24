@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clive HIG Audit"
+  short_description: "Audit agentic workflow UI against Apple HIG"
+  default_prompt: "Use $clive-hig-audit to review this agentic workflow UI for HIG adherence and naming consistency."
