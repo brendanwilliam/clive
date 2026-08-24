@@ -6,6 +6,9 @@ VERIFY_DIR=${CLIVE_VERIFY_DIR:-/private/tmp/clive-local-verify}
 LOG_DIR=${VERIFY_DIR}/logs
 SIGNED=false
 
+echo "Validating UI feature map…"
+python3 "${ROOT_DIR}/scripts/feature-map.py" validate
+
 if [[ ${1:-} == --signed ]]; then
     SIGNED=true
     shift

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Clive feature map"
+  short_description: "Inventory Clive UI into the versioned feature map"
+  default_prompt: "Create or substantially rebuild Clive's UI feature map."
