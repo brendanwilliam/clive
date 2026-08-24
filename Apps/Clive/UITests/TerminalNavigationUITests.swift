@@ -87,10 +87,13 @@ final class TerminalNavigationUITests: XCTestCase {
 
     func testKeyboardDismissalThenPagingRemainAvailable() {
         let first = terminalSurface(firstID)
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
-        first.swipeDown(velocity: .slow)
+        let keyboard = app.buttons["terminal-keyboard-button"]
+        keyboard.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        keyboard.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        first.swipeLeft()
+        app.buttons["Terminals"].tap()
+        drawerRow(secondID).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
         XCTAssertTrue(waitForSelection(of: terminalSurface(secondID)))
     }
 

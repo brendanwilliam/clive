@@ -133,33 +133,44 @@ fi
 xcrun simctl boot "${IOS_DESTINATION_ID}" 2>/dev/null || true
 xcrun simctl bootstatus "${IOS_DESTINATION_ID}" -b
 
-echo "Running shared, macOS, and iOS tests in parallel…"
+echo "Running shared tests alongside sequential macOS and iOS tests…"
 IOS_RESULT_BUNDLE=${CLIVE_IOS_RESULT_BUNDLE:-"${VERIFY_DIR}/ios-test-$(date +%Y%m%d-%H%M%S).xcresult"}
 swift test --package-path "${ROOT_DIR}" >"${LOG_DIR}/swift-test.log" 2>&1 &
 swift_pid=$!
-xcodebuild -quiet \
+if xcodebuild -quiet \
     -project "${ROOT_DIR}/Apps/CliveMac/CliveMac.xcodeproj" \
     -scheme CliveMac \
     -configuration Debug \
     -destination platform=macOS \
     -derivedDataPath "${VERIFY_DIR}/mac-derived-data" \
     "${signing_arguments[@]}" \
-    test >"${LOG_DIR}/mac-test.log" 2>&1 &
-mac_pid=$!
-xcodebuild -quiet \
+    test >"${LOG_DIR}/mac-test.log" 2>&1; then
+    mac_status=0
+else
+    mac_status=$?
+fi
+if xcodebuild -quiet \
     -project "${ROOT_DIR}/Apps/Clive/Clive.xcodeproj" \
     -scheme Clive \
     -configuration Debug \
     -destination "id=${IOS_DESTINATION_ID}" \
     -derivedDataPath "${VERIFY_DIR}/ios-derived-data" \
     -resultBundlePath "${IOS_RESULT_BUNDLE}" \
-    test >"${LOG_DIR}/ios-test.log" 2>&1 &
-ios_pid=$!
+    test >"${LOG_DIR}/ios-test.log" 2>&1; then
+    ios_status=0
+else
+    ios_status=$?
+fi
 
 failed=0
-for check in "swift:${swift_pid}:swift-test.log" "macOS:${mac_pid}:mac-test.log" "iOS:${ios_pid}:ios-test.log"; do
+for check in "swift:${swift_pid}:swift-test.log" "macOS:${mac_status}:mac-test.log" "iOS:${ios_status}:ios-test.log"; do
     parts=(${(s/:/)check})
-    if wait ${parts[2]}; then
+    if [[ ${parts[1]} == swift ]]; then
+        if wait ${parts[2]}; then check_status=0; else check_status=$?; fi
+    else
+        check_status=${parts[2]}
+    fi
+    if (( check_status == 0 )); then
         echo "✓ ${parts[1]}"
     else
         echo "✗ ${parts[1]} — ${LOG_DIR}/${parts[3]}" >&2
