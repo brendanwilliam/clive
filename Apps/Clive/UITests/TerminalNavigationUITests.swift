@@ -159,6 +159,16 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
     }
 
+    func testSetupGuideShowsMacInstallAndPairAction() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing-setup-guide"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Connect Clive to your Mac"].waitForExistence(timeout: 3))
+        XCTAssertTrue(text(containing: "brew install --cask brendanwilliam/tap/clive").exists)
+        XCTAssertTrue(app.buttons["setup-guide-pair-mac-button"].exists)
+    }
+
     private func terminalSurface(_ id: String) -> XCUIElement {
         app.descendants(matching: .any)["terminal-surface-\(id)"]
     }

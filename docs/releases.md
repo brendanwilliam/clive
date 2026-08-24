@@ -1,6 +1,6 @@
 # Releases and versioning
 
-Clive uses Semantic Versioning. Before 1.0 stability is declared, prereleases may change behavior and compatibility. GitHub Releases distribute the notarized Apple-silicon macOS package through the official Homebrew tap; iOS prereleases are distributed only through TestFlight, with no public invitation link currently advertised.
+Clive uses Semantic Versioning. Before 1.0 stability is declared, prereleases may change behavior and compatibility. GitHub Releases distribute the notarized Apple-silicon macOS package through the official Homebrew tap; iOS prereleases are distributed through the public [TestFlight invitation](https://testflight.apple.com/join/SUcN1FkH). The discovery QR in Connection Setup encodes only that public URL and is distinct from the short-lived secure pairing QR.
 
 ## User installation
 

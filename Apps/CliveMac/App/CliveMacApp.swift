@@ -3,6 +3,21 @@ import CliveCore
 import CoreImage
 import SwiftUI
 
+/// UI-only public distribution destination. It is not pairing material.
+enum ConnectionSetupGuideConfiguration {
+    static let testFlightURL = URL(string: "https://testflight.apple.com/join/SUcN1FkH")!
+}
+
+struct ConnectionSetupAutoPresentationPolicy: Equatable {
+    private var didPresent = false
+
+    mutating func shouldPresent(hasPairedIPhone: Bool) -> Bool {
+        guard !hasPairedIPhone, !didPresent else { return false }
+        didPresent = true
+        return true
+    }
+}
+
 extension Notification.Name { static let macCloudRendezvousChanged = Notification.Name("MacCloudRendezvousChanged") }
 final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) { NSApplication.shared.registerForRemoteNotifications() }
@@ -21,6 +36,7 @@ final class CompanionModel: ObservableObject {
     @Published var isPairing = false
     @Published var shouldDismissPairingWindow = false
     @Published var isConfiguringCellular = false
+    private var connectionSetupPolicy = ConnectionSetupAutoPresentationPolicy()
     private var pairingChannel: ControlChannel?
     private var submittedPairingDecision = false
     private var runtime: DaemonRuntime?
@@ -145,6 +161,10 @@ final class CompanionModel: ObservableObject {
         pairingTicket = nil; pairingPrompt = nil
     }
 
+    func consumeConnectionSetupAutoPresentation() -> Bool {
+        connectionSetupPolicy.shouldPresent(hasPairedIPhone: !devices.isEmpty)
+    }
+
     private func request(_ value: ControlRequest) throws -> ControlResponse {
         let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
         try channel.send(value); return try channel.readResponse()
@@ -169,7 +189,37 @@ struct CliveMacApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            Group {
+            MenuBarContent(model: model, pendingEnd: $pendingEnd)
+        } label: {
+            Label("Clive", systemImage: model.status.enabled ? "network.badge.shield.half.filled" : "terminal")
+        }
+        .commandsRemoved()
+        WindowGroup("Connection Setup", id: "connection-setup") {
+            ConnectionSetupWindow(model: model)
+                .frame(minWidth: 460, minHeight: 580)
+        }
+        WindowGroup("Pair iPhone", id: "pair-iphone") {
+            PairingWindow(model: model)
+                .frame(minWidth: 390, minHeight: 500)
+        }
+        WindowGroup("Set Up Cellular Access", id: "cellular-setup") {
+            CellularSetupWindow(model: model).frame(minWidth: 520, minHeight: 460)
+        }
+        Settings { EmptyView() }
+    }
+
+    @State private var pendingEnd: PendingEnd?
+}
+
+private struct PendingEnd { let sessionID: UUID; let deviceID: String }
+
+private struct MenuBarContent: View {
+    @ObservedObject var model: CompanionModel
+    @Binding var pendingEnd: PendingEnd?
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Group {
                 Text("Clive — CLI for iOS").font(.headline)
                 Toggle("Allow connection over cellular", isOn: Binding(get: { model.status.enabled }, set: { model.setCellular($0) }))
                 Text(stateLabel).foregroundStyle(.secondary)
@@ -191,6 +241,7 @@ struct CliveMacApp: App {
                 } }
                 Divider()
                 Button("Refresh") { Task { await model.refresh() } }
+                Button("Connection Setup…") { openWindow(id: "connection-setup"); NSApp.activate(ignoringOtherApps: true) }
                 CellularSetupMenuButton(model: model)
                 PairMenuButton(model: model)
                 Button("Pair from Terminal…") {
@@ -202,28 +253,29 @@ struct CliveMacApp: App {
                     model.errorMessage = "Copied ‘clive status’. Run it in Terminal for connection and recovery details."
                 }
                 Button("Quit Clive") { model.stop(); NSApplication.shared.terminate(nil) }
+        }
+        .task {
+            while !Task.isCancelled {
+                await model.refresh()
+                if model.consumeConnectionSetupAutoPresentation() {
+                    openWindow(id: "connection-setup")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                try? await Task.sleep(for: .seconds(10))
             }
-            .task { while !Task.isCancelled { try? await Task.sleep(for: .seconds(10)); await model.refresh() } }
+        }
+        .onChange(of: model.devices.isEmpty) { _, _ in
+            if model.consumeConnectionSetupAutoPresentation() {
+                openWindow(id: "connection-setup")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
             .confirmationDialog("End this shared Terminal for every Attachment?", isPresented: Binding(get: { pendingEnd != nil }, set: { if !$0 { pendingEnd = nil } }), titleVisibility: .visible) {
                 Button("End Shared Terminal", role: .destructive) { if let pendingEnd { model.end(sessionID: pendingEnd.sessionID, deviceID: pendingEnd.deviceID) }; pendingEnd = nil }
                 Button("Cancel", role: .cancel) { pendingEnd = nil }
             }
-        } label: {
-            Label("Clive", systemImage: model.status.enabled ? "network.badge.shield.half.filled" : "terminal")
-        }
-        .commandsRemoved()
-        WindowGroup("Pair iPhone", id: "pair-iphone") {
-            PairingWindow(model: model)
-                .frame(minWidth: 390, minHeight: 500)
-        }
-        WindowGroup("Set Up Cellular Access", id: "cellular-setup") {
-            CellularSetupWindow(model: model).frame(minWidth: 520, minHeight: 460)
-        }
-        Settings { EmptyView() }
     }
 
-    @State private var pendingEnd: PendingEnd?
-    private struct PendingEnd { let sessionID: UUID; let deviceID: String }
     private func copy(_ value: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(value, forType: .string) }
 
     private var stateLabel: String {
@@ -329,6 +381,59 @@ private struct PairMenuButton: View {
     }
 }
 
+private struct ConnectionSetupWindow: View {
+    @ObservedObject var model: CompanionModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Label("Connect your iPhone", systemImage: "iphone.and.arrow.forward")
+                    .font(.title2.bold())
+                Text("Install Clive for iPhone, then pair it with this Mac. Pairing still requires your local approval and uses a separate secure code.")
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("1. Get Clive for iPhone").font(.headline)
+                    HStack(alignment: .center, spacing: 18) {
+                        if let image = qrImage(ConnectionSetupGuideConfiguration.testFlightURL.absoluteString) {
+                            Image(nsImage: image).interpolation(.none).resizable().scaledToFit()
+                                .frame(width: 150, height: 150)
+                                .accessibilityLabel("Clive for iPhone TestFlight QR code")
+                                .accessibilityIdentifier("connection-setup-testflight-qr")
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Scan this public TestFlight link to install Clive for iPhone.")
+                            Link("Get Clive for iPhone", destination: ConnectionSetupGuideConfiguration.testFlightURL)
+                                .accessibilityIdentifier("connection-setup-testflight-link")
+                            Text("This QR code only opens TestFlight. It cannot pair a device.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Divider()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("2. Pair iPhone").font(.headline)
+                    Text("Open Clive on the iPhone and choose Pair a Mac. Then create a secure pairing code here.")
+                        .foregroundStyle(.secondary)
+                    Button("Pair iPhone", systemImage: "lock.shield") {
+                        model.beginPairing()
+                        openWindow(id: "pair-iphone")
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("connection-setup-pair-iphone-button")
+                }
+                Text("The next window displays the secure Pair this iPhone code. It is single-use and expires after five minutes.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(24)
+        }
+        .accessibilityIdentifier("connection-setup-window")
+    }
+}
+
 private struct PairingWindow: View {
     @ObservedObject var model: CompanionModel
     @Environment(\.dismiss) private var dismiss
@@ -353,7 +458,8 @@ private struct PairingWindow: View {
                 }
             } else if let ticket = model.pairingTicket, let payload = try? PairingPayload.encode(ticket), let image = qrImage(payload) {
                 Image(nsImage: image).interpolation(.none).resizable().scaledToFit().frame(width: 280, height: 280).padding(8).background(.green.opacity(0.12), in: .rect(cornerRadius: 16))
-                Label("Secure pairing QR", systemImage: "lock.shield").font(.headline)
+                Label("Pair this iPhone", systemImage: "lock.shield").font(.headline)
+                    .accessibilityIdentifier("secure-pairing-qr-label")
                 Text("Scan this one-attempt code in Clive for iPhone. It expires \(ticket.expiresAt, style: .relative).")
                     .multilineTextAlignment(.center).foregroundStyle(.secondary)
             } else if model.isPairing { ProgressView("Creating secure pairing code…") }

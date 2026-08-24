@@ -6,6 +6,7 @@ struct WorkspaceView: View {
     @Bindable var coordinator: WorkspaceCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingScanner = false
+    @State private var showingSetupGuide = false
     @State private var renameTarget: WorkspaceSession?
     @State private var renameText = ""
     @State private var deleteTarget: WorkspaceSession?
@@ -20,7 +21,12 @@ struct WorkspaceView: View {
         } detail: {
             navigation
         }
-        .task { coordinator.start(); ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() }
+        .task {
+            coordinator.start()
+            ExternalLaunchRequestStore().consumePending()
+            await coordinator.sceneDidBecomeActive()
+            presentConnectionSetupGuideIfNeeded()
+        }
         .onOpenURL { url in if let action = ExternalLaunchURL.action(for: url) { coordinator.handleExternalLaunch(action) } }
         .onReceive(NotificationCenter.default.publisher(for: .externalTerminalLaunchRequested)) { _ in coordinator.handleExternalLaunch() }
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
@@ -29,6 +35,9 @@ struct WorkspaceView: View {
             sidebarVisibility = .all
             coordinator.dismissPresentedScreen()
         }
+        .onChange(of: coordinator.state) { _, state in
+            if state == .active { presentConnectionSetupGuideIfNeeded() }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { coordinator.sceneWillLeaveForeground() }
             else if coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
@@ -36,6 +45,15 @@ struct WorkspaceView: View {
         }
         .fullScreenCover(isPresented: settingsBinding) {
             SettingsView(coordinator: coordinator)
+        }
+        .fullScreenCover(isPresented: $showingSetupGuide) {
+            NavigationStack {
+                SetupGuideView(
+                    pairedMacs: coordinator.macs,
+                    pairMac: { showingScanner = true },
+                    dismiss: { showingSetupGuide = false }
+                )
+            }
         }
         .fullScreenCover(isPresented: $showingScanner) { scanner }
         .alert("Rename terminal", isPresented: renameBinding) {
@@ -388,7 +406,16 @@ struct WorkspaceView: View {
 
     private var scanner: some View {
         PairingScannerView(
-            onTicket: { ticket in showingScanner = false; Task { await coordinator.macs.pair(ticket) } },
+            onTicket: { ticket in
+                showingScanner = false
+                Task {
+                    await coordinator.macs.pair(ticket)
+                    if coordinator.macs.state == .idle, !coordinator.macs.devices.isEmpty {
+                        coordinator.pairingDidSucceed()
+                        showingSetupGuide = false
+                    }
+                }
+            },
             onError: { error in showingScanner = false; coordinator.macs.state = .failed(error.localizedDescription) }
         )
         .ignoresSafeArea()
@@ -399,6 +426,11 @@ struct WorkspaceView: View {
     private var disconnectErrorBinding: Binding<Bool> { Binding(get: { coordinator.disconnectError != nil }, set: { if !$0 { coordinator.disconnectError = nil } }) }
     private var deleteAllErrorBinding: Binding<Bool> { Binding(get: { coordinator.deleteAllError != nil }, set: { if !$0 { coordinator.deleteAllError = nil } }) }
     private var settingsBinding: Binding<Bool> { Binding(get: { coordinator.presentedScreen == .settings }, set: { if !$0 { coordinator.dismissPresentedScreen() } }) }
+
+    private func presentConnectionSetupGuideIfNeeded() {
+        guard coordinator.state == .active else { return }
+        if coordinator.shouldPresentConnectionSetupGuide() { showingSetupGuide = true }
+    }
 
     private func navigate(_ action: () -> Void) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -500,6 +532,7 @@ private struct TerminalTitleControl: UIViewRepresentable {
 private struct SettingsView: View {
     @Bindable var coordinator: WorkspaceCoordinator
     @Environment(\.dismiss) private var dismiss
+    @State private var showingScanner = false
 
     private var preferences: AppPreferencesModel { coordinator.preferences }
 
@@ -546,13 +579,37 @@ private struct SettingsView: View {
                     } label: {
                         LabeledContent("Shortcuts", value: "\(preferences.value.shortcuts.count)")
                     }
-                    NavigationLink("Setup Guide") { SetupGuideView() }
+                    NavigationLink("Setup Guide") {
+                        SetupGuideView(
+                            pairedMacs: coordinator.macs,
+                            pairMac: { showingScanner = true },
+                            dismiss: { }
+                        )
+                    }
                 }
             }
             .navigationTitle("Settings")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
             }
+        }
+        .fullScreenCover(isPresented: $showingScanner) {
+            PairingScannerView(
+                onTicket: { ticket in
+                    showingScanner = false
+                    Task {
+                        await coordinator.macs.pair(ticket)
+                        if coordinator.macs.state == .idle, !coordinator.macs.devices.isEmpty {
+                            coordinator.pairingDidSucceed()
+                        }
+                    }
+                },
+                onError: { error in
+                    showingScanner = false
+                    coordinator.macs.state = .failed(error.localizedDescription)
+                }
+            )
+            .ignoresSafeArea()
         }
     }
 }
@@ -612,9 +669,52 @@ private struct ShortcutEditorView: View {
 }
 
 private struct SetupGuideView: View {
+    @Bindable var pairedMacs: PairedMacsModel
+    let pairMac: () -> Void
+    let dismiss: () -> Void
+
     var body: some View {
-        ContentUnavailableView("Setup Guide", systemImage: "book", description: Text("Guided setup is coming soon."))
-            .navigationTitle("Setup Guide")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Image(systemName: "laptopcomputer.and.iphone")
+                    .font(.system(size: 52)).foregroundStyle(.tint)
+                    .frame(maxWidth: .infinity)
+                Text("Connect Clive to your Mac").font(.title2.bold())
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("1. Install Clive on your Mac").font(.headline)
+                    Text("In Terminal on your Mac, run:")
+                    Text(ConnectionSetupGuideConfiguration.macInstallCommand)
+                        .font(.body.monospaced()).textSelection(.enabled)
+                        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.quaternary, in: .rect(cornerRadius: 10))
+                    Text("Then open Clive from Applications.").foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("2. Pair your Mac").font(.headline)
+                    Text("Choose Pair iPhone in Clive on the Mac. It shows a secure, short-lived pairing code. Scan that code here, then approve this iPhone on the Mac.")
+                        .foregroundStyle(.secondary)
+                    Button("Pair a Mac", systemImage: "qrcode.viewfinder", action: pairMac)
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("setup-guide-pair-mac-button")
+                }
+                if case .failed(let message) = pairedMacs.state {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Pairing couldn’t finish", systemImage: "exclamationmark.triangle")
+                            .font(.headline).foregroundStyle(.orange)
+                        Text(message)
+                        Text("Check that you scanned the current secure pairing code and that the Mac is open, then try again.")
+                            .foregroundStyle(.secondary)
+                        Button("Try Pairing Again", action: pairMac)
+                    }
+                    .padding(12).background(.orange.opacity(0.12), in: .rect(cornerRadius: 12))
+                    .accessibilityIdentifier("setup-guide-pairing-error")
+                }
+            }
+            .padding(24)
+        }
+        .navigationTitle("Setup Guide")
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done", action: dismiss) } }
+        .accessibilityIdentifier("setup-guide-screen")
     }
 }
 
