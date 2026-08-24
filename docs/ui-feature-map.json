@@ -2490,6 +2490,15 @@
         "scripts/verify-local.sh"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzz-stable-terminal-navigation-test",
+      "reason": "A deterministic terminal-navigation UI test and GitHub authentication recovery guidance do not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md",
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
