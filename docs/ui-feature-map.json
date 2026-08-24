@@ -2366,6 +2366,14 @@
         "skills/repository-cleanup/agents/openai.yaml"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zz-github-cli-authentication-checks",
+      "reason": "GitHub CLI authentication guidance affects contributor workflow only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
