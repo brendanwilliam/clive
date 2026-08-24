@@ -2337,6 +2337,14 @@
         "docs/architecture.md"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-ui-feature-map-pr-check",
+      "reason": "Agent issue-creation guidance and its pre-pull-request validation requirement do not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
