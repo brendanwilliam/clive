@@ -3,6 +3,15 @@ import XCTest
 @testable import Clive
 
 final class WorkspaceRestorationTests: XCTestCase {
+    @MainActor func testDeleteAllEndsEveryOpenWorkspaceSession() {
+        let coordinator = WorkspaceCoordinator.uiTestFixture()
+
+        coordinator.deleteAll()
+
+        XCTAssertTrue(coordinator.sessions.isEmpty)
+        XCTAssertNil(coordinator.selectedSessionID)
+    }
+
     func testInitialOpeningRequiresAuthentication() {
         let policy = AuthenticationGracePolicy.standard
 
