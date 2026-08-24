@@ -42,4 +42,21 @@ struct ControlSocketTests {
             #expect(try channel.readResponse().success)
         }
     }
+
+    @Test("stopping a server preserves a replacement at its socket path")
+    func stopPreservesReplacementSocketPath() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let socketURL = directory.appending(path: "control.sock")
+        let server = try ControlSocketServer(url: socketURL) { _, _ in }
+        server.start()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        try FileManager.default.removeItem(at: socketURL)
+        let replacement = Data("replacement".utf8)
+        try replacement.write(to: socketURL)
+
+        server.stop()
+
+        #expect(try Data(contentsOf: socketURL) == replacement)
+    }
 }
