@@ -434,7 +434,8 @@
         "connected",
         "connecting",
         "reconnecting",
-        "disconnected"
+        "disconnected",
+        "link-actions"
       ],
       "resources": {
         "views": [
@@ -443,6 +444,7 @@
         ],
         "state_actions_navigation": [
           "Apps/Clive/App/TerminalPagerPolicy.swift",
+          "Apps/Clive/App/TerminalLinkPolicy.swift",
           "Apps/Clive/App/WorkspaceCoordinator.swift"
         ],
         "models_services_protocols": [
