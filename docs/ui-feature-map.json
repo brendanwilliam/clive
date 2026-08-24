@@ -434,7 +434,8 @@
         "connected",
         "connecting",
         "reconnecting",
-        "disconnected"
+        "disconnected",
+        "link-actions"
       ],
       "resources": {
         "views": [
@@ -443,6 +444,7 @@
         ],
         "state_actions_navigation": [
           "Apps/Clive/App/TerminalPagerPolicy.swift",
+          "Apps/Clive/App/TerminalLinkPolicy.swift",
           "Apps/Clive/App/WorkspaceCoordinator.swift"
         ],
         "models_services_protocols": [
@@ -2335,6 +2337,14 @@
         "Sources/CliveDaemon/TerminalSessionManager.swift",
         "Tests/CliveDaemonTests/TerminalSessionManagerTests.swift",
         "docs/architecture.md"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-ui-feature-map-pr-check",
+      "reason": "Agent issue-creation guidance and its pre-pull-request validation requirement do not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
       ],
       "result": "no-component-impact"
     },
