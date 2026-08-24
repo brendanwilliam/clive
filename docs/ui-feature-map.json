@@ -2466,6 +2466,14 @@
         "scripts/update-homebrew-cask.sh"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzz-github-auth-preflight",
+      "reason": "Expanded GitHub CLI authentication guidance affects contributor workflow only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
