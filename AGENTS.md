@@ -29,6 +29,8 @@ Repository skills are cumulative. Use every skill that applies to the requested 
 
 Focused tests belong in the development loop. After those pass, use `clive-local-verify` for the authoritative repository verification before submitting a pull request. Keep `clive-local-verify`, `clive-release`, and `clive-local-refresh` as the source of truth for their scripts, authorization boundaries, and operational procedures.
 
+Before opening a pull request, update `docs/ui-feature-map.json` for every component-impacting change. For a change with no component impact, append one immutable `no-component-impact` review record whose paths cover the full pull-request diff except the map itself. Run `python3 scripts/feature-map.py validate` and `python3 scripts/feature-map.py check-change --base <develop-base>` locally.
+
 ## Build, Test, and Development Commands
 
 Run focused `swift test --filter <test-or-suite>` checks while developing. Run `./scripts/verify-local.sh` for the authoritative quick compatibility check: it executes `swift test` and builds both app targets. Use `./scripts/verify-local.sh --signed` only when local signing readiness matters. `./scripts/test-macos-integration.sh` covers localhost TLS/PTY behavior, and `./scripts/build-pkg.sh` builds the macOS installer.
