@@ -15,11 +15,11 @@ struct CLIShortcut: Codable, Equatable, Identifiable {
         self.command = command
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, command, workingDirectory }
+    private enum CodingKeys: String, CodingKey { case id, name, command }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id); name = try values.decode(String.self, forKey: .name)
-        command = try values.decodeIfPresent(String.self, forKey: .command) ?? ""
+        command = try values.decode(String.self, forKey: .command)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -36,7 +36,7 @@ struct AppPreferences: Codable, Equatable {
     var newTerminalDefaultShortcutID: UUID?
 
     private enum CodingKeys: String, CodingKey {
-        case allowsCellularConnections, defaultDirectoryPath, shortcuts, newTerminalDefaultShortcutID, connectionIndicators, connectionIndicatorColors
+        case allowsCellularConnections, shortcuts, newTerminalDefaultShortcutID
     }
 
     init(allowsCellularConnections: Bool = false, shortcuts: [CLIShortcut] = [], newTerminalDefaultShortcutID: UUID? = nil) {
@@ -47,8 +47,8 @@ struct AppPreferences: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        allowsCellularConnections = try values.decodeIfPresent(Bool.self, forKey: .allowsCellularConnections) ?? false
-        shortcuts = try values.decodeIfPresent([CLIShortcut].self, forKey: .shortcuts) ?? []
+        allowsCellularConnections = try values.decode(Bool.self, forKey: .allowsCellularConnections)
+        shortcuts = try values.decode([CLIShortcut].self, forKey: .shortcuts)
         newTerminalDefaultShortcutID = try values.decodeIfPresent(UUID.self, forKey: .newTerminalDefaultShortcutID)
         normalizeDefaultSelection()
     }
@@ -80,6 +80,10 @@ struct AppPreferencesStore {
     func load() throws -> AppPreferences {
         try JSONDecoder().decode(AppPreferences.self, from: Data(contentsOf: url))
     }
+    func loadIfPresent() throws -> AppPreferences? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try load()
+    }
 
     func save(_ preferences: AppPreferences) throws {
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
@@ -87,6 +91,7 @@ struct AppPreferencesStore {
         sanitized.normalizeDefaultSelection()
         try JSONEncoder().encode(sanitized).write(to: url, options: [.atomic, .completeFileProtection])
     }
+    func remove() throws { if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) } }
 }
 
 @MainActor @Observable final class AppPreferencesModel {

@@ -32,9 +32,10 @@ clive pair
 clive status
 clive revoke <device-id>
 clive stop
+clive reset
 ```
 
-`start` remains foreground by default so access is visible and ends when the process exits. The menu bar app's **Pair iPhone** window is the standard local pairing path; `pair` remains its terminal fallback and presents the same short-lived QR code after an interactive local confirmation. `status` lists paired devices and active sessions without exposing terminal content. `clive attach` lets an interactive local terminal select and attach to an existing Clive PTY; it does not adopt an unrelated terminal emulator session. `revoke` immediately removes the device trust record and terminates its active sessions.
+`start` remains foreground by default so access is visible and ends when the process exits. The menu bar app's **Pair iPhone** window is the standard local pairing path; `pair` remains its terminal fallback and presents the same short-lived QR code after an interactive local confirmation. `status` lists paired devices and active sessions without exposing terminal content. `clive attach` lets an interactive local terminal select and attach to an existing Clive PTY; it does not adopt an unrelated terminal emulator session. `revoke` immediately removes the device trust record and terminates its active sessions. `reset` is interactive-only, refuses while a daemon is running, and removes only Clive's user-scoped daemon state. It intentionally requires every device to pair again and does not remove system Keychain entries.
 
 The running process holds an owner-only lock for its state directory and owns a mode-`0600` Unix control socket. A second daemon using the same state directory fails before removing or replacing that socket. On shutdown, a daemon removes the socket path only when it still identifies the socket that process bound. All other commands use bounded Codable messages over that socket; they never edit live trust state independently.
 

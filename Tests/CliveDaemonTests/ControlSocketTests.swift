@@ -23,6 +23,28 @@ struct ControlSocketTests {
         #expect(CliveDaemon.session(at: "q", in: [first, second]) == nil)
     }
 
+    @Test("reset refuses an active daemon and removes only configured local state after confirmation")
+    func resetRequiresConfirmationAndPreservesUnrelatedFiles() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let stateDirectory = root.appending(path: "clive", directoryHint: .isDirectory)
+        let unrelatedFile = root.appending(path: "keep.txt")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+        try Data("state".utf8).write(to: stateDirectory.appending(path: "daemon.json"))
+        try Data("keep".utf8).write(to: unrelatedFile)
+        let paths = RuntimePaths(baseURL: stateDirectory)
+
+        #expect(throws: (any Error).self) {
+            try CliveDaemon.resetLocalState(paths: paths, daemonIsRunning: true, confirmed: true)
+        }
+        #expect(FileManager.default.fileExists(atPath: stateDirectory.path))
+        #expect(try CliveDaemon.resetLocalState(paths: paths, daemonIsRunning: false, confirmed: false) == false)
+        #expect(FileManager.default.fileExists(atPath: stateDirectory.path))
+        #expect(try CliveDaemon.resetLocalState(paths: paths, daemonIsRunning: false, confirmed: true))
+        #expect(!FileManager.default.fileExists(atPath: stateDirectory.path))
+        #expect(FileManager.default.fileExists(atPath: unrelatedFile.path))
+    }
+
     @Test("accepts repeated clients without blocking its dispatch queue")
     func acceptsRepeatedClients() async throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)

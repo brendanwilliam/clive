@@ -40,6 +40,9 @@ struct CliveDaemon {
             guard arguments.count == 2 else { throw CommandError.usage }
             try runOneShot(.init(command: .revoke, deviceID: arguments[1]))
         case "stop": try runOneShot(.init(command: .stop))
+        case "reset":
+            guard arguments.count == 1 else { throw CommandError.usage }
+            try resetLocalState()
         case "cellular":
             guard arguments.count >= 2 else { throw CommandError.usage }
             switch arguments[1] {
@@ -222,14 +225,37 @@ struct CliveDaemon {
         guard isatty(STDIN_FILENO) != 0 else { throw CommandError.requiresInteractiveTerminal }
     }
 
+    private static func resetLocalState() throws {
+        try requireInteractiveTerminal()
+        let daemonIsRunning = (try? ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)) != nil
+        guard !daemonIsRunning else { throw CommandError.daemonRunning }
+        print("Reset Clive local state and require every device to pair again? [y/N]: ", terminator: "")
+        let confirmed = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "y"
+        guard try resetLocalState(paths: .live, daemonIsRunning: daemonIsRunning, confirmed: confirmed) else {
+            print("Reset cancelled.")
+            return
+        }
+        print("Clive local state was reset. Start Clive and pair again.")
+    }
+
+    /// Performs the destructive portion of `clive reset` after its interactive
+    /// caller has checked terminal ownership and collected confirmation.
+    static func resetLocalState(paths: RuntimePaths, daemonIsRunning: Bool, confirmed: Bool) throws -> Bool {
+        guard !daemonIsRunning else { throw CommandError.daemonRunning }
+        guard confirmed else { return false }
+        try paths.removeLocalState()
+        return true
+    }
+
     static let usage = """
-    Usage: clive <start|pair|status|revoke|stop|cellular|shell|sessions|detached|reconnect|attach|end> [options]
+    Usage: clive <start|pair|status|revoke|stop|reset|cellular|shell|sessions|detached|reconnect|attach|end> [options]
       start [--allow-non-private-network] [--remote-host <private-vpn-host-or-ip> --session-port <port>]
       start --clear-remote
       pair
       status
       revoke <device-id>
       stop
+      reset
       cellular <on|off>
       cellular setup [--automatic]
       cellular setup --manual --host <hostname-or-ip> --external-port <port> [--listener-port <port>]
@@ -388,12 +414,13 @@ Task { await CliveDaemon.main() }
 dispatchMain()
 
 private enum CommandError: LocalizedError {
-    case usage, requiresInteractiveTerminal, nonPrivateNetwork, remote(String)
+    case usage, requiresInteractiveTerminal, nonPrivateNetwork, daemonRunning, remote(String)
     var errorDescription: String? {
         switch self {
         case .usage: CliveDaemon.usage
         case .requiresInteractiveTerminal: "This command requires an interactive local terminal."
         case .nonPrivateNetwork: "Refusing to advertise without an eligible private interface. Use --allow-non-private-network to override."
+        case .daemonRunning: "Refusing to reset while a Clive daemon is running. Stop it first with `clive stop`."
         case .remote(let message): message
         }
     }

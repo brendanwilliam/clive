@@ -5,7 +5,7 @@ struct DaemonState: Codable, Sendable {
     let macID: String
     let serviceID: String
     var remoteEndpoint: RemoteEndpoint?
-    var listenerPort: UInt16?
+    var listenerPort: UInt16
 
     static func loadOrCreate(url: URL) throws -> DaemonState {
         if FileManager.default.fileExists(atPath: url.path) {
@@ -25,7 +25,7 @@ struct DaemonState: Codable, Sendable {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    var effectiveListenerPort: UInt16 { listenerPort ?? remoteEndpoint?.port ?? 64236 }
+    var effectiveListenerPort: UInt16 { listenerPort }
 
     static func updateListenerPort(url: URL, port: UInt16) throws {
         var state = try loadOrCreate(url: url)

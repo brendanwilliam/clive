@@ -116,7 +116,13 @@ def safe_path(value: str, *, must_exist: bool = True) -> None:
         raise MapError(f"repository path does not exist: {value}")
 
 
-def validate_data(data: dict, *, source: Path | None = None, canonical_text: str | None = None) -> None:
+def validate_data(
+    data: dict,
+    *,
+    source: Path | None = None,
+    canonical_text: str | None = None,
+    require_resource_paths: bool = True,
+) -> None:
     required_root = ["schema_version", "naming_reference", "vocabulary", "components", "legacy_components", "reviews"]
     if list(data) != required_root or data.get("schema_version") != 1:
         raise MapError("root fields/order or schema_version is invalid")
@@ -160,7 +166,7 @@ def validate_data(data: dict, *, source: Path | None = None, canonical_text: str
                 raise MapError(f"{component_id}.resources.{key} must not contain duplicates")
             if key not in ("accessibility_ids", "localization"):
                 for path in values:
-                    safe_path(path)
+                    safe_path(path, must_exist=require_resource_paths)
         ids[component_id] = component
     siblings: dict[tuple[str, str, str | None], list[int]] = {}
     reachable_ids = {component["id"] for component in data["components"]}
@@ -224,7 +230,7 @@ def check_change_data(old: dict | None, new: dict, changed_paths: list[str], map
     validate_data(new)
     if old is None:
         return "bootstrap feature-map creation"
-    validate_data(old)
+    validate_data(old, require_resource_paths=False)
     if old["components"] != new["components"] or old["legacy_components"] != new["legacy_components"]:
         if old["reviews"] != new["reviews"]:
             raise MapError("component-impacting changes must not also alter review records")
@@ -274,6 +280,12 @@ def command_check(args: argparse.Namespace) -> None:
     relative = path.relative_to(ROOT).as_posix()
     new = load(path)
     old = map_at_ref(args.base, relative)
+    schema = load(SCHEMA)
+    validate_schema(new, schema, schema)
+    if old is not None:
+        # The historical map describes the base revision, whose resource paths
+        # may intentionally have been deleted by this change.
+        validate_schema(old, schema, schema)
     changed = [line for line in git("diff", "--name-only", f"{args.base}...HEAD").splitlines() if line]
     print("fresh: " + check_change_data(old, new, changed, relative))
 

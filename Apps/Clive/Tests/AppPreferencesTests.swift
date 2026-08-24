@@ -48,26 +48,18 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(WidgetShortcutStore.choices(for: [emptyName, valid, emptyCommand]).map { $0["id"] }, [valid.id.uuidString])
     }
 
-    func testLegacyDirectoryDataDecodesButIsDiscardedOnSave() throws {
+    func testRetiredPreferenceFieldsAreRejected() throws {
         let shortcutID = UUID()
         let data = Data(#"{"allowsCellularConnections":true,"defaultDirectoryPath":"~/Code","shortcuts":[{"id":"\#(shortcutID.uuidString)","name":"Status","command":"git status","workingDirectory":"~/Status"}]}"#.utf8)
 
-        let preferences = try JSONDecoder().decode(AppPreferences.self, from: data)
-
-        XCTAssertTrue(preferences.allowsCellularConnections)
-        XCTAssertEqual(preferences.shortcuts, [CLIShortcut(id: shortcutID, name: "Status", command: "git status")])
-        let encoded = try JSONEncoder().encode(preferences)
-        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("workingDirectory"))
-        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("defaultDirectoryPath"))
+        XCTAssertThrowsError(try JSONDecoder().decode(AppPreferences.self, from: data))
     }
 
-    func testDeletedDefaultSelectionNormalizesToHome() throws {
+    func testMissingRequiredPreferenceFieldsAreRejected() throws {
         let missing = UUID()
         let data = Data(#"{"shortcuts":[],"newTerminalDefaultShortcutID":"\#(missing.uuidString)"}"#.utf8)
 
-        let preferences = try JSONDecoder().decode(AppPreferences.self, from: data)
-
-        XCTAssertNil(preferences.newTerminalDefaultShortcutID)
+        XCTAssertThrowsError(try JSONDecoder().decode(AppPreferences.self, from: data))
     }
 
     func testDefaultShortcutWithEmptyCommandIsCleared() throws {
@@ -77,12 +69,9 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertNil(preferences.newTerminalDefaultShortcutID)
     }
 
-    func testRetiredConnectionAppearanceKeysAreIgnoredAndNotReencoded() throws {
+    func testRetiredPreferenceShapeIsRejected() throws {
         let data = Data(##"{"connectionIndicators":{"mac":"M"},"connectionIndicatorColors":{"mac":"#FFFFFFFF"}}"##.utf8)
-        let preferences = try JSONDecoder().decode(AppPreferences.self, from: data)
-        let encoded = String(decoding: try JSONEncoder().encode(preferences), as: UTF8.self)
-        XCTAssertFalse(encoded.contains("connectionIndicators"))
-        XCTAssertFalse(encoded.contains("connectionIndicatorColors"))
+        XCTAssertThrowsError(try JSONDecoder().decode(AppPreferences.self, from: data))
     }
 
     @MainActor

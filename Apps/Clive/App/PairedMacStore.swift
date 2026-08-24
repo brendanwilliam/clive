@@ -27,5 +27,10 @@ struct PairedMacStore {
         records.removeAll { $0.id == id }
         try save(records)
     }
+    func removeAll() throws {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw StoreError.keychain(status) }
+    }
     enum StoreError: Error { case keychain(OSStatus) }
 }

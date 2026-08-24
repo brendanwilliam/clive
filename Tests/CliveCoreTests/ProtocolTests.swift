@@ -135,12 +135,10 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(try ProtocolPayload.decode(SessionOpened.self, from: ProtocolPayload.encode(value)) == value)
 }
 
-@Test func legacySessionOpenedDefaultsToCreatedWithoutTruncation() throws {
+@Test func sessionOpenedRejectsMissingRequiredCurrentFields() throws {
     let id = UUID()
     let data = Data(#"{"serverSessionID":"\#(id.uuidString)"}"#.utf8)
-    let value = try ProtocolPayload.decode(SessionOpened.self, from: data)
-    #expect(value.disposition == .created)
-    #expect(value.replayTruncated == false)
+    #expect(throws: (any Error).self) { try ProtocolPayload.decode(SessionOpened.self, from: data) }
 }
 
 @Test func previewSanitizesSplitControlSequencesAndBoundsOutput() {
@@ -192,11 +190,11 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(try PairingPayload.decode(payload) == ticket)
 }
 
-@Test func legacyV1PairingPayloadStillDecodes() throws {
+@Test func legacyV1PairingPayloadIsRejected() throws {
     let ticket = PairingTicket(endpoint: "127.0.0.1", port: 4242, expiresAt: Date(timeIntervalSince1970: 1_700_000_000), oneTimeSecret: "legacy", daemonCertificateFingerprint: "abc")
     let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
     let payload = try encoder.encode(ticket).base64EncodedString().replacingOccurrences(of: "=", with: "")
-    #expect(try PairingPayload.decode(payload) == ticket)
+    #expect(throws: PairingPayloadError.malformed) { try PairingPayload.decode(payload) }
 }
 
 @Test func malformedV2PairingPayloadIsRejected() {
@@ -352,13 +350,9 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(!gates.validate(deviceID: "phone", token: token, now: now))
 }
 
-@Test func legacyPairingAndSessionRecordsDecodeWithoutRendezvousFields() throws {
-    let legacyMac = Data(#"{"id":"mac","displayName":"Mac","serviceID":"service","certificateFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","createdAt":0}"#.utf8)
-    let mac = try JSONDecoder().decode(PairedMac.self, from: legacyMac)
-    #expect(mac.rendezvousCapability == nil && mac.certificate == nil)
+@Test func sessionOpenRejectsMissingRequiredCurrentFields() throws {
     let legacyOpen = Data(#"{"clientSessionID":"00000000-0000-0000-0000-000000000001","initialSize":{"columns":80,"rows":24}}"#.utf8)
-    let request = try JSONDecoder().decode(SessionOpenRequest.self, from: legacyOpen)
-    #expect(request.rendezvousCapability == nil && request.wanGateToken == nil && request.workingDirectory == nil)
+    #expect(throws: (any Error).self) { try JSONDecoder().decode(SessionOpenRequest.self, from: legacyOpen) }
 }
 
 @Test func sessionOpenRoundTripsWorkingDirectory() throws {

@@ -14,7 +14,7 @@ For opted-in cellular access, the same-account CloudKit private database stores 
 
 1. The Mac user chooses **Pair iPhone** in the menu-bar app (or uses `clive pair` as a terminal fallback) and confirms the request locally.
 2. The daemon creates a single-use pairing ticket that expires after 5 minutes. It uses the same persistent P-256 identity used by sessions.
-3. It displays a compact `CL2:` Base45 QR containing the temporary endpoint, version, expiry, one-time secret, and persistent daemon certificate fingerprint. The QR contains no private key. The iOS app continues to accept legacy v1 JSON/Base64 pairing codes.
+3. It displays a compact `CL2:` Base45 QR containing the temporary endpoint, version, expiry, one-time secret, and persistent daemon certificate fingerprint. The QR contains no private key. The iOS app accepts only this current format; older JSON/Base64 payloads fail closed and require a new pairing code.
 4. The iOS app scans the code, generates its own device key pair in the Keychain/Secure Enclave when available, and connects using TLS.
 5. The one-time secret authorizes exchange of the two public certificates. Each side stores the peer certificate fingerprint, device identifier, and creation time as its pairing record.
 6. The Mac reports the iPhone device name and fingerprint for local confirmation, then invalidates the one-time secret.
@@ -26,7 +26,7 @@ The pairing endpoint accepts only one successful exchange. Expired, consumed, or
 - TCP is protected by TLS 1.3 with client and server certificate authentication.
 - The peer certificate must exactly match the stored fingerprint for the selected pairing record.
 - TLS errors, certificate changes, protocol-version incompatibility, or missing biometric authorization terminate the attempt before shell creation.
-- The app sends `session.open` only after mutual TLS completes. The Mac responds with `session.opened` containing an opaque session ID, a `created` or `resumed` disposition, and a replay-truncation flag. Older replies without those fields mean `created` and not truncated.
+- The app sends `session.open` only after mutual TLS completes. The Mac responds with `session.opened` containing an opaque session ID, a `created` or `resumed` disposition, and a replay-truncation flag. These current fields are required.
 - One TLS connection is either a foreground `session.list` subscription or one terminal attachment. Catalog subscriptions never count as terminal attachments.
 
 ## Framing
