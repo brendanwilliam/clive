@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR=${0:A:h:h}
 VERIFY_DIR=${CLIVE_VERIFY_DIR:-/private/tmp/clive-local-verify}
 LOG_DIR=${VERIFY_DIR}/logs
+DAEMON_LIFECYCLE_LOG=${CLIVE_VERIFY_DAEMON_LOG:-${LOG_DIR}/daemon-lifecycle.log}
+DAEMON_SERVICE="gui/$(id -u)/com.clive.development-daemon"
 SIGNED=false
 
 echo "Validating UI feature map…"
@@ -19,6 +21,37 @@ if (( $# > 0 )); then
 fi
 
 mkdir -p "${LOG_DIR}"
+
+daemon_launchd_pid() {
+    local launchd_details
+    launchd_details=$(launchctl print "${DAEMON_SERVICE}" 2>/dev/null) || {
+        print -r -- "not-running"
+        return 0
+    }
+    print -r -- "${launchd_details}" | awk '$1 == "pid" && $2 == "=" { print $3; exit }'
+}
+
+record_daemon_lifecycle() {
+    local phase=$1
+    local pid
+    pid=$(daemon_launchd_pid)
+    print -r -- "$(date '+%Y-%m-%dT%H:%M:%S%z') ${phase}: launchd=${DAEMON_SERVICE} pid=${pid:-unknown}" >>"${DAEMON_LIFECYCLE_LOG}"
+    print -r -- "${pid:-unknown}"
+}
+
+DAEMON_PID_BEFORE=$(record_daemon_lifecycle before)
+verify_local_exit() {
+    local exit_code=$?
+    local daemon_pid_after
+    daemon_pid_after=$(record_daemon_lifecycle after)
+    if [[ ${DAEMON_PID_BEFORE} != "${daemon_pid_after}" ]]; then
+        echo "WARNING: the Clive development daemon changed during verification (${DAEMON_PID_BEFORE} -> ${daemon_pid_after})." >&2
+        echo "Daemon lifecycle details: ${DAEMON_LIFECYCLE_LOG}" >&2
+    fi
+    return ${exit_code}
+}
+trap verify_local_exit EXIT
+
 command -v swift >/dev/null
 command -v xcodebuild >/dev/null
 if [[ ! -d "${ROOT_DIR}/Apps/Clive/Clive.xcodeproj" ]]; then
