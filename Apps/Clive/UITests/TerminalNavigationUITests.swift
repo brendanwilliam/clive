@@ -112,7 +112,7 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(text(containing: "Open Terminals").exists)
         XCTAssertTrue(text(containing: "Active Terminals").exists)
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Test Mac")).firstMatch.tap()
-        let details = app.scrollViews["connection-details-list"]
+        let details = app.descendants(matching: .any)["connection-details-list"]
         XCTAssertTrue(details.waitForExistence(timeout: 2))
         XCTAssertTrue(revealText("Local network", in: details))
         details.swipeUp()
