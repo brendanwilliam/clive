@@ -25,13 +25,21 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertEqual(policy.state, .compact)
     }
 
-    func testToolbarContainsOnlyDownUpAndEnterInOrder() throws {
+    func testToolbarStartsWithOnlyDownUpAndEnter() throws {
         let accessory = TerminalKeyboardAccessory(send: { _ in })
         for identifier in ["down", "up", "enter"] {
             XCTAssertNotNil(accessory.descendant(withIdentifier: identifier))
         }
-        for removed in ["escape", "tab", "shift", "control", "option", "command", "left", "right", "keyboard", "additionalKeysPalette"] {
+        for removed in ["escape", "tab", "shift", "control", "option", "command", "left", "right"] {
             XCTAssertNil(accessory.descendant(withIdentifier: removed))
+        }
+    }
+
+    func testToolbarExpandsToTheFullSymbolKeyRow() throws {
+        let accessory = TerminalKeyboardAccessory(send: { _ in })
+        accessory.setKeyboardVisible(true)
+        for identifier in ["escape", "tab", "shift", "control", "option", "command", "left", "down", "up", "right"] {
+            XCTAssertNotNil(accessory.descendant(withIdentifier: identifier))
         }
     }
 

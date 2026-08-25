@@ -72,7 +72,8 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(enter.exists)
         XCTAssertLessThan(down.frame.minX, up.frame.minX)
         XCTAssertLessThan(up.frame.minX, enter.frame.minX)
-        XCTAssertFalse(app.buttons["escape"].exists)
+        XCTAssertTrue(app.buttons["escape"].exists)
+        XCTAssertTrue(app.buttons["shift"].exists)
     }
 
     func testHeaderExposesOnlyNewTerminalAction() {

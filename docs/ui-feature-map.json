@@ -536,7 +536,7 @@
       "aliases": [
         "Terminal keyboard accessory"
       ],
-      "presentation": "Persistent Down, Up, and Enter toolbar centered between the keyboard and shortcut actions; keyboard and shortcut actions occupy a row above it while the software keyboard is shown.",
+      "presentation": "Single terminal key toolbar that reduces to centered Down, Up, and Enter keys when the software keyboard is hidden and expands to the symbol-based Esc, Tab, modifier, arrow, and punctuation row when the keyboard is shown.",
       "repetition": "Key controls repeat from fixed key definitions.",
       "related_components": [
         "ios.workspace.terminal-pager",

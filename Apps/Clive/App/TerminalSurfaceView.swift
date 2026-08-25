@@ -266,6 +266,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyboardButton.accessibilityLabel = keyboardVisible ? "Hide keyboard" : "Show keyboard"
         let expanded = policy.state == .keyboard
         heightConstraint.constant = expanded ? 96 : 48
+        keyRow?.setKeyboardVisible(expanded)
         NSLayoutConstraint.deactivate(expanded ? compactVerticalConstraints : expandedVerticalConstraints)
         NSLayoutConstraint.activate(expanded ? expandedVerticalConstraints : compactVerticalConstraints)
         rowHost.isHidden = policy.state == .shortcuts

@@ -26,54 +26,94 @@ struct TerminalInputControlPolicy {
 
 /// Fixed terminal navigation inputs hosted in the persistent bottom control bar.
 final class TerminalKeyboardAccessory: UIView {
+    private enum Modifier: String { case shift, control, option, command }
     private let send: (Data) -> Void
+    private let scrollView = UIScrollView()
+    private let row = UIStackView()
+    private var expanded = false
+    private var activeModifiers = Set<Modifier>()
 
     init(send: @escaping (Data) -> Void) {
         self.send = send
         super.init(frame: .zero)
 
-        let row = UIStackView()
         row.axis = .horizontal
-        row.spacing = 8
-        row.distribution = .fillEqually
+        row.spacing = 7
+        row.distribution = .fill
         row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scrollView)
+        scrollView.addSubview(row)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor),
-            row.topAnchor.constraint(equalTo: topAnchor),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor), scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor), scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 8),
+            row.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -8),
+            row.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            row.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            row.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
         ])
+        rebuildRow()
+    }
 
-        [
-            ("↓", "down", "Down", "\u{1b}[B"),
-            ("↑", "up", "Up", "\u{1b}[A"),
-            ("↵", "enter", "Enter", "\r"),
-        ].forEach { title, identifier, label, input in
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func setKeyboardVisible(_ visible: Bool) {
+        guard expanded != visible else { return }
+        expanded = visible
+        rebuildRow()
+    }
+
+    private func rebuildRow() {
+        row.arrangedSubviews.forEach { row.removeArrangedSubview($0); $0.removeFromSuperview() }
+        let keys: [(String, String, String, String?)] = expanded
+            ? [("Esc", "escape", "Escape", "\u{1b}"), ("⇥", "tab", "Tab", "\t"),
+               ("⇧", "shift", "Shift", nil), ("⌃", "control", "Control", nil),
+               ("⌥", "option", "Option", nil), ("⌘", "command", "Command", nil),
+               ("←", "left", "Left", "\u{1b}[D"), ("↓", "down", "Down", "\u{1b}[B"),
+               ("↑", "up", "Up", "\u{1b}[A"), ("→", "right", "Right", "\u{1b}[C"),
+               (".", "period", "Period", "."), ("/", "slash", "Slash", "/"),
+               ("@", "at", "At sign", "@"), ("$", "dollar", "Dollar", "$")]
+            : [("↓", "down", "Down", "\u{1b}[B"), ("↑", "up", "Up", "\u{1b}[A"), ("↵", "enter", "Enter", "\r")]
+        for (title, identifier, label, input) in keys {
             let button = TerminalKeyButton(type: .system)
             button.setTitle(title, for: .normal)
-            button.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(
-                for: .systemFont(ofSize: 17), maximumPointSize: 24
-            )
+            button.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17), maximumPointSize: 24)
             button.titleLabel?.adjustsFontForContentSizeCategory = true
             button.accessibilityIdentifier = identifier
             button.accessibilityLabel = label
             button.accessibilityValue = input
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
+            button.isSelected = activeModifiers.contains(where: { $0.rawValue == identifier })
             button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
             row.addArrangedSubview(button)
         }
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
     @objc private func pressed(_ sender: UIButton) {
+        guard let identifier = sender.accessibilityIdentifier else { return }
+        if let modifier = Modifier(rawValue: identifier) {
+            if activeModifiers.contains(modifier) { activeModifiers.remove(modifier) } else { activeModifiers.insert(modifier) }
+            rebuildRow()
+            return
+        }
         guard let input = sender.accessibilityValue else { return }
-        send(Data(input.utf8))
+        send(applyModifiers(to: Data(input.utf8)))
+    }
+
+    private func applyModifiers(to data: Data) -> Data {
+        var value = data
+        if activeModifiers.contains(.option) { value.insert(0x1b, at: 0) }
+        if activeModifiers.contains(.control), value.count == 1, let byte = value.first, byte >= 0x40, byte <= 0x7f { value = Data([byte & 0x1f]) }
+        activeModifiers.removeAll()
+        return value
     }
 }
 
 final class TerminalKeyButton: UIButton {
     override var isHighlighted: Bool { didSet { updateAppearance() } }
+    override var isSelected: Bool { didSet { updateAppearance() } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -93,7 +133,7 @@ final class TerminalKeyButton: UIButton {
     }
 
     private func updateAppearance() {
-        backgroundColor = isHighlighted ? .systemFill : .clear
+        backgroundColor = isHighlighted || isSelected ? .systemFill : .clear
         tintColor = .tintColor
         setTitleColor(.tintColor, for: .normal)
     }
