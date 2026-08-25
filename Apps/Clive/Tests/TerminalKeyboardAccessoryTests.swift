@@ -4,24 +4,13 @@ import XCTest
 
 @MainActor
 final class TerminalKeyboardAccessoryTests: XCTestCase {
-    func testKeyboardAndShortcutVisibilityTransitionsRestoreOnlyPriorKeyboardState() {
+    func testKeyboardVisibilityTransitionsBetweenCompactAndExpandedControls() {
         var policy = TerminalInputControlPolicy()
         XCTAssertEqual(policy.state, .compact)
 
         policy.keyboardChanged(visible: true)
         XCTAssertEqual(policy.state, .keyboard)
         policy.keyboardChanged(visible: false)
-        XCTAssertEqual(policy.state, .compact)
-
-        policy.keyboardChanged(visible: true)
-        policy.openShortcuts()
-        XCTAssertEqual(policy.state, .shortcuts)
-        policy.dismissShortcuts()
-        XCTAssertEqual(policy.state, .keyboard)
-
-        policy.keyboardChanged(visible: false)
-        policy.openShortcuts()
-        policy.dismissShortcuts()
         XCTAssertEqual(policy.state, .compact)
     }
 
@@ -92,15 +81,15 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         return find(controls)
     }
 
-    func testBottomControlsHideTheKeyRowWhileShortcutsArePresented() {
+    func testBottomControlsUseAShortcutMenuWithSettingsLast() {
         let controls = TerminalBottomControls()
-        controls.frame = CGRect(x: 0, y: 0, width: 320, height: 48)
-        controls.setKeyboardVisible(true)
-        controls.beginShortcuts()
+        let shortcut = CLIShortcut(name: "Status", command: "git status --short")
+        controls.configureShortcutMenu(shortcuts: [shortcut], run: { _ in true }, manage: {})
 
-        XCTAssertFalse(controls.isKeyRowControlVisible)
-        XCTAssertFalse(controls.isKeyboardControlVisible)
-        XCTAssertTrue(controls.isShortcutsControlVisible)
+        XCTAssertTrue(controls.shortcutButton.showsMenuAsPrimaryAction)
+        let actions = try! XCTUnwrap(controls.shortcutButton.menu?.children as? [UIAction])
+        XCTAssertEqual(actions.map(\.title), ["Status", "Settings"])
+        XCTAssertNotNil(actions.first?.image)
     }
 }
 

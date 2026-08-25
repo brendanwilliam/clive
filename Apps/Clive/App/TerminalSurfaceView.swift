@@ -32,6 +32,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         terminal.inputAccessoryView = nil
         terminal.linkReporting = .implicit
         terminal.linkHighlightMode = .hoverWithModifier
+        terminal.installColors(TerminalSurfaceConfiguration.ansiColors)
         terminal.accessibilityIdentifier = accessibilityIdentifier
         terminal.accessibilityLabel = "Terminal"
         terminal.accessibilityValue = isSelected ? "Selected" : "Not selected"
@@ -53,6 +54,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
         context.coordinator.selectAdjacentTerminal = selectAdjacentTerminal
         context.coordinator.runShortcut = runShortcut
         context.coordinator.manageShortcuts = manageShortcuts
+        uiView.configureShortcutMenu(
+            shortcuts,
+            run: runShortcut,
+            manage: manageShortcuts
+        )
         uiView.terminal.accessibilityIdentifier = accessibilityIdentifier
         uiView.terminal.accessibilityValue = isSelected ? "Selected" : "Not selected"
     }
@@ -92,14 +98,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
             container.installKeyRow(accessory)
             container.onKeyboardRequested = { [weak container] in _ = container?.terminal.becomeFirstResponder() }
             container.onKeyboardDismissRequested = { [weak container] in _ = container?.terminal.resignFirstResponder() }
-            container.onShortcutsRequested = { [weak self] in
-                guard let self, let container = self.container else { return }
-                container.presentShortcuts(
-                    self.shortcuts,
-                    run: self.runShortcut,
-                    manage: self.manageShortcuts
-                )
-            }
+            container.configureShortcutMenu(
+                shortcuts,
+                run: runShortcut,
+                manage: manageShortcuts
+            )
             edgeObserver = TerminalLeftEdgeObserver.install(on: container.terminal) { [weak self] in self?.openDrawer() }
             twoFingerObserver = TerminalTwoFingerSwitchObserver.install(on: container.terminal) { [weak self] forward in
                 self?.selectAdjacentTerminal(forward)
@@ -132,9 +135,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     let terminal = TerminalView(frame: .zero)
     var onKeyboardRequested: (() -> Void)?
     var onKeyboardDismissRequested: (() -> Void)?
-    var onShortcutsRequested: (() -> Void)?
     private let controls = TerminalBottomControls()
-    private weak var shortcutPanel: UIViewController?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -152,7 +153,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
             controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor), controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
         ])
         controls.onKeyboard = { [weak self] shown in shown ? self?.onKeyboardDismissRequested?() : self?.onKeyboardRequested?() }
-        controls.onShortcuts = { [weak self] in self?.onShortcutsRequested?() }
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -164,31 +164,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func installKeyRow(_ row: TerminalKeyboardAccessory) { controls.installKeyRow(row) }
 
-    func presentShortcuts(
+    func configureShortcutMenu(
         _ shortcuts: [CLIShortcut],
         run: @escaping (CLIShortcut) -> Bool,
         manage: @escaping () -> Void
     ) {
-        guard shortcutPanel == nil,
-              let viewController = window?.rootViewController?.topMostViewController else { return }
-        controls.beginShortcuts()
-        let panel = ShortcutPanelViewController(
-            shortcuts: shortcuts,
-            run: run,
-            manage: manage,
-            dismissed: { [weak self] in
-                self?.controls.endShortcuts()
-                self?.shortcutPanel = nil
-            }
-        )
-        panel.modalPresentationStyle = .popover
-        panel.popoverPresentationController?.sourceView = controls.shortcutButton
-        panel.popoverPresentationController?.sourceRect = controls.shortcutButton.bounds
-        panel.popoverPresentationController?.permittedArrowDirections = .down
-        panel.popoverPresentationController?.delegate = panel
-        panel.preferredContentSize = CGSize(width: 320, height: 320)
-        shortcutPanel = panel
-        viewController.present(panel, animated: true)
+        controls.configureShortcutMenu(shortcuts: shortcuts, run: run, manage: manage)
     }
 
     @objc private func keyboardChanged(_ notification: Notification) {
@@ -200,8 +181,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
 }
 
 @MainActor final class TerminalBottomControls: UIView {
+    private static let shortcutSymbolName = "chevron.left.forwardslash.chevron.right"
     var onKeyboard: ((Bool) -> Void)?
-    var onShortcuts: (() -> Void)?
     private let keyboardButton = UIButton(type: .system)
     let shortcutButton = UIButton(type: .system)
     private let keyboardGroup = UIVisualEffectView(effect: nil)
@@ -232,7 +213,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         shortcutButton.accessibilityIdentifier = "terminal-shortcuts-button"
         shortcutButton.accessibilityLabel = "Shortcuts"
         keyboardButton.addTarget(self, action: #selector(toggleKeyboard), for: .touchUpInside)
-        shortcutButton.addTarget(self, action: #selector(showShortcuts), for: .touchUpInside)
+        shortcutButton.showsMenuAsPrimaryAction = true
         keyboardButton.translatesAutoresizingMaskIntoConstraints = false
         shortcutButton.translatesAutoresizingMaskIntoConstraints = false
         rowHost.translatesAutoresizingMaskIntoConstraints = false
@@ -260,7 +241,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         ])
         shortcutButton.setImage(
             UIImage(
-                systemName: "chevron.left.forwardslash.chevron.right",
+                systemName: Self.shortcutSymbolName,
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
             ),
             for: .normal
@@ -285,20 +266,31 @@ struct TerminalSurfaceView: UIViewRepresentable {
         NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo: rowHost.leadingAnchor), row.trailingAnchor.constraint(equalTo: rowHost.trailingAnchor), row.topAnchor.constraint(equalTo: rowHost.topAnchor), row.bottomAnchor.constraint(equalTo: rowHost.bottomAnchor)])
     }
     func setKeyboardVisible(_ visible: Bool) { keyboardVisible = visible; policy.keyboardChanged(visible: visible); updateAppearance() }
-    func beginShortcuts() {
-        policy.openShortcuts()
-        if keyboardVisible { onKeyboard?(true) }
-        updateAppearance()
-    }
-    func endShortcuts() {
-        policy.dismissShortcuts()
-        if policy.state == .keyboard { onKeyboard?(false) }
-        updateAppearance()
+    func configureShortcutMenu(
+        shortcuts: [CLIShortcut],
+        run: @escaping (CLIShortcut) -> Bool,
+        manage: @escaping () -> Void
+    ) {
+        let shortcutActions = shortcuts.map { shortcut in
+            let command = shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines)
+            return UIAction(
+                title: shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name,
+                image: UIImage(systemName: Self.shortcutSymbolName),
+                attributes: command.isEmpty ? .disabled : []
+            ) { _ in
+                _ = run(shortcut)
+            }
+        }
+        let settings = UIAction(
+            title: "Settings",
+            image: UIImage(systemName: "gearshape")
+        ) { _ in
+            manage()
+        }
+        shortcutButton.menu = UIMenu(children: shortcutActions + [settings])
     }
 
     @objc private func toggleKeyboard() { onKeyboard?(keyboardVisible) }
-    @objc private func showShortcuts() { onShortcuts?() }
-
     var keyboardControlFrame: CGRect { keyboardGroup.frame }
     var keyRowControlFrame: CGRect { keyRowGroup.frame }
     var shortcutsControlFrame: CGRect { shortcutsGroup.frame }
@@ -314,7 +306,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyboardButton.isHidden = !expanded
         keyboardGroup.isHidden = !expanded
         keyRow?.setKeyboardVisible(expanded)
-        keyRowGroup.isHidden = policy.state == .shortcuts
+        keyRowGroup.isHidden = false
         controlsHeight.constant = compact ? 144 : 48
         keyRowHeight.constant = compact ? 140 : 44
         compactKeyRowWidth.isActive = compact
@@ -334,125 +326,26 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
 }
 
-@MainActor private final class ShortcutPanelViewController: UIViewController, UIPopoverPresentationControllerDelegate {
-    private let shortcuts: [CLIShortcut]
-    private let run: (CLIShortcut) -> Bool
-    private let manage: () -> Void
-    private var dismissed: (() -> Void)?
 
-    init(
-        shortcuts: [CLIShortcut],
-        run: @escaping (CLIShortcut) -> Bool,
-        manage: @escaping () -> Void,
-        dismissed: @escaping () -> Void
-    ) {
-        self.shortcuts = shortcuts
-        self.run = run
-        self.manage = manage
-        self.dismissed = dismissed
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        presentationController?.delegate = self
-        let content = ShortcutPanelContent(
-            shortcuts: shortcuts,
-            run: { [weak self] shortcut in
-                guard let self, self.run(shortcut) else { return }
-                self.dismiss(animated: true)
-            },
-            manage: { [weak self] in
-                guard let self else { return }
-                self.dismiss(animated: true) {
-                    DispatchQueue.main.async { self.manage() }
-                }
-            },
-        )
-        let host = UIHostingController(rootView: content)
-        addChild(host)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(host.view)
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-        host.didMove(toParent: self)
-    }
-
-    func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle { .none }
-
-    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) { finishDismissal() }
-
-    override func dismiss(animated flag: Bool, completion: (() -> Void)? = nil) {
-        super.dismiss(animated: flag) { [weak self] in
-            self?.finishDismissal()
-            completion?()
-        }
-    }
-
-    private func finishDismissal() {
-        dismissed?()
-        dismissed = nil
-    }
-}
-
-private struct ShortcutPanelContent: View {
-    let shortcuts: [CLIShortcut]
-    let run: (CLIShortcut) -> Void
-    let manage: () -> Void
-
-    var body: some View {
-        List {
-            if shortcuts.isEmpty {
-                ContentUnavailableView("No shortcuts", systemImage: "bolt", description: Text("Add commands in Settings to run them here."))
-            } else {
-                ForEach(Array(shortcuts.enumerated()), id: \.element.id) { index, shortcut in
-                    Button { run(shortcut) } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
-                                .foregroundStyle(.primary)
-                            Text(shortcut.command)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
-                    }
-                    .disabled(shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier("shortcut-row-\(shortcut.id.uuidString)")
-                    .listRowSeparator(.hidden)
-                    if index < shortcuts.count - 1 { Divider().listRowInsets(EdgeInsets()) }
-                }
-            }
-            Section {
-                Button("Settings", systemImage: "gearshape", action: manage)
-                    .accessibilityIdentifier("manage-shortcuts-button")
-            }
-        }
-        .accessibilityIdentifier("shortcuts-panel")
-    }
-}
-
-private extension UIViewController {
-    var topMostViewController: UIViewController {
-        if let presentedViewController { return presentedViewController.topMostViewController }
-        if let navigationController = self as? UINavigationController,
-           let visibleViewController = navigationController.visibleViewController {
-            return visibleViewController.topMostViewController
-        }
-        return self
-    }
-}
-
+@MainActor
 enum TerminalSurfaceConfiguration {
     static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     static let scrollsToTop = false
     static let contentPadding: CGFloat = 2
+    static let ansiColors: [SwiftTerm.Color] = [
+        color(0x00, 0x00, 0x00), color(0xC2, 0x36, 0x21),
+        color(0x25, 0xBC, 0x24), color(0xAD, 0xAD, 0x27),
+        color(0x49, 0x2E, 0xE1), color(0xD3, 0x38, 0xD3),
+        color(0x33, 0xBB, 0xC8), color(0xCB, 0xCC, 0xCD),
+        color(0x81, 0x83, 0x83), color(0xFC, 0x39, 0x1F),
+        color(0x31, 0xE7, 0x22), color(0xEA, 0xEC, 0x23),
+        color(0x58, 0x33, 0xFF), color(0xF9, 0x35, 0xF8),
+        color(0x14, 0xF0, 0xF0), color(0xE9, 0xEB, 0xEB),
+    ]
+
+    private static func color(_ red: UInt16, _ green: UInt16, _ blue: UInt16) -> SwiftTerm.Color {
+        SwiftTerm.Color(red: red * 257, green: green * 257, blue: blue * 257)
+    }
 }
 
 @MainActor private final class TerminalLeftEdgeObserver: NSObject, UIGestureRecognizerDelegate {

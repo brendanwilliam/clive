@@ -175,13 +175,12 @@ final class TerminalNavigationUITests: XCTestCase {
         app.buttons["Cancel"].tap()
     }
 
-    func testShortcutsOpenFromBottomControlRunAndRestoreKeyboardState() {
+    func testShortcutMenuRunsCommandFromBottomControl() {
         terminalSurface(firstID).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         app.buttons["terminal-shortcuts-button"].tap()
         let shortcut = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Status")).firstMatch
         XCTAssertTrue(shortcut.waitForExistence(timeout: 2))
-        XCTAssertFalse(app.keyboards.firstMatch.exists)
         shortcut.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
     }
@@ -190,10 +189,10 @@ final class TerminalNavigationUITests: XCTestCase {
         terminalSurface(firstID).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         app.buttons["terminal-shortcuts-button"].tap()
-        XCTAssertTrue(app.buttons["manage-shortcuts-button"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.navigationBars["Shortcuts"].exists)
         XCTAssertFalse(app.buttons["settings-back-button"].exists)
-        app.buttons["manage-shortcuts-button"].tap()
+        app.buttons["Settings"].tap()
         XCTAssertTrue(app.navigationBars["Shortcuts"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["shortcut-settings-back-button"].exists)
         app.buttons["shortcut-settings-back-button"].tap()

@@ -1,26 +1,14 @@
 import UIKit
 
 enum TerminalInputControlState: Equatable {
-    case compact, keyboard, shortcuts
+    case compact, keyboard
 }
 
 struct TerminalInputControlPolicy {
     private(set) var state: TerminalInputControlState = .compact
-    private var restoreKeyboard = false
 
     mutating func keyboardChanged(visible: Bool) {
-        guard state != .shortcuts else { return }
         state = visible ? .keyboard : .compact
-    }
-
-    mutating func openShortcuts() {
-        restoreKeyboard = state == .keyboard
-        state = .shortcuts
-    }
-
-    mutating func dismissShortcuts() {
-        state = restoreKeyboard ? .keyboard : .compact
-        restoreKeyboard = false
     }
 }
 
