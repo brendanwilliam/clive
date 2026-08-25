@@ -380,47 +380,6 @@ struct WorkspaceView: View {
         coordinator.selectSession(coordinator.sessions[adjacent].id)
     }
 
-    private var connectionDetailsSheet: some View {
-        NavigationStack {
-            List {
-                if let mac = coordinator.selectedMac {
-                    Section("Connection") {
-                        LabeledContent("Connection", value: mac.displayName)
-                        LabeledContent("Connection health", value: ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
-                        LabeledContent("Route", value: ConnectionPresentation.routeLabel(for: coordinator.selectedSession?.activeRouteKind))
-                        LabeledContent("Terminal", value: connectionPresentation.activity)
-                        LabeledContent("Attachments", value: coordinator.selectedSession?.attachmentState.map { "\($0.attachmentCount) connected" } ?? "Unavailable")
-                        LabeledContent("Resize owner", value: coordinator.selectedSession?.attachmentState?.resizeOwner?.rawValue ?? "None")
-                        if let warning = connectionPresentation.replayWarning { Text(warning).foregroundStyle(.orange) }
-                    }
-                    Section("Security") {
-                        LabeledContent("Transport") {
-                            Text("TLS 1.3")
-                                .accessibilityIdentifier("connection-transport-value")
-                        }
-                        LabeledContent("Authentication") {
-                            Text("Mutual authentication")
-                                .accessibilityIdentifier("connection-authentication-value")
-                        }
-                        LabeledContent("Certificate pin", value: connectionPresentation.certificatePin)
-                        Text("The stored fingerprint below is verification information, not a secret. Clive never displays private keys, pairing secrets, identities, rendezvous tokens, or raw certificates.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("SHA-256 fingerprint").font(.caption).foregroundStyle(.secondary)
-                            Text(FingerprintFormatter.formatted(mac.certificateFingerprint)).font(.footnote.monospaced()).textSelection(.enabled)
-                            Button("Copy fingerprint", systemImage: "doc.on.doc") { UIPasteboard.general.string = FingerprintFormatter.formatted(mac.certificateFingerprint) }
-                        }
-                    }
-                }
-            }
-            .accessibilityIdentifier("connection-details-list")
-            .navigationTitle("Connection Details")
-            .accessibilityIdentifier("connection-details-sheet")
-            .presentationDetents([.medium, .large])
-        }
-    }
-
-
     private var scanner: some View {
         PairingScannerView(
             onTicket: { ticket in
@@ -738,19 +697,61 @@ private struct SetupGuideView: View {
 private struct ConnectionDetailsView: View {
     @Bindable var coordinator: WorkspaceCoordinator
     let connection: PairedMac
+
+    private var presentation: ConnectionStatusPresentation {
+        ConnectionStatusPresentation.make(
+            state: coordinator.selectedSession?.state,
+            deviceName: connection.displayName,
+            route: coordinator.selectedSession?.activeRouteKind
+        )
+    }
+
     var body: some View {
         List {
             Section("Connection") {
                 LabeledContent("Connection", value: connection.displayName)
-                LabeledContent("Status", value: ConnectionPresentation.status(for: coordinator.selectedSession?.state).label)
+                LabeledContent("Connection health", value: presentation.health.label)
                 LabeledContent("Route", value: ConnectionPresentation.routeLabel(for: coordinator.selectedSession?.activeRouteKind))
+                LabeledContent("Terminal", value: presentation.activity)
+                LabeledContent(
+                    "Attachments",
+                    value: coordinator.selectedSession?.attachmentState.map { "\($0.attachmentCount) connected" } ?? "Unavailable"
+                )
+                LabeledContent(
+                    "Resize owner",
+                    value: coordinator.selectedSession?.attachmentState?.resizeOwner?.rawValue ?? "None"
+                )
+                if let warning = presentation.replayWarning {
+                    Text(warning).foregroundStyle(.orange)
+                }
             }
             Section("Security") {
-                LabeledContent("Transport", value: "TLS 1.3")
-                LabeledContent("Authentication", value: "Mutual authentication")
-                Text(FingerprintFormatter.formatted(connection.certificateFingerprint)).font(.footnote.monospaced()).textSelection(.enabled)
+                LabeledContent("Transport") {
+                    Text("TLS 1.3")
+                        .accessibilityIdentifier("connection-transport-value")
+                }
+                LabeledContent("Authentication") {
+                    Text("Mutual authentication")
+                        .accessibilityIdentifier("connection-authentication-value")
+                }
+                LabeledContent("Certificate pin", value: presentation.certificatePin)
+                Text("The stored fingerprint below is verification information, not a secret. Clive never displays private keys, pairing secrets, identities, rendezvous tokens, or raw certificates.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("SHA-256 fingerprint")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(FingerprintFormatter.formatted(connection.certificateFingerprint))
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                    Button("Copy fingerprint", systemImage: "doc.on.doc") {
+                        UIPasteboard.general.string = FingerprintFormatter.formatted(connection.certificateFingerprint)
+                    }
+                }
             }
         }
+        .accessibilityIdentifier("connection-details-list")
         .navigationTitle("Connection Details")
     }
 }

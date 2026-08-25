@@ -111,13 +111,22 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 2))
         XCTAssertTrue(text(containing: "Open Terminals").exists)
         XCTAssertTrue(text(containing: "Active Terminals").exists)
-        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Test Mac")).firstMatch.tap()
-        let details = app.scrollViews["connection-details-list"]
-        XCTAssertTrue(details.waitForExistence(timeout: 2))
+        let connection = app.buttons.matching(
+            NSPredicate(
+                format: "label CONTAINS %@ AND identifier != %@",
+                "Test Mac",
+                "drawer-settings-button"
+            )
+        ).firstMatch
+        XCTAssertTrue(connection.waitForExistence(timeout: 3))
+        connection.tap()
+        let details = app.descendants(matching: .any)["connection-details-list"]
+        XCTAssertTrue(details.waitForExistence(timeout: 3))
         XCTAssertTrue(revealText("Local network", in: details))
-        details.swipeUp()
-        XCTAssertTrue(app.descendants(matching: .any)["connection-transport-value"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.descendants(matching: .any)["connection-authentication-value"].waitForExistence(timeout: 2))
+        XCTAssertTrue(revealText("Some output produced while disconnected was discarded.", in: details))
+        XCTAssertTrue(revealText("Verified", in: details))
+        XCTAssertTrue(revealElement("connection-transport-value", in: details))
+        XCTAssertTrue(revealElement("connection-authentication-value", in: details))
     }
 
     func testDrawerUsesNativeRenameDisconnectAndDeleteSwipeActions() {
@@ -228,6 +237,15 @@ final class TerminalNavigationUITests: XCTestCase {
     private func revealText(_ value: String, in scrollView: XCUIElement, caseInsensitive: Bool = false) -> Bool {
         let comparison = caseInsensitive ? "label CONTAINS[c] %@" : "label CONTAINS %@"
         let element = app.staticTexts.matching(NSPredicate(format: comparison, value)).firstMatch
+        for _ in 0..<3 {
+            if element.waitForExistence(timeout: 1) { return true }
+            scrollView.swipeUp()
+        }
+        return element.waitForExistence(timeout: 1)
+    }
+
+    private func revealElement(_ identifier: String, in scrollView: XCUIElement) -> Bool {
+        let element = app.descendants(matching: .any)[identifier]
         for _ in 0..<3 {
             if element.waitForExistence(timeout: 1) { return true }
             scrollView.swipeUp()
