@@ -159,6 +159,9 @@ struct WorkspaceView: View {
                         .frame(maxHeight: .infinity, alignment: .top)
                         .background(Color(uiColor: .secondarySystemBackground))
                         .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
+                        // The drawer background reaches the screen edges; its content
+                        // keeps the safe-area padding applied in `terminalSidebar`.
+                        .ignoresSafeArea(.container, edges: .vertical)
                         .shadow(color: .black.opacity(0.28), radius: 18, x: 6)
                         .transition(.move(edge: .leading))
                         .zIndex(2)
@@ -381,7 +384,7 @@ struct WorkspaceView: View {
         .safeAreaPadding(.top, 12)
         .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea(.container, edges: .vertical))
+        .background(Color(uiColor: .secondarySystemBackground))
     }
 
     private var connectedSessions: [WorkspaceSession] {

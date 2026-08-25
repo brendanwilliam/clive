@@ -258,7 +258,13 @@ struct TerminalSurfaceView: UIViewRepresentable {
             compactKeyRowWidth,
             controlsHeight,
         ])
-        shortcutButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
+        shortcutButton.setImage(
+            UIImage(
+                systemName: "chevron.left.forwardslash.chevron.right",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+            ),
+            for: .normal
+        )
         keyboardButton.tintColor = .white
         shortcutButton.tintColor = .white
         [keyboardGroup, keyRowGroup, shortcutsGroup].forEach { group in

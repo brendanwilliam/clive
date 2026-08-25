@@ -27,6 +27,7 @@ struct TerminalInputControlPolicy {
 /// Fixed terminal navigation inputs hosted in the persistent bottom control bar.
 final class TerminalKeyboardAccessory: UIView {
     private enum Modifier: String { case shift, control, option, command }
+    private static let compactControlSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
     private let send: (Data) -> Void
     private let scrollView = UIScrollView()
     private let row = UIStackView()
@@ -70,8 +71,8 @@ final class TerminalKeyboardAccessory: UIView {
         enterButton.accessibilityValue = "\r"
         enterButton.setImage(
             UIImage(
-                systemName: "return",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 24, weight: .semibold)
+                systemName: "arrow.turn.down.left",
+                withConfiguration: Self.compactControlSymbolConfiguration
             ),
             for: .normal
         )
@@ -120,10 +121,10 @@ final class TerminalKeyboardAccessory: UIView {
         compactStack.isHidden = expanded
         guard expanded else {
             [
-                ("↑", "up", "Up", "\u{1b}[A"),
-                ("↓", "down", "Down", "\u{1b}[B"),
+                ("arrow.up", "up", "Up", "\u{1b}[A"),
+                ("arrow.down", "down", "Down", "\u{1b}[B"),
             ].forEach { title, identifier, label, input in
-                directionsStack.addArrangedSubview(makeButton(title: title, identifier: identifier, label: label, input: input))
+                directionsStack.addArrangedSubview(makeSymbolButton(symbolName: title, identifier: identifier, label: label, input: input))
             }
             return
         }
@@ -150,6 +151,22 @@ final class TerminalKeyboardAccessory: UIView {
         button.setTitle(title, for: .normal)
         button.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17), maximumPointSize: 24)
         button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.accessibilityIdentifier = identifier
+        button.accessibilityLabel = label
+        button.accessibilityValue = input
+        button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
+        return button
+    }
+
+    private func makeSymbolButton(symbolName: String, identifier: String, label: String, input: String?) -> TerminalKeyButton {
+        let button = TerminalKeyButton(type: .system)
+        button.setImage(
+            UIImage(
+                systemName: symbolName,
+                withConfiguration: Self.compactControlSymbolConfiguration
+            ),
+            for: .normal
+        )
         button.accessibilityIdentifier = identifier
         button.accessibilityLabel = label
         button.accessibilityValue = input
