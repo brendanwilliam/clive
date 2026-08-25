@@ -2,6 +2,10 @@ import Foundation
 import CliveCore
 
 struct DaemonState: Codable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case macID, serviceID, remoteEndpoint, listenerPort
+    }
+
     let macID: String
     let serviceID: String
     var remoteEndpoint: RemoteEndpoint?
@@ -32,5 +36,15 @@ struct DaemonState: Codable, Sendable {
         state.listenerPort = port
         try JSONEncoder().encode(state).write(to: url, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+}
+
+extension DaemonState {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        macID = try values.decode(String.self, forKey: .macID)
+        serviceID = try values.decode(String.self, forKey: .serviceID)
+        remoteEndpoint = try values.decodeIfPresent(RemoteEndpoint.self, forKey: .remoteEndpoint)
+        listenerPort = try values.decodeIfPresent(UInt16.self, forKey: .listenerPort) ?? 64236
     }
 }

@@ -2548,6 +2548,17 @@
         "Apps/Clive/UITests/TerminalNavigationUITests.swift"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-25-legacy-daemon-listener-port",
+      "reason": "Backward-compatible daemon-state decoding restores startup for existing local installations without changing mapped user interface components or resource relationships.",
+      "paths": [
+        "Apps/CliveMac/CliveMac.xcodeproj/xcshareddata/xcschemes/CliveMac.xcscheme",
+        "Resources/AppIcon.icon/icon.json",
+        "Sources/CliveDaemon/DaemonState.swift",
+        "Tests/CliveDaemonTests/LegacyStateDecodingTests.swift"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
