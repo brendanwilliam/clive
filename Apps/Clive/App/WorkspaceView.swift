@@ -213,7 +213,7 @@ struct WorkspaceView: View {
     }
 
     private var terminalActions: some View {
-        Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus.rectangle.on.rectangle") }
+        Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus") }
             .accessibilityLabel("New Terminal").accessibilityIdentifier("new-terminal-button")
     }
 

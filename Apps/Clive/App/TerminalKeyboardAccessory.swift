@@ -69,7 +69,9 @@ final class TerminalKeyboardAccessory: UIView {
         enterButton.accessibilityLabel = "Enter"
         enterButton.accessibilityValue = "\r"
         enterButton.setTitle("↵", for: .normal)
-        enterButton.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17), maximumPointSize: 24)
+        enterButton.titleLabel?.font = UIFontMetrics(forTextStyle: .title2).scaledFont(for: .systemFont(ofSize: 28, weight: .medium), maximumPointSize: 34)
+        enterButton.titleLabel?.adjustsFontForContentSizeCategory = true
+        enterButton.layer.cornerRadius = 22
         enterButton.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
         addSubview(scrollView)
         addSubview(compactStack)
