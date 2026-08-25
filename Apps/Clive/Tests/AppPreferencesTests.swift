@@ -9,8 +9,6 @@ final class AppPreferencesTests: XCTestCase {
 
         XCTAssertFalse(preferences.allowsCellularConnections)
         XCTAssertTrue(preferences.shortcuts.isEmpty)
-        XCTAssertTrue(preferences.connectionIndicators.isEmpty)
-        XCTAssertTrue(preferences.connectionIndicatorColors.isEmpty)
     }
 
     func testStoreRoundTripsOrderedShortcuts() throws {
@@ -22,9 +20,7 @@ final class AppPreferencesTests: XCTestCase {
             shortcuts: [
                 CLIShortcut(name: "Status", command: "git status --short"),
                 CLIShortcut(name: "Tests", command: "swift test")
-            ],
-            connectionIndicators: ["mac-1": "🧑‍💻"],
-            connectionIndicatorColors: ["mac-1": "#3366CCFF"]
+            ]
         )
 
         try store.save(preferences)
@@ -52,28 +48,18 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(WidgetShortcutStore.choices(for: [emptyName, valid, emptyCommand]).map { $0["id"] }, [valid.id.uuidString])
     }
 
-    func testLegacyDirectoryDataDecodesButIsDiscardedOnSave() throws {
+    func testRetiredPreferenceFieldsAreRejected() throws {
         let shortcutID = UUID()
         let data = Data(#"{"allowsCellularConnections":true,"defaultDirectoryPath":"~/Code","shortcuts":[{"id":"\#(shortcutID.uuidString)","name":"Status","command":"git status","workingDirectory":"~/Status"}]}"#.utf8)
 
-        let preferences = try JSONDecoder().decode(AppPreferences.self, from: data)
-
-        XCTAssertTrue(preferences.allowsCellularConnections)
-        XCTAssertEqual(preferences.shortcuts, [CLIShortcut(id: shortcutID, name: "Status", command: "git status")])
-        XCTAssertTrue(preferences.connectionIndicators.isEmpty)
-        XCTAssertTrue(preferences.connectionIndicatorColors.isEmpty)
-        let encoded = try JSONEncoder().encode(preferences)
-        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("workingDirectory"))
-        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("defaultDirectoryPath"))
+        XCTAssertThrowsError(try JSONDecoder().decode(AppPreferences.self, from: data))
     }
 
-    func testDeletedDefaultSelectionNormalizesToHome() throws {
+    func testMissingRequiredPreferenceFieldsAreRejected() throws {
         let missing = UUID()
         let data = Data(#"{"shortcuts":[],"newTerminalDefaultShortcutID":"\#(missing.uuidString)"}"#.utf8)
 
-        let preferences = try JSONDecoder().decode(AppPreferences.self, from: data)
-
-        XCTAssertNil(preferences.newTerminalDefaultShortcutID)
+        XCTAssertThrowsError(try JSONDecoder().decode(AppPreferences.self, from: data))
     }
 
     func testDefaultShortcutWithEmptyCommandIsCleared() throws {
@@ -83,24 +69,9 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertNil(preferences.newTerminalDefaultShortcutID)
     }
 
-    @MainActor
-    func testConnectionIndicatorDefaultsToInitialsAndCanUseEmoji() {
-        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let model = AppPreferencesModel(store: AppPreferencesStore(rootURL: root))
-        let mac = PairedMac(
-            id: "mac-1",
-            displayName: "Brendan's MacBook Pro",
-            serviceID: "service",
-            certificateFingerprint: "fingerprint",
-            createdAt: Date()
-        )
-
-        XCTAssertEqual(model.indicator(for: mac), "BM")
-
-        model.setIndicator("🧑‍💻", for: mac)
-
-        XCTAssertEqual(model.indicator(for: mac), "🧑‍💻")
+    func testRetiredPreferenceShapeIsRejected() throws {
+        let data = Data(##"{"connectionIndicators":{"mac":"M"},"connectionIndicatorColors":{"mac":"#FFFFFFFF"}}"##.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(AppPreferences.self, from: data))
     }
 
     @MainActor

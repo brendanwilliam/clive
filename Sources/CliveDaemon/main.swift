@@ -40,6 +40,9 @@ struct CliveDaemon {
             guard arguments.count == 2 else { throw CommandError.usage }
             try runOneShot(.init(command: .revoke, deviceID: arguments[1]))
         case "stop": try runOneShot(.init(command: .stop))
+        case "reset":
+            guard arguments.count == 1 else { throw CommandError.usage }
+            try resetLocalState()
         case "cellular":
             guard arguments.count >= 2 else { throw CommandError.usage }
             switch arguments[1] {
@@ -50,9 +53,13 @@ struct CliveDaemon {
             default: throw CommandError.usage
             }
         case "sessions": try runSessions(arguments: Array(arguments.dropFirst()))
+        case "detached": try runDetachedSessions(arguments: Array(arguments.dropFirst()))
+        case "reconnect":
+            try requireInteractiveTerminal()
+            try reconnectDetachedSession(arguments: Array(arguments.dropFirst()))
         case "attach":
-            guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
-            try requireInteractiveTerminal(); try runManagedTerminal(command: .sessionAttach, sessionID: id, deviceID: option("--device", in: arguments))
+            try requireInteractiveTerminal()
+            try attachSession(arguments: Array(arguments.dropFirst()))
         case "end":
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
             try runOneShot(.init(command: .sessionEnd, deviceID: option("--device", in: arguments), sessionID: id))
@@ -218,21 +225,46 @@ struct CliveDaemon {
         guard isatty(STDIN_FILENO) != 0 else { throw CommandError.requiresInteractiveTerminal }
     }
 
+    private static func resetLocalState() throws {
+        try requireInteractiveTerminal()
+        let daemonIsRunning = (try? ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)) != nil
+        guard !daemonIsRunning else { throw CommandError.daemonRunning }
+        print("Reset Clive local state and require every device to pair again? [y/N]: ", terminator: "")
+        let confirmed = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "y"
+        guard try resetLocalState(paths: .live, daemonIsRunning: daemonIsRunning, confirmed: confirmed) else {
+            print("Reset cancelled.")
+            return
+        }
+        print("Clive local state was reset. Start Clive and pair again.")
+    }
+
+    /// Performs the destructive portion of `clive reset` after its interactive
+    /// caller has checked terminal ownership and collected confirmation.
+    static func resetLocalState(paths: RuntimePaths, daemonIsRunning: Bool, confirmed: Bool) throws -> Bool {
+        guard !daemonIsRunning else { throw CommandError.daemonRunning }
+        guard confirmed else { return false }
+        try paths.removeLocalState()
+        return true
+    }
+
     static let usage = """
-    Usage: clive <start|pair|status|revoke|stop|cellular|shell|sessions|attach|end> [options]
+    Usage: clive <start|pair|status|revoke|stop|reset|cellular|shell|sessions|detached|reconnect|attach|end> [options]
       start [--allow-non-private-network] [--remote-host <private-vpn-host-or-ip> --session-port <port>]
       start --clear-remote
       pair
       status
       revoke <device-id>
       stop
+      reset
       cellular <on|off>
       cellular setup [--automatic]
       cellular setup --manual --host <hostname-or-ip> --external-port <port> [--listener-port <port>]
       cellular test
       shell
       sessions [--device <device-id>]
-      attach <session-id> [--device <device-id>]
+      detached [--device <device-id>]
+      reconnect [--device <device-id>]
+      attach [session-id] [--device <device-id>]
       end <session-id> [--device <device-id>]
     """
 
@@ -249,10 +281,89 @@ struct CliveDaemon {
 
     private static func runSessions(arguments: [String]) throws {
         guard arguments.isEmpty || (arguments.count == 2 && arguments[0] == "--device") else { throw CommandError.usage }
-        let response = try sendOneShot(.init(command: .sessions, deviceID: option("--device", in: arguments)))
+        let sessions = try sessionDescriptors(deviceID: option("--device", in: arguments))
+        guard !sessions.isEmpty else { print("No active sessions."); return }
+        printSessionDescriptors(sessions)
+    }
+
+    private static func runDetachedSessions(arguments: [String]) throws {
+        guard arguments.isEmpty || (arguments.count == 2 && arguments[0] == "--device") else { throw CommandError.usage }
+        let sessions = detachedSessions(try sessionDescriptors(deviceID: option("--device", in: arguments)))
+        guard !sessions.isEmpty else { print("No detached sessions."); return }
+        printSessionDescriptors(sessions)
+    }
+
+    private static func reconnectDetachedSession(arguments: [String]) throws {
+        guard arguments.isEmpty || (arguments.count == 2 && arguments[0] == "--device") else { throw CommandError.usage }
+        let deviceID = option("--device", in: arguments)
+        let sessions = detachedSessions(try sessionDescriptors(deviceID: deviceID))
+        guard !sessions.isEmpty else { print("No detached sessions to reconnect."); return }
+
+        print("Detached sessions:")
+        for (index, session) in sessions.enumerated() {
+            print("  \(index + 1)) \(session.id.uuidString)")
+        }
+        print("Reconnect to session [1-\(sessions.count), or q to cancel]: ", terminator: "")
+        guard let selection = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines), selection.lowercased() != "q" else { return }
+        guard let index = Int(selection), sessions.indices.contains(index - 1) else {
+            throw CommandError.remote("Enter a session number from 1 to \(sessions.count), or q to cancel.")
+        }
+        try runManagedTerminal(command: .sessionAttach, sessionID: sessions[index - 1].id, deviceID: deviceID)
+    }
+
+    private static func attachSession(arguments: [String]) throws {
+        let deviceID: String?
+        let explicitSessionID: UUID?
+        if arguments.isEmpty {
+            deviceID = nil; explicitSessionID = nil
+        } else if arguments.count == 2, arguments[0] == "--device", !arguments[1].isEmpty {
+            deviceID = arguments[1]; explicitSessionID = nil
+        } else if arguments.count == 1, let sessionID = UUID(uuidString: arguments[0]) {
+            deviceID = nil; explicitSessionID = sessionID
+        } else if arguments.count == 3, let sessionID = UUID(uuidString: arguments[0]), arguments[1] == "--device", !arguments[2].isEmpty {
+            deviceID = arguments[2]; explicitSessionID = sessionID
+        } else {
+            throw CommandError.usage
+        }
+
+        if let explicitSessionID {
+            try runManagedTerminal(command: .sessionAttach, sessionID: explicitSessionID, deviceID: deviceID)
+            return
+        }
+
+        let sessions = try sessionDescriptors(deviceID: deviceID)
+        guard !sessions.isEmpty else { print("No active Clive sessions."); return }
+        print("Active Clive sessions:")
+        for (index, session) in sessions.enumerated() {
+            print("  \(index + 1)) \(session.id.uuidString)  attachments=\(session.attachmentCount)")
+        }
+        print("Attach this terminal [1-\(sessions.count), or q to cancel]: ", terminator: "")
+        guard let selection = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines), selection.lowercased() != "q" else { return }
+        guard let session = session(at: selection, in: sessions) else {
+            throw CommandError.remote("Enter a session number from 1 to \(sessions.count), or q to cancel.")
+        }
+        try runManagedTerminal(command: .sessionAttach, sessionID: session.id, deviceID: deviceID)
+    }
+
+    static func detachedSessions(_ sessions: [SessionDescriptor]) -> [SessionDescriptor] {
+        sessions.filter { $0.attachmentCount == 0 }
+    }
+
+    static func session(at selection: String, in sessions: [SessionDescriptor]) -> SessionDescriptor? {
+        guard let index = Int(selection), sessions.indices.contains(index - 1) else { return nil }
+        return sessions[index - 1]
+    }
+
+    private static func sessionDescriptors(deviceID: String?) throws -> [SessionDescriptor] {
+        let response = try sendOneShot(.init(command: .sessions, deviceID: deviceID))
         guard response.success else { throw CommandError.remote(response.message ?? "Unable to list sessions.") }
-        if response.sessions?.isEmpty != false { print("No active sessions."); return }
-        for session in response.sessions ?? [] { print("\(session.id.uuidString)  attachments=\(session.attachmentCount)  clive attach \(session.id.uuidString)") }
+        return response.sessions ?? []
+    }
+
+    private static func printSessionDescriptors(_ sessions: [SessionDescriptor]) {
+        for session in sessions {
+            print("\(session.id.uuidString)  attachments=\(session.attachmentCount)  clive attach \(session.id.uuidString)")
+        }
     }
 
     private static func runManagedTerminal(command: ControlCommand, sessionID: UUID?, deviceID: String?) throws {
@@ -303,12 +414,13 @@ Task { await CliveDaemon.main() }
 dispatchMain()
 
 private enum CommandError: LocalizedError {
-    case usage, requiresInteractiveTerminal, nonPrivateNetwork, remote(String)
+    case usage, requiresInteractiveTerminal, nonPrivateNetwork, daemonRunning, remote(String)
     var errorDescription: String? {
         switch self {
         case .usage: CliveDaemon.usage
         case .requiresInteractiveTerminal: "This command requires an interactive local terminal."
         case .nonPrivateNetwork: "Refusing to advertise without an eligible private interface. Use --allow-non-private-network to override."
+        case .daemonRunning: "Refusing to reset while a Clive daemon is running. Stop it first with `clive stop`."
         case .remote(let message): message
         }
     }

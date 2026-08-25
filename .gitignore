@@ -9,6 +9,10 @@ xcuserdata/
 .swiftpm/
 dist/
 
+# Python tooling
+__pycache__/
+*.py[cod]
+
 # Secrets and local pairing state
 *.p12
 *.mobileprovision

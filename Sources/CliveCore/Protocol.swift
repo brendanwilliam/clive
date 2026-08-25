@@ -27,6 +27,8 @@ public enum FrameKind: UInt8, Sendable, CaseIterable {
     case attachmentState = 0x23
     case resizeClaim = 0x24
     case sessionTerminate = 0x25
+    case sessionTerminateMany = 0x26
+    case sessionTerminateManyResult = 0x27
 }
 
 public enum AttachmentKind: String, Codable, Equatable, Sendable { case iPhone, macCLI }
@@ -50,6 +52,16 @@ public struct SessionListRequest: Codable, Equatable, Sendable {
 public struct SessionListResult: Codable, Equatable, Sendable {
     public let sessions: [SessionDescriptor]
     public init(sessions: [SessionDescriptor]) { self.sessions = sessions }
+}
+public struct SessionTerminateManyRequest: Codable, Equatable, Sendable {
+    public static let maximumSessionCount = 256
+    public let sessionIDs: [UUID]
+    public init(sessionIDs: [UUID]) { self.sessionIDs = sessionIDs }
+    public var isValid: Bool { !sessionIDs.isEmpty && sessionIDs.count <= Self.maximumSessionCount }
+}
+public struct SessionTerminateManyResult: Codable, Equatable, Sendable {
+    public let terminatedSessionIDs: [UUID]
+    public init(terminatedSessionIDs: [UUID]) { self.terminatedSessionIDs = terminatedSessionIDs }
 }
 public struct SessionAttachRequest: Codable, Equatable, Sendable {
     public let serverSessionID: UUID
@@ -116,8 +128,8 @@ public struct SessionOpenRequest: Codable, Equatable, Sendable {
         rendezvousCapability = try values.decodeIfPresent(RendezvousCapability.self, forKey: .rendezvousCapability)
         wanGateToken = try values.decodeIfPresent(Data.self, forKey: .wanGateToken)
         workingDirectory = try values.decodeIfPresent(String.self, forKey: .workingDirectory)
-        lastReceivedOffset = try values.decodeIfPresent(UInt64.self, forKey: .lastReceivedOffset) ?? 0
-        attachmentKind = try values.decodeIfPresent(AttachmentKind.self, forKey: .attachmentKind) ?? .iPhone
+        lastReceivedOffset = try values.decode(UInt64.self, forKey: .lastReceivedOffset)
+        attachmentKind = try values.decode(AttachmentKind.self, forKey: .attachmentKind)
     }
 }
 
@@ -140,8 +152,8 @@ public struct SessionOpened: Codable, Equatable, Sendable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         serverSessionID = try values.decode(UUID.self, forKey: .serverSessionID)
         rendezvousCapability = try values.decodeIfPresent(RendezvousCapability.self, forKey: .rendezvousCapability)
-        disposition = try values.decodeIfPresent(Disposition.self, forKey: .disposition) ?? .created
-        replayTruncated = try values.decodeIfPresent(Bool.self, forKey: .replayTruncated) ?? false
+        disposition = try values.decode(Disposition.self, forKey: .disposition)
+        replayTruncated = try values.decode(Bool.self, forKey: .replayTruncated)
     }
 }
 

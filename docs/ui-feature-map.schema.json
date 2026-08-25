@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clive.dev/schemas/ui-feature-map-v1.json",
+  "title": "Clive UI feature map",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "naming_reference", "vocabulary", "components", "legacy_components", "reviews"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "naming_reference": { "const": "docs/ui-feature-map-naming.md" },
+    "vocabulary": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "components": { "type": "array", "items": { "$ref": "#/$defs/component" } },
+    "legacy_components": { "type": "array", "items": { "$ref": "#/$defs/component" } },
+    "reviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "reason", "paths", "result"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "reason": { "type": "string", "minLength": 12 },
+          "paths": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "result": { "const": "no-component-impact" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["views", "state_actions_navigation", "models_services_protocols", "accessibility_ids", "localization", "tests", "fixtures", "assets", "previews", "documentation"],
+      "properties": {
+        "views": { "$ref": "#/$defs/strings" },
+        "state_actions_navigation": { "$ref": "#/$defs/strings" },
+        "models_services_protocols": { "$ref": "#/$defs/strings" },
+        "accessibility_ids": { "$ref": "#/$defs/strings" },
+        "localization": { "$ref": "#/$defs/strings" },
+        "tests": { "$ref": "#/$defs/strings" },
+        "fixtures": { "$ref": "#/$defs/strings" },
+        "assets": { "$ref": "#/$defs/strings" },
+        "previews": { "$ref": "#/$defs/strings" },
+        "documentation": { "$ref": "#/$defs/strings" }
+      }
+    },
+    "strings": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "semantic_name", "platform", "kind", "parent", "canonical_path", "order", "aliases", "presentation", "repetition", "related_components", "states", "resources"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^(ios|macos|widget)\\.[a-z0-9-]+\\.[a-z0-9-]+$" },
+        "semantic_name": { "type": "string", "minLength": 1 },
+        "platform": { "enum": ["ios", "macos", "widget"] },
+        "kind": { "enum": ["screen", "row", "column", "group", "repeated", "drawer", "sidebar", "sheet", "window", "menu", "widget", "alert", "overlay", "control"] },
+        "parent": { "type": ["string", "null"] },
+        "canonical_path": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 1 },
+        "aliases": { "$ref": "#/$defs/strings" },
+        "presentation": { "type": "string" },
+        "repetition": { "type": ["string", "null"] },
+        "related_components": { "$ref": "#/$defs/strings" },
+        "states": { "$ref": "#/$defs/strings" },
+        "resources": { "$ref": "#/$defs/resources" }
+      }
+    }
+  }
+}

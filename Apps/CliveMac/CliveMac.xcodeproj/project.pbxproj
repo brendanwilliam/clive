@@ -26,6 +26,7 @@
 		9DB72E1B480F413CEFFBF65E /* PairingOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19ED034604541733F7FF5C01 /* PairingOperation.swift */; };
 		C49E611C76C66ADAE8C84883 /* PublicNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EC5A92E9B1309DCB3F1727 /* PublicNetwork.swift */; };
 		CC6ACC977429AFF51D4D9366 /* ControlSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC61968818CDFE0304BCFB76 /* ControlSocket.swift */; };
+		D91BB7EB2742C2890CC57722 /* ConnectionSetupGuideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0319F863F2F402E444576FE /* ConnectionSetupGuideTests.swift */; };
 		DEF5F0AAEF779C20773C871B /* MacRendezvousController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20E73BE94064626B198C223E /* MacRendezvousController.swift */; };
 		EFB5475078CB4723D49CD3DB /* FramedConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B618CF0723E2AD9630F1BB42 /* FramedConnection.swift */; };
 		F24ABE5C0A8DD27DF5266CD0 /* TerminalQRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA07D1DAE49FAD94729A772 /* TerminalQRCode.swift */; };
@@ -66,6 +67,7 @@
 		D3C8834CD01AC2306A198613 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		D4574D9F81A70AEE17EC35C1 /* RouterPortMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouterPortMapper.swift; sourceTree = "<group>"; };
 		E5C12F0F0DE8DAF98F771FED /* CliveMacTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CliveMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0319F863F2F402E444576FE /* ConnectionSetupGuideTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionSetupGuideTests.swift; sourceTree = "<group>"; };
 		F987F1C3EB05DB0E240CD7BD /* CliveMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CliveMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -166,6 +168,7 @@
 		FBEF46E8C1CD04A2BE8A3CE3 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				F0319F863F2F402E444576FE /* ConnectionSetupGuideTests.swift */,
 				890F935BD95C5F530A2C09EE /* RouterPortMapperTests.swift */,
 			);
 			path = Tests;
@@ -264,6 +267,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D91BB7EB2742C2890CC57722 /* ConnectionSetupGuideTests.swift in Sources */,
 				04EC09251334E65F2172B059 /* RouterPortMapperTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

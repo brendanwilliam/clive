@@ -2,7 +2,7 @@
 
 ## Security goals
 
-- Only an explicitly paired iPhone can open a shell on the Mac.
+- Only one explicitly paired iPhone can open shells on the Mac at a time.
 - Terminal commands and output remain confidential and integrity-protected on the local network.
 - The Mac user can see, stop, and revoke remote terminal access at any time.
 - A network attacker cannot substitute a discovered Mac or phone for a paired device.
@@ -23,6 +23,7 @@ Automatic router configuration is owner-approved, TCP-only, limited to the confi
 - Backgrounding hides terminal content immediately, clears transient previews, and detaches transports without sending close or terminate. Until biometric authorization succeeds, foreground restoration sends no catalog or terminal traffic.
 - The five-minute biometric grace and 30-minute detached-PTY retention are independent. Authentication never renews retention, and an unavailable stable server session ID must never cause implicit shell creation.
 - Certificate pinning binds each saved Mac and iPhone to the pairing established over the QR flow.
+- A terminal session has one active attachment. Only a reconnect from the same endpoint may replace it; a different endpoint is rejected.
 - The macOS service is foreground and user-scoped; it never runs as root and never elevates privileges.
 - Device revocation deletes the trust record and ends active connections immediately.
 - An authenticated iPhone may revoke only its own pairing. The Mac persists that removal and invalidates rendezvous access before acknowledging it; an offline or unacknowledged request leaves the iPhone's local pairing intact.
@@ -34,6 +35,10 @@ Automatic router configuration is owner-approved, TCP-only, limited to the confi
 Physical access to an unlocked iPhone or Mac user session remains a risk. V1 has no account recovery and no relay; losing a phone requires revocation from the Mac. The service must warn before binding to non-private networks and must provide a configuration option to disable LAN advertising entirely.
 
 The macOS identity password and encrypted identity share the same user-scoped directory, so filesystem access as that macOS user can recover the identity. This prototype does not claim protection from compromise of the invoking user account.
+
+## Compatibility recovery
+
+Clive accepts only current persisted schemas and `CL2:` Base45 pairing payloads. Unsupported historical local state fails closed: the iOS app hides connection and terminal data, explains the reset, and clears only Clive local stores after confirmation before pairing again. `clive reset` also requires an interactive confirmation and refuses while a daemon is active; it removes only Clive user-scoped daemon state, never unrelated files or system Keychain entries.
 
 ## Validation requirements
 

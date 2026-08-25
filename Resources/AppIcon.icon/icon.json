@@ -1,25 +1,24 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "display-p3:0.16114,0.23820,0.22630,1.00000",
-      "display-p3:0.00000,0.13033,0.11025,1.00000"
+      "display-p3:0.08718,0.00000,0.10897,1.00000",
+      "display-p3:0.24237,0.00000,0.30140,1.00000"
     ]
   },
   "groups" : [
     {
       "layers" : [
         {
-          "blend-mode" : "normal",
           "fill" : {
-            "solid" : "extended-srgb:0.00000,0.78431,0.70196,1.00000"
+            "solid" : "extended-srgb:0.79608,0.18824,0.87843,1.00000"
           },
-          "image-name" : "clive-icon.svg",
-          "name" : "Clive",
+          "image-name" : "clive-wink.svg",
+          "name" : "clive-wink",
           "position" : {
-            "scale" : 1.41,
+            "scale" : 2.08,
             "translation-in-points" : [
-              283,
-              237
+              195,
+              5
             ]
           }
         }
@@ -36,9 +35,6 @@
     }
   ],
   "supported-platforms" : {
-    "circles" : [
-      "watchOS"
-    ],
     "squares" : "shared"
   }
 }

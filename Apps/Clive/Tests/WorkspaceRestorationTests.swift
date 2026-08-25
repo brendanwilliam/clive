@@ -3,6 +3,15 @@ import XCTest
 @testable import Clive
 
 final class WorkspaceRestorationTests: XCTestCase {
+    @MainActor func testDeleteAllEndsEveryOpenWorkspaceSession() async {
+        let coordinator = WorkspaceCoordinator.uiTestFixture()
+
+        await coordinator.deleteAllVisibleSessions()
+
+        XCTAssertTrue(coordinator.sessions.isEmpty)
+        XCTAssertNil(coordinator.selectedSessionID)
+    }
+
     func testInitialOpeningRequiresAuthentication() {
         let policy = AuthenticationGracePolicy.standard
 
@@ -129,6 +138,29 @@ final class WorkspaceRestorationTests: XCTestCase {
         try Data("not-json".utf8).write(to: root.appending(path: "last-screen.json"))
 
         XCTAssertThrowsError(try RestorableDestinationStore(rootURL: root).load())
+    }
+
+    func testWorkspaceStoreRejectsOldShape() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data(#"{"selectedMacID":"mac-1"}"#.utf8).write(to: root.appending(path: "workspace.json"))
+
+        XCTAssertThrowsError(try WorkspaceStore(rootURL: root).load())
+    }
+
+    func testLocalStateResetterClearsOnlyCliveLocalRecords() throws {
+        var removed: [String] = []
+        let resetter = LocalStateResetter(
+            removePairedMacs: { removed.append("paired-macs") },
+            removeWorkspace: { removed.append("workspace") },
+            removeRestoration: { removed.append("restoration") },
+            removePreferences: { removed.append("preferences") }
+        )
+
+        try resetter.reset()
+
+        XCTAssertEqual(removed, ["paired-macs", "workspace", "restoration", "preferences"])
     }
 
     func testDestinationStoreRoundTripsWithoutWorkspaceContent() throws {

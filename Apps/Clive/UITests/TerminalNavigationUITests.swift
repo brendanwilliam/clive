@@ -10,97 +10,218 @@ final class TerminalNavigationUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
         app.launch()
+        showFirstTerminalDetail()
     }
 
-    func testPagesFirstToSecondToFirstWithNativeSwipes() {
+    override func tearDownWithError() throws {
+        app.terminate()
+        app = nil
+    }
+
+    func testTerminalTitleRemainsRenameOnlyAfterHorizontalDrag() {
         let first = terminalSurface(firstID)
         XCTAssertTrue(first.waitForExistence(timeout: 3))
         XCTAssertEqual(first.value as? String, "Selected")
 
-        first.swipeLeft()
-        let second = terminalSurface(secondID)
-        XCTAssertEqual(second.value as? String, "Selected")
-
-        second.swipeRight()
-        XCTAssertEqual(first.value as? String, "Selected")
+        let title = app.buttons["terminal-title-button"]
+        XCTAssertTrue(title.waitForExistence(timeout: 3))
+        title.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).press(
+            forDuration: 0.05,
+            thenDragTo: title.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+        )
+        XCTAssertTrue(waitForSelection(of: first))
+        title.tap()
+        XCTAssertTrue(app.staticTexts["Rename terminal"].waitForExistence(timeout: 2))
     }
 
-    func testSwipeRightFromFirstOpensDrawerWithoutChangingSelection() {
-        terminalSurface(firstID).swipeRight()
-        XCTAssertTrue(app.staticTexts["Active Terminals"].waitForExistence(timeout: 4))
+    func testTerminalSidebarShowsTheSelectedTerminal() {
+        openTerminalDrawer()
+        XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 4))
         XCTAssertEqual(drawerRow(firstID).value as? String, "Selected")
     }
 
-    func testSwipeLeftFromLastCreatesExactlyOneSelectedTerminal() {
-        terminalSurface(firstID).swipeLeft()
-        terminalSurface(secondID).swipeLeft()
-        XCTAssertEqual(app.buttons["Terminals"].value as? String, "3 open")
-        let selected = app.textViews.matching(
-            NSPredicate(format: "identifier BEGINSWITH 'terminal-page-' AND value == 'Selected'")
-        )
-        XCTAssertEqual(selected.count, 1)
+    func testBottomBarStartsCompactAndTogglesKeyboard() {
+        let first = terminalSurface(firstID)
+        XCTAssertTrue(first.waitForExistence(timeout: 3))
+        let keyboard = app.buttons["terminal-keyboard-button"]
+        XCTAssertEqual(keyboard.label, "Show keyboard")
+        keyboard.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertEqual(keyboard.label, "Hide keyboard")
+        keyboard.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+    }
+
+    func testKeyboardShowsFixedDownUpEnterToolbar() {
+        app.buttons["terminal-keyboard-button"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        let down = app.buttons["down"]
+        let up = app.buttons["up"]
+        let enter = app.buttons["enter"]
+        XCTAssertTrue(down.exists)
+        XCTAssertTrue(up.exists)
+        XCTAssertTrue(enter.exists)
+        XCTAssertLessThan(down.frame.minX, up.frame.minX)
+        XCTAssertLessThan(up.frame.minX, enter.frame.minX)
+        XCTAssertFalse(app.buttons["escape"].exists)
+    }
+
+    func testHeaderExposesOnlyNewTerminalAction() {
+        XCTAssertTrue(app.buttons["new-terminal-button"].exists)
+        XCTAssertFalse(app.buttons["shortcuts-button"].exists)
+    }
+
+    func testTerminalStartsBelowCompactNavigationBar() {
+        let terminal = terminalSurface(firstID)
+        XCTAssertTrue(terminal.waitForExistence(timeout: 3))
+
+        let title = app.buttons["terminal-title-button"]
+        XCTAssertLessThanOrEqual(title.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(terminal.frame.minY, title.frame.maxY)
+    }
+
+    func testTerminalTitleOpensRenameInsteadOfSettings() {
+        app.buttons["terminal-title-button"].tap()
+        XCTAssertTrue(app.staticTexts["Rename terminal"].waitForExistence(timeout: 2))
+        app.buttons["Cancel"].tap()
+        XCTAssertFalse(app.navigationBars["Settings"].exists)
     }
 
     func testKeyboardDismissalThenPagingRemainAvailable() {
         let first = terminalSurface(firstID)
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
-        first.swipeDown(velocity: .slow)
+        let keyboard = app.buttons["terminal-keyboard-button"]
+        keyboard.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        keyboard.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        first.swipeLeft()
+        openTerminalDrawer()
+        drawerRow(secondID).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
         XCTAssertTrue(waitForSelection(of: terminalSurface(secondID)))
     }
 
     func testDrawerRowSelectionOutsideMenu() {
-        app.buttons["Terminals"].tap()
+        openTerminalDrawer()
         drawerRow(secondID).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
-        XCTAssertFalse(app.staticTexts["Active Terminals"].exists)
         XCTAssertEqual(terminalSurface(secondID).value as? String, "Selected")
     }
 
     func testConnectionDetailsContainSafeTrustAndReplayMessaging() {
-        app.buttons["connection-details-button"].tap()
-        XCTAssertTrue(text(containing: "Connected").waitForExistence(timeout: 2))
-        XCTAssertTrue(text(containing: "Local network").exists)
-        XCTAssertTrue(text(containing: "Existing session resumed").exists)
-        XCTAssertTrue(text(containing: "Some output produced while disconnected was discarded.").exists)
-        let details = app.collectionViews["connection-details-sheet"]
-        XCTAssertTrue(revealText("TLS 1.3", in: details))
-        XCTAssertTrue(revealText("Mutual authentication", in: details))
-        XCTAssertTrue(revealText("Certificate pin", in: details))
-        XCTAssertTrue(revealText("private key", in: details, caseInsensitive: true))
-        XCTAssertTrue(revealText("SHA-256 fingerprint", in: details))
+        openTerminalDrawer()
+        app.buttons["drawer-settings-button"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 2))
+        XCTAssertTrue(text(containing: "Open Terminals").exists)
+        XCTAssertTrue(text(containing: "Active Terminals").exists)
+        let connection = app.buttons.matching(
+            NSPredicate(
+                format: "label CONTAINS %@ AND identifier != %@",
+                "Test Mac",
+                "drawer-settings-button"
+            )
+        ).firstMatch
+        XCTAssertTrue(connection.waitForExistence(timeout: 3))
+        connection.tap()
+        let details = app.descendants(matching: .any)["connection-details-list"]
+        XCTAssertTrue(details.waitForExistence(timeout: 3))
+        XCTAssertTrue(revealText("Local network", in: details))
+        XCTAssertTrue(revealText("Some output produced while disconnected was discarded.", in: details))
+        XCTAssertTrue(revealText("Verified", in: details))
+        XCTAssertTrue(revealElement("connection-transport-value", in: details))
+        XCTAssertTrue(revealElement("connection-authentication-value", in: details))
     }
 
-    func testDrawerExposesNativeSwipeEditAndDeleteActions() {
-        app.buttons["Terminals"].tap()
+    func testDrawerUsesNativeRenameDisconnectAndDeleteSwipeActions() {
+        openTerminalDrawer()
         drawerRow(firstID).swipeLeft()
-        XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Disconnect"].exists)
         XCTAssertTrue(app.buttons["Delete"].exists)
+
+        app.buttons["Rename"].tap()
+        XCTAssertTrue(app.staticTexts["Rename terminal"].waitForExistence(timeout: 2))
+        app.buttons["Cancel"].tap()
+
+        drawerRow(firstID).swipeLeft()
+        app.buttons["Disconnect"].tap()
+        drawerRow(firstID).swipeLeft()
+        XCTAssertTrue(app.buttons["Reconnect"].waitForExistence(timeout: 2))
     }
 
-    func testDrawerExposesVerticalEllipsisEditAndDeleteActionsAndHitTargets() {
-        app.buttons["Terminals"].tap()
-        let menu = app.buttons["terminal-actions-\(firstID)"]
-        menu.tap()
-        app.buttons["Edit"].tap()
-        app.buttons["Cancel"].tap()
-        menu.tap()
-        XCTAssertTrue(app.buttons["Delete"].exists)
-        app.buttons["Delete"].tap()
-        app.buttons["Cancel"].tap()
+    func testDrawerShowsConnectedAndDisconnectedTerminalsTogether() {
+        openTerminalDrawer()
+        XCTAssertTrue(app.images["terminal-status-\(firstID)"].exists)
+        XCTAssertTrue(app.images["catalog-terminal-status-00000000-0000-0000-0000-000000000003"].exists)
+        XCTAssertTrue(app.staticTexts["Detached shell"].exists)
+        XCTAssertFalse(app.staticTexts["Available on this Mac"].exists)
+    }
 
-        XCTAssertGreaterThanOrEqual(menu.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(menu.frame.height, 44)
+    func testDeleteAllPermanentlyEndsLocalCliveTerminals() {
+        openTerminalDrawer()
+        app.buttons["Terminal actions"].tap()
+        app.buttons["Delete All"].tap()
+        XCTAssertTrue(app.staticTexts["Delete all terminals?"].waitForExistence(timeout: 2))
+        XCTAssertTrue(text(containing: "permanently ends every Clive terminal").exists)
+        app.buttons["Cancel"].tap()
+    }
+
+    func testShortcutsOpenFromBottomControlRunAndRestoreKeyboardState() {
+        let keyboard = app.buttons["terminal-keyboard-button"]
+        keyboard.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        app.buttons["terminal-shortcuts-button"].tap()
+        let shortcut = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Status")).firstMatch
+        XCTAssertTrue(shortcut.waitForExistence(timeout: 2))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        shortcut.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+    }
+
+    func testShortcutPanelManageOpensSettingsAfterKeyboardWasVisible() {
+        let keyboard = app.buttons["terminal-keyboard-button"]
+        keyboard.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        app.buttons["terminal-shortcuts-button"].tap()
+        XCTAssertTrue(app.buttons["manage-shortcuts-button"].waitForExistence(timeout: 2))
+        app.buttons["manage-shortcuts-button"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
+    }
+
+    func testSetupGuideShowsMacInstallAndPairAction() {
+        app.terminate()
+        app.launchArguments = ["--ui-testing-setup-guide"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Connect Clive to your Mac"].waitForExistence(timeout: 3))
+        XCTAssertTrue(text(containing: "brew install --cask brendanwilliam/tap/clive").exists)
+        XCTAssertTrue(app.buttons["setup-guide-pair-mac-button"].exists)
     }
 
     private func terminalSurface(_ id: String) -> XCUIElement {
-        app.textViews["terminal-page-\(id)"]
+        app.descendants(matching: .any)["terminal-surface-\(id)"]
     }
 
     private func drawerRow(_ id: String) -> XCUIElement {
         app.buttons["terminal-row-\(id)"]
     }
 
+    private var terminalDrawerButton: XCUIElement {
+        app.buttons["terminals-button"]
+    }
+
+    private func showFirstTerminalDetail() {
+        let first = terminalSurface(firstID)
+        if first.waitForExistence(timeout: 2) { return }
+
+        let firstRow = drawerRow(firstID)
+        XCTAssertTrue(firstRow.waitForExistence(timeout: 3))
+        firstRow.tap()
+        XCTAssertTrue(first.waitForExistence(timeout: 3))
+    }
+
+    private func openTerminalDrawer() {
+        XCTAssertTrue(terminalDrawerButton.waitForExistence(timeout: 3))
+        terminalDrawerButton.tap()
+        XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 3))
+    }
     private func waitForSelection(of terminal: XCUIElement, timeout: TimeInterval = 4) -> Bool {
         let predicate = NSPredicate(format: "value == %@", "Selected")
         return XCTWaiter.wait(
@@ -117,10 +238,19 @@ final class TerminalNavigationUITests: XCTestCase {
         let comparison = caseInsensitive ? "label CONTAINS[c] %@" : "label CONTAINS %@"
         let element = app.staticTexts.matching(NSPredicate(format: comparison, value)).firstMatch
         for _ in 0..<3 {
-            if element.exists { return true }
+            if element.waitForExistence(timeout: 1) { return true }
             scrollView.swipeUp()
         }
-        return element.exists
+        return element.waitForExistence(timeout: 1)
+    }
+
+    private func revealElement(_ identifier: String, in scrollView: XCUIElement) -> Bool {
+        let element = app.descendants(matching: .any)[identifier]
+        for _ in 0..<3 {
+            if element.waitForExistence(timeout: 1) { return true }
+            scrollView.swipeUp()
+        }
+        return element.waitForExistence(timeout: 1)
     }
 }
 

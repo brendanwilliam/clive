@@ -1,0 +1,2553 @@
+{
+  "schema_version": 1,
+  "naming_reference": "docs/ui-feature-map-naming.md",
+  "vocabulary": {
+    "Terminal": "A shell session and its interactive UI; older code may call it a shell or session.",
+    "Connection": "A paired Mac plus the currently selected network route.",
+    "Attachment": "A client joined to a shared Terminal. Protocol and CLI attachment names remain exact."
+  },
+  "components": [
+    {
+      "id": "ios.workspace.root",
+      "semantic_name": "Workspace",
+      "platform": "ios",
+      "kind": "screen",
+      "parent": null,
+      "canonical_path": "Workspace",
+      "order": 1,
+      "aliases": [
+        "Terminal workspace"
+      ],
+      "presentation": "The iOS WindowGroup root reached at launch and by widget deep links.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.header-row",
+        "ios.workspace.terminal-row",
+        "ios.workspace.keyboard-row",
+        "ios.workspace.terminal-pager",
+        "ios.workspace.terminal-drawer",
+        "ios.settings.root",
+        "ios.pairing.scanner"
+      ],
+      "states": [
+        "authenticating",
+        "active",
+        "authentication-cancelled",
+        "connection-failed"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/CliveApp.swift",
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift",
+          "Apps/Clive/App/WorkspacePresentation.swift",
+          "Apps/Clive/App/ExternalLaunch.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/SessionClient.swift",
+          "Apps/Clive/App/PairedMacStore.swift",
+          "Sources/CliveCore/Protocol.swift"
+        ],
+        "accessibility_ids": [
+          "connection-details-button",
+          "shortcuts-button",
+          "new-terminal-button"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift",
+          "Apps/Clive/Tests/WorkspaceRestorationTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "assets": [
+          "Apps/Clive/App/Assets.xcassets"
+        ],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.workspace.header-row",
+      "semantic_name": "Header Row",
+      "platform": "ios",
+      "kind": "row",
+      "parent": "ios.workspace.root",
+      "canonical_path": "Workspace/Header Row",
+      "order": 1,
+      "aliases": [
+        "Navigation bar"
+      ],
+      "presentation": "Persistent Workspace navigation bar ordered from the Terminal list control through Connection status to Terminal actions.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.terminal-list-button",
+        "ios.workspace.current-connection",
+        "ios.workspace.terminal-actions"
+      ],
+      "states": [
+        "connection-selected",
+        "no-connection"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift",
+          "Apps/Clive/App/WorkspacePresentation.swift"
+        ],
+        "models_services_protocols": [],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/ui-feature-map-naming.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.workspace.terminal-list-button",
+      "semantic_name": "Terminal List Button",
+      "platform": "ios",
+      "kind": "column",
+      "parent": "ios.workspace.header-row",
+      "canonical_path": "Workspace/Header Row/Terminal List Button",
+      "order": 1,
+      "aliases": [
+        "Back button",
+        "Terminal count button"
+      ],
+      "presentation": "Leading header control showing the open Terminal count and opening the Terminal Drawer.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.terminal-drawer"
+      ],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": []
+      }
+    },
+    {
+      "id": "ios.workspace.current-connection",
+      "semantic_name": "Terminal Title",
+      "platform": "ios",
+      "kind": "column",
+      "parent": "ios.workspace.header-row",
+      "canonical_path": "Workspace/Header Row/Terminal Title",
+      "order": 2,
+      "aliases": [
+        "Current Connection",
+        "Connection status",
+        "Mac status"
+      ],
+      "presentation": "Centered title for the selected Terminal; tapping opens rename only.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.terminal-pager"
+      ],
+      "states": [
+        "selected-terminal",
+        "rename"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift",
+          "Apps/Clive/App/WorkspacePresentation.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/SessionClient.swift"
+        ],
+        "accessibility_ids": [
+          "terminal-title-button"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": []
+      }
+    },
+    {
+      "id": "ios.workspace.terminal-actions",
+      "semantic_name": "Terminal Actions",
+      "platform": "ios",
+      "kind": "group",
+      "parent": "ios.workspace.header-row",
+      "canonical_path": "Workspace/Header Row/Terminal Actions",
+      "order": 3,
+      "aliases": [
+        "Terminal actions group"
+      ],
+      "presentation": "Trailing capsule containing the New Terminal control.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.new-terminal-button"
+      ],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": []
+      }
+    },
+    {
+      "id": "ios.workspace.shortcut-button",
+      "semantic_name": "Shortcut Button",
+      "platform": "ios",
+      "kind": "control",
+      "parent": "ios.workspace.keyboard-row",
+      "canonical_path": "Workspace/Keyboard Row/Shortcut Button",
+      "order": 2,
+      "aliases": [
+        "Shortcuts button"
+      ],
+      "presentation": "Lower-right persistent control that hides keyboard controls and opens the selected Terminal's Shortcuts panel.",
+      "repetition": null,
+      "related_components": [
+        "ios.shortcuts.sheet"
+      ],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/TerminalSurfaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift"
+        ],
+        "accessibility_ids": [
+          "terminal-shortcuts-button"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": []
+      }
+    },
+    {
+      "id": "ios.workspace.new-terminal-button",
+      "semantic_name": "New Terminal Button",
+      "platform": "ios",
+      "kind": "control",
+      "parent": "ios.workspace.terminal-actions",
+      "canonical_path": "Workspace/Header Row/Terminal Actions/New Terminal Button",
+      "order": 1,
+      "aliases": [
+        "New shell button"
+      ],
+      "presentation": "Creates and selects a new Terminal on the current Connection.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.terminal-pager"
+      ],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/SessionClient.swift",
+          "Sources/CliveCore/Protocol.swift"
+        ],
+        "accessibility_ids": [
+          "new-terminal-button"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.workspace.terminal-row",
+      "semantic_name": "Terminal Row",
+      "platform": "ios",
+      "kind": "row",
+      "parent": "ios.workspace.root",
+      "canonical_path": "Workspace/Terminal Row",
+      "order": 2,
+      "aliases": [
+        "Terminal content row"
+      ],
+      "presentation": "Primary Workspace content row containing the horizontally paged Terminal surface.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.terminal-pager"
+      ],
+      "states": [
+        "empty",
+        "active",
+        "recovering"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/TerminalPagerPolicy.swift",
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": []
+      }
+    },
+    {
+      "id": "ios.workspace.keyboard-row",
+      "semantic_name": "Keyboard Row",
+      "platform": "ios",
+      "kind": "row",
+      "parent": "ios.workspace.root",
+      "canonical_path": "Workspace/Keyboard Row",
+      "order": 3,
+      "aliases": [
+        "Terminal keyboard row"
+      ],
+      "presentation": "Persistent bottom control bar anchored to the Terminal keyboard layout guide.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.terminal-keyboard"
+      ],
+      "states": [
+        "compact",
+        "keyboard-visible",
+        "shortcuts-presented"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/TerminalKeyboardAccessory.swift",
+          "Apps/Clive/App/TerminalSurfaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/TerminalKeyboardAccessory.swift"
+        ],
+        "models_services_protocols": [],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/TerminalKeyboardAccessoryTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": []
+      }
+    },
+    {
+      "id": "ios.workspace.terminal-pager",
+      "semantic_name": "Terminal",
+      "platform": "ios",
+      "kind": "repeated",
+      "parent": "ios.workspace.terminal-row",
+      "canonical_path": "Workspace/Terminal Row/Terminal",
+      "order": 1,
+      "aliases": [
+        "Terminal Pager",
+        "Shell pages",
+        "Session pages"
+      ],
+      "presentation": "Selected Terminal surface with ordinary vertical scrolling; two-finger horizontal swipes select adjacent Terminals while the title remains rename-only.",
+      "repetition": "One selected WorkspaceSession is presented at a time.",
+      "related_components": [
+        "ios.workspace.terminal-keyboard",
+        "ios.workspace.recovery-overlay",
+        "ios.workspace.terminal-drawer"
+      ],
+      "states": [
+        "empty",
+        "selected",
+        "connected",
+        "connecting",
+        "reconnecting",
+        "disconnected",
+        "normal-scrolling"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift",
+          "Apps/Clive/App/TerminalSurfaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/TerminalLinkPolicy.swift",
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/SessionClient.swift",
+          "Sources/CliveCore/TerminalPreviewAccumulator.swift"
+        ],
+        "accessibility_ids": [
+          "terminal-page-<session-id>",
+          "terminal-surface-<session-id>"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/TerminalInteractionPolicyTests.swift",
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.workspace.terminal-drawer",
+      "semantic_name": "Terminal Drawer",
+      "platform": "ios",
+      "kind": "sidebar",
+      "parent": "ios.workspace.root",
+      "canonical_path": "Workspace/Terminal Drawer",
+      "order": 4,
+      "aliases": [
+        "Terminal list",
+        "Session drawer"
+      ],
+      "presentation": "Adaptive native sidebar listing terminals and terminal-management actions; compact launches begin on the selected Terminal detail, open this sidebar from the Terminal drawer control, and return to the selected Terminal detail after row selection.",
+      "repetition": "Rows repeat for open and resumable detached Terminals.",
+      "related_components": [
+        "ios.workspace.terminal-pager",
+        "ios.settings.root"
+      ],
+      "states": [
+        "open-terminal",
+        "detached-terminal",
+        "selected",
+        "connected",
+        "disconnected"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift",
+          "Apps/Clive/App/WorkspacePresentation.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveCore/SessionRegistry.swift",
+          "Apps/Clive/App/SessionCatalogClient.swift"
+        ],
+        "accessibility_ids": [
+          "terminals-button",
+          "terminal-row-<session-id>",
+          "terminal-status-<session-id>",
+          "reconnect-terminal-<session-id>",
+          "drawer-settings-button"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.workspace.terminal-keyboard",
+      "semantic_name": "Terminal Key Row",
+      "platform": "ios",
+      "kind": "overlay",
+      "parent": "ios.workspace.keyboard-row",
+      "canonical_path": "Workspace/Keyboard Row/Terminal Key Row",
+      "order": 1,
+      "aliases": [
+        "Terminal keyboard accessory"
+      ],
+      "presentation": "Fixed Down, Up, and Enter toolbar visible only while the software keyboard is shown.",
+      "repetition": "Key controls repeat from fixed key definitions.",
+      "related_components": [
+        "ios.workspace.terminal-pager",
+        "ios.shortcuts.sheet"
+      ],
+      "states": [
+        "keyboard-visible",
+        "modifier-active"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/TerminalKeyboardAccessory.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/TerminalKeyboardAccessory.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/SessionClient.swift"
+        ],
+        "accessibility_ids": [
+          "escape",
+          "tab",
+          "shift",
+          "control",
+          "option",
+          "command",
+          "left",
+          "down",
+          "up",
+          "right"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/TerminalKeyboardAccessoryTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.workspace.recovery-overlay",
+      "semantic_name": "Terminal Recovery",
+      "platform": "ios",
+      "kind": "overlay",
+      "parent": "ios.workspace.root",
+      "canonical_path": "Workspace/Terminal Recovery",
+      "order": 5,
+      "aliases": [
+        "Connection recovery",
+        "Session error"
+      ],
+      "presentation": "Replaces or overlays the selected Terminal when reconnection needs user action.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.terminal-pager",
+        "ios.pairing.scanner"
+      ],
+      "states": [
+        "offline",
+        "no-connection",
+        "resume-unavailable",
+        "revoked",
+        "working-directory-unavailable",
+        "certificate-changed",
+        "protocol-error",
+        "network-error"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspacePresentation.swift",
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/SessionClient.swift",
+          "Sources/CliveCore/Protocol.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/WorkspaceRestorationTests.swift"
+        ],
+        "fixtures": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.workspace.alerts",
+      "semantic_name": "Workspace Alerts",
+      "platform": "ios",
+      "kind": "alert",
+      "parent": "ios.workspace.root",
+      "canonical_path": "Workspace/Workspace Alerts",
+      "order": 6,
+      "aliases": [
+        "Terminal confirmations"
+      ],
+      "presentation": "Rename, close, delete-all, disconnect, and operation-error alerts presented by Workspace.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.terminal-drawer",
+        "ios.settings.root"
+      ],
+      "states": [
+        "rename",
+        "close-terminal",
+        "delete-all",
+        "disconnect-unpair",
+        "disconnect-error",
+        "delete-error"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/UnpairingClient.swift",
+          "Apps/Clive/App/SessionClient.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.root",
+      "semantic_name": "Settings",
+      "platform": "ios",
+      "kind": "screen",
+      "parent": null,
+      "canonical_path": "Settings",
+      "order": 2,
+      "aliases": [
+        "Connection settings"
+      ],
+      "presentation": "Full-screen cover reached from the Workspace connection status or drawer footer.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.root",
+        "ios.settings.connection-details",
+        "ios.settings.shortcut-management",
+        "ios.settings.setup-guide"
+      ],
+      "states": [
+        "paired",
+        "no-current-mac",
+        "cellular-allowed",
+        "cellular-disallowed"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift",
+          "Apps/Clive/App/PairedMacStore.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/cellular-connectivity.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.connection-details",
+      "semantic_name": "Connection Details",
+      "platform": "ios",
+      "kind": "screen",
+      "parent": "ios.settings.root",
+      "canonical_path": "Settings/Connection Details",
+      "order": 5,
+      "aliases": [
+        "Security details",
+        "Mac details"
+      ],
+      "presentation": "Navigation destination showing connection health, route, replay status, transport, authentication, and a stored fingerprint with copy action.",
+      "repetition": null,
+      "related_components": [
+        "ios.settings.root",
+        "ios.workspace.root"
+      ],
+      "states": [
+        "connected",
+        "connecting",
+        "disconnected",
+        "attention"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspacePresentation.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/PairedMacStore.swift",
+          "Apps/Clive/App/SessionClient.swift"
+        ],
+        "accessibility_ids": [
+          "connection-details-list"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.shortcut-management",
+      "semantic_name": "Shortcut Management",
+      "platform": "ios",
+      "kind": "screen",
+      "parent": "ios.settings.root",
+      "canonical_path": "Settings/Shortcut Management",
+      "order": 6,
+      "aliases": [
+        "CLI shortcuts",
+        "Saved commands"
+      ],
+      "presentation": "Settings navigation destination with reorder, add, delete, title, and command editing.",
+      "repetition": "One navigation row per saved shortcut.",
+      "related_components": [
+        "ios.shortcuts.sheet",
+        "widget.terminal.configuration"
+      ],
+      "states": [
+        "viewing",
+        "editing",
+        "reordering"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/AppPreferences.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift"
+        ],
+        "accessibility_ids": [
+          "shortcut-management-actions"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift",
+          "Apps/Clive/Tests/TerminalKeyboardAccessoryTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "README.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.setup-guide",
+      "semantic_name": "Setup Guide",
+      "platform": "ios",
+      "kind": "screen",
+      "parent": "ios.settings.root",
+      "canonical_path": "Settings/Setup Guide",
+      "order": 7,
+      "aliases": [
+        "Current Mac"
+      ],
+      "presentation": "Settings destination and automatic post-authentication guide while no Mac is paired; dismissal lasts for the current launch and pairing completion ends automatic presentation.",
+      "repetition": null,
+      "related_components": [
+        "ios.pairing.scanner"
+      ],
+      "states": [
+        "install-mac",
+        "scan-secure-code",
+        "pairing-failed",
+        "paired"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/ConnectionSetupGuide.swift",
+          "Apps/Clive/App/PairedMacsModel.swift"
+        ],
+        "accessibility_ids": [
+          "setup-guide-screen",
+          "setup-guide-pair-mac-button",
+          "setup-guide-pairing-error"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/ConnectionSetupGuideTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "README.md",
+          "docs/releases.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.shortcuts.sheet",
+      "semantic_name": "Shortcuts",
+      "platform": "ios",
+      "kind": "sheet",
+      "parent": null,
+      "canonical_path": "Shortcuts",
+      "order": 3,
+      "aliases": [
+        "Saved commands"
+      ],
+      "presentation": "Keyboard-area panel used to launch a saved shortcut or jump to Settings management.",
+      "repetition": "One row per saved shortcut.",
+      "related_components": [
+        "ios.workspace.root",
+        "ios.settings.shortcut-management",
+        "widget.terminal.configuration"
+      ],
+      "states": [
+        "empty",
+        "list",
+        "dismissed-after-run"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift",
+          "Apps/Clive/App/AppPreferences.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift"
+        ],
+        "accessibility_ids": [
+          "shortcuts-panel",
+          "shortcut-row-<shortcut-id>"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "README.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.pairing.scanner",
+      "semantic_name": "Pairing Scanner",
+      "platform": "ios",
+      "kind": "sheet",
+      "parent": null,
+      "canonical_path": "Pairing Scanner",
+      "order": 4,
+      "aliases": [
+        "Add Connection",
+        "Pair Mac"
+      ],
+      "presentation": "Full-screen camera scanner reached when Workspace has no Connection or recovery requires pairing again.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.root",
+        "ios.workspace.recovery-overlay",
+        "macos.pairing.window"
+      ],
+      "states": [
+        "requesting-camera",
+        "scanning",
+        "ticket-found",
+        "invalid-code",
+        "pairing",
+        "failed"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/PairingScannerView.swift",
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/PairingClient.swift",
+          "Sources/CliveCore/Pairing.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/PairingTicketValidatorTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/security.md",
+          "docs/protocol.md"
+        ]
+      }
+    },
+    {
+      "id": "widget.terminal.configuration",
+      "semantic_name": "Terminal Widget Configuration",
+      "platform": "widget",
+      "kind": "widget",
+      "parent": null,
+      "canonical_path": "Terminal Widget Configuration",
+      "order": 1,
+      "aliases": [
+        "Resume widget",
+        "Shortcut widget"
+      ],
+      "presentation": "AppIntent configuration choosing New Terminal or one saved shortcut.",
+      "repetition": "Dynamic options repeat for valid saved shortcuts.",
+      "related_components": [
+        "widget.terminal.small",
+        "widget.terminal.medium",
+        "ios.shortcuts.sheet"
+      ],
+      "states": [
+        "new-terminal",
+        "saved-shortcut"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/Widgets/CliveResumeWidget.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/ExternalLaunch.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "README.md"
+        ]
+      }
+    },
+    {
+      "id": "widget.terminal.small",
+      "semantic_name": "Small Terminal Widget",
+      "platform": "widget",
+      "kind": "widget",
+      "parent": "widget.terminal.configuration",
+      "canonical_path": "Terminal Widget Configuration/Small Terminal Widget",
+      "order": 1,
+      "aliases": [
+        "Small resume widget"
+      ],
+      "presentation": "systemSmall widget deep-linking to a new Terminal or saved shortcut.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.root"
+      ],
+      "states": [
+        "new-terminal",
+        "saved-shortcut"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/Widgets/CliveResumeWidget.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/ExternalLaunch.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift"
+        ],
+        "accessibility_ids": [
+          "New terminal in Clive",
+          "Run <shortcut-title> in a new terminal in Clive"
+        ],
+        "localization": [],
+        "tests": [],
+        "fixtures": [],
+        "assets": [
+          "Apps/Clive/App/Assets.xcassets"
+        ],
+        "previews": [],
+        "documentation": [
+          "README.md"
+        ]
+      }
+    },
+    {
+      "id": "widget.terminal.medium",
+      "semantic_name": "Medium Terminal Widget",
+      "platform": "widget",
+      "kind": "widget",
+      "parent": "widget.terminal.configuration",
+      "canonical_path": "Terminal Widget Configuration/Medium Terminal Widget",
+      "order": 2,
+      "aliases": [
+        "Medium resume widget"
+      ],
+      "presentation": "systemMedium widget deep-linking to a new Terminal or saved shortcut.",
+      "repetition": null,
+      "related_components": [
+        "ios.workspace.root"
+      ],
+      "states": [
+        "new-terminal",
+        "saved-shortcut"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/Widgets/CliveResumeWidget.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/ExternalLaunch.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift"
+        ],
+        "accessibility_ids": [
+          "New terminal in Clive",
+          "Run <shortcut-title> in a new terminal in Clive"
+        ],
+        "localization": [],
+        "tests": [],
+        "fixtures": [],
+        "assets": [
+          "Apps/Clive/App/Assets.xcassets"
+        ],
+        "previews": [],
+        "documentation": [
+          "README.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.root",
+      "semantic_name": "Menu Bar",
+      "platform": "macos",
+      "kind": "menu",
+      "parent": null,
+      "canonical_path": "Menu Bar",
+      "order": 1,
+      "aliases": [
+        "Companion menu",
+        "Status menu"
+      ],
+      "presentation": "MenuBarExtra shown while the companion daemon runtime is active.",
+      "repetition": null,
+      "related_components": [
+        "macos.menubar.device-menu",
+        "macos.cellular.window",
+        "macos.connection-setup.window",
+        "macos.pairing.window",
+        "macos.menubar.end-session-alert"
+      ],
+      "states": [
+        "cellular-disabled",
+        "preparing",
+        "verifying",
+        "available",
+        "configuration-required",
+        "blocked",
+        "diagnostic"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/DaemonRuntime.swift",
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveCore/ControlProtocol.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift",
+          "Tests/CliveDaemonTests/ControlSocketTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [
+          "Resources/AppIcon.icon"
+        ],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.device-menu",
+      "semantic_name": "Paired Device and Terminal Menus",
+      "platform": "macos",
+      "kind": "repeated",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/Paired Device and Terminal Menus",
+      "order": 3,
+      "aliases": [
+        "iPhone sessions",
+        "Active shells"
+      ],
+      "presentation": "Nested menus for each paired iPhone and each active shared Terminal.",
+      "repetition": "One device menu per paired iPhone and one nested Terminal menu per active session.",
+      "related_components": [
+        "macos.menubar.end-session-alert",
+        "ios.workspace.terminal-pager"
+      ],
+      "states": [
+        "no-paired-devices",
+        "no-active-terminals",
+        "active-terminal",
+        "resize-owner",
+        "attached-clients"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/TerminalSessionManager.swift",
+          "Sources/CliveCore/SessionRegistry.swift",
+          "Sources/CliveCore/ControlProtocol.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Tests/CliveDaemonTests/TerminalSessionManagerTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.end-session-alert",
+      "semantic_name": "End Shared Terminal Confirmation",
+      "platform": "macos",
+      "kind": "alert",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/End Shared Terminal Confirmation",
+      "order": 10,
+      "aliases": [
+        "End session confirmation"
+      ],
+      "presentation": "Confirmation dialog opened from a Terminal submenu before ending it for every Attachment.",
+      "repetition": null,
+      "related_components": [
+        "macos.menubar.device-menu"
+      ],
+      "states": [
+        "confirming"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/TerminalSessionManager.swift",
+          "Sources/CliveCore/ControlProtocol.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Tests/CliveDaemonTests/TerminalSessionManagerTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.pairing.window",
+      "semantic_name": "Pair iPhone",
+      "platform": "macos",
+      "kind": "window",
+      "parent": null,
+      "canonical_path": "Pair iPhone",
+      "order": 2,
+      "aliases": [
+        "Pairing window",
+        "Secure pairing QR"
+      ],
+      "presentation": "Window opened from the menu bar or Connection Setup to create a one-attempt secure Pair this iPhone QR and approve or reject the scanning iPhone.",
+      "repetition": null,
+      "related_components": [
+        "ios.pairing.scanner",
+        "macos.menubar.root",
+        "macos.connection-setup.window"
+      ],
+      "states": [
+        "creating-code",
+        "showing-code",
+        "awaiting-approval",
+        "approved",
+        "rejected",
+        "expired",
+        "failed"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/PairingOperation.swift",
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveCore/Pairing.swift"
+        ],
+        "accessibility_ids": [
+          "secure-pairing-qr-label"
+        ],
+        "localization": [],
+        "tests": [
+          "Tests/CliveDaemonTests/ControlSocketTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/security.md",
+          "docs/protocol.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.cellular.window",
+      "semantic_name": "Cellular Setup",
+      "platform": "macos",
+      "kind": "window",
+      "parent": null,
+      "canonical_path": "Cellular Setup",
+      "order": 3,
+      "aliases": [
+        "Set Up Cellular Access",
+        "Cellular route"
+      ],
+      "presentation": "Window opened from the menu bar for automatic router mapping or manual endpoint configuration and verification.",
+      "repetition": null,
+      "related_components": [
+        "macos.menubar.root",
+        "ios.settings.root"
+      ],
+      "states": [
+        "automatic",
+        "manual-port-forwarding",
+        "disabled",
+        "preparing",
+        "verifying",
+        "available",
+        "configuration-required",
+        "blocked",
+        "configuring"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/PublicNetwork.swift",
+          "Sources/CliveDaemon/RouterPortMapper.swift",
+          "Sources/CliveCloud/CloudRendezvousStore.swift",
+          "Sources/CliveCore/Rendezvous.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.current-connection-row",
+      "semantic_name": "Current Connection Row",
+      "platform": "ios",
+      "kind": "row",
+      "parent": "ios.settings.root",
+      "canonical_path": "Settings/Current Connection Row",
+      "order": 1,
+      "aliases": [],
+      "presentation": "Top section linking the selected Connection to its details.",
+      "repetition": null,
+      "related_components": [
+        "ios.settings.connection-details"
+      ],
+      "states": [
+        "connected",
+        "connecting",
+        "disconnected",
+        "attention"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift",
+          "Apps/Clive/App/PairedMacStore.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.session-summary-row",
+      "semantic_name": "Terminal Summary Row",
+      "platform": "ios",
+      "kind": "row",
+      "parent": "ios.settings.root",
+      "canonical_path": "Settings/Terminal Summary Row",
+      "order": 2,
+      "aliases": [
+        "Sessions",
+        "Open sessions",
+        "Active sessions"
+      ],
+      "presentation": "Section reporting open and active Terminal counts.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "empty",
+        "open",
+        "active"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift",
+          "Apps/Clive/App/PairedMacStore.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.cellular-access-row",
+      "semantic_name": "Cellular Access Row",
+      "platform": "ios",
+      "kind": "row",
+      "parent": "ios.settings.root",
+      "canonical_path": "Settings/Cellular Access Row",
+      "order": 3,
+      "aliases": [],
+      "presentation": "Toggle controlling whether this iPhone may use Mac-enabled cellular routes.",
+      "repetition": null,
+      "related_components": [
+        "macos.cellular.window"
+      ],
+      "states": [
+        "allowed",
+        "disallowed"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift",
+          "Apps/Clive/App/PairedMacStore.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.terminal-default-row",
+      "semantic_name": "New Terminal Default Row",
+      "platform": "ios",
+      "kind": "row",
+      "parent": "ios.settings.root",
+      "canonical_path": "Settings/New Terminal Default Row",
+      "order": 4,
+      "aliases": [],
+      "presentation": "Picker choosing the saved Shortcut used for ordinary new Terminals.",
+      "repetition": null,
+      "related_components": [
+        "ios.settings.shortcut-management",
+        "ios.workspace.new-terminal-button"
+      ],
+      "states": [
+        "login-shell",
+        "saved-shortcut"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift",
+          "Apps/Clive/App/PairedMacStore.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.shortcut-editor",
+      "semantic_name": "Shortcut Editor",
+      "platform": "ios",
+      "kind": "screen",
+      "parent": "ios.settings.shortcut-management",
+      "canonical_path": "Settings/Shortcut Management/Shortcut Editor",
+      "order": 1,
+      "aliases": [],
+      "presentation": "Navigation destination editing one saved Shortcut title and command.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "editing"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift",
+          "Apps/Clive/App/PairedMacStore.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.settings.connection-summary",
+      "semantic_name": "Connection and Security Summary",
+      "platform": "ios",
+      "kind": "group",
+      "parent": "ios.settings.connection-details",
+      "canonical_path": "Settings/Connection Details/Connection and Security Summary",
+      "order": 1,
+      "aliases": [],
+      "presentation": "Groups showing Connection health, route, transport, mutual authentication, and stored fingerprint.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "connected",
+        "connecting",
+        "disconnected",
+        "attention",
+        "pinned"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/WorkspaceView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/WorkspaceCoordinator.swift"
+        ],
+        "models_services_protocols": [
+          "Apps/Clive/App/AppPreferences.swift",
+          "Apps/Clive/App/PairedMacStore.swift"
+        ],
+        "accessibility_ids": [
+          "connection-authentication-value",
+          "connection-transport-value"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/AppPreferencesTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "ios.pairing.camera-preview",
+      "semantic_name": "Pairing Camera Preview",
+      "platform": "ios",
+      "kind": "column",
+      "parent": "ios.pairing.scanner",
+      "canonical_path": "Pairing Scanner/Pairing Camera Preview",
+      "order": 1,
+      "aliases": [],
+      "presentation": "Live camera preview consuming one validated QR payload.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "requesting-camera",
+        "scanning",
+        "consumed",
+        "failed"
+      ],
+      "resources": {
+        "views": [
+          "Apps/Clive/App/PairingScannerView.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/Clive/App/PairingScannerView.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveCore/Pairing.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/Clive/Tests/PairingTicketValidatorTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.cellular-toggle",
+      "semantic_name": "Cellular Access Toggle",
+      "platform": "macos",
+      "kind": "control",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/Cellular Access Toggle",
+      "order": 1,
+      "aliases": [],
+      "presentation": "Toggle enabling or disabling owner-approved cellular access.",
+      "repetition": null,
+      "related_components": [
+        "macos.cellular.window"
+      ],
+      "states": [
+        "enabled",
+        "disabled"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.status-summary",
+      "semantic_name": "Connection and Diagnostic Status",
+      "platform": "macos",
+      "kind": "group",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/Connection and Diagnostic Status",
+      "order": 2,
+      "aliases": [],
+      "presentation": "Sanitized cellular, sleep-behavior, and diagnostic status.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "disabled",
+        "preparing",
+        "verifying",
+        "available",
+        "configuration-required",
+        "blocked",
+        "diagnostic"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.refresh-button",
+      "semantic_name": "Refresh Button",
+      "platform": "macos",
+      "kind": "control",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/Refresh Button",
+      "order": 4,
+      "aliases": [],
+      "presentation": "Action refreshing Connection and Terminal status.",
+      "repetition": null,
+      "related_components": [],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.cellular-setup-button",
+      "semantic_name": "Cellular Setup Button",
+      "platform": "macos",
+      "kind": "control",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/Cellular Setup Button",
+      "order": 5,
+      "aliases": [],
+      "presentation": "Action opening the Cellular Setup window.",
+      "repetition": null,
+      "related_components": [
+        "macos.cellular.window"
+      ],
+      "states": [
+        "setup-required",
+        "available"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.pair-button",
+      "semantic_name": "Pair iPhone Button",
+      "platform": "macos",
+      "kind": "control",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/Pair iPhone Button",
+      "order": 6,
+      "aliases": [],
+      "presentation": "Action opening the Pair iPhone window.",
+      "repetition": null,
+      "related_components": [
+        "macos.pairing.window"
+      ],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/PairingOperation.swift",
+          "Sources/CliveCore/Pairing.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Tests/CliveDaemonTests/ControlSocketTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.terminal-pair-button",
+      "semantic_name": "Pair from Terminal Button",
+      "platform": "macos",
+      "kind": "control",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/Pair from Terminal Button",
+      "order": 7,
+      "aliases": [],
+      "presentation": "Action copying the exact clive pair fallback command.",
+      "repetition": null,
+      "related_components": [],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.copy-status-button",
+      "semantic_name": "Copy Status Command Button",
+      "platform": "macos",
+      "kind": "control",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/Copy Status Command Button",
+      "order": 8,
+      "aliases": [],
+      "presentation": "Action copying the exact clive status command.",
+      "repetition": null,
+      "related_components": [],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.quit-button",
+      "semantic_name": "Quit Clive Button",
+      "platform": "macos",
+      "kind": "control",
+      "parent": "macos.menubar.root",
+      "canonical_path": "Menu Bar/Quit Clive Button",
+      "order": 9,
+      "aliases": [],
+      "presentation": "Action stopping the runtime and terminating the app.",
+      "repetition": null,
+      "related_components": [],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.menubar.session-actions",
+      "semantic_name": "Terminal Submenu Actions",
+      "platform": "macos",
+      "kind": "group",
+      "parent": "macos.menubar.device-menu",
+      "canonical_path": "Menu Bar/Paired Device and Terminal Menus/Terminal Submenu Actions",
+      "order": 1,
+      "aliases": [],
+      "presentation": "Resize-owner status plus Copy Attach Command and End Session controls.",
+      "repetition": null,
+      "related_components": [
+        "macos.menubar.end-session-alert"
+      ],
+      "states": [
+        "no-owner",
+        "owned"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.pairing.code-group",
+      "semantic_name": "Pairing Code Group",
+      "platform": "macos",
+      "kind": "group",
+      "parent": "macos.pairing.window",
+      "canonical_path": "Pair iPhone/Pairing Code Group",
+      "order": 1,
+      "aliases": [],
+      "presentation": "Conditional short-lived QR, progress, and static safety guidance.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "creating-code",
+        "showing-code",
+        "expired",
+        "failed"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/PairingOperation.swift",
+          "Sources/CliveCore/Pairing.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Tests/CliveDaemonTests/ControlSocketTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.pairing.approval-group",
+      "semantic_name": "Pairing Approval Group",
+      "platform": "macos",
+      "kind": "group",
+      "parent": "macos.pairing.window",
+      "canonical_path": "Pair iPhone/Pairing Approval Group",
+      "order": 2,
+      "aliases": [],
+      "presentation": "Local requesting-device and fingerprint confirmation with Reject and Approve.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "awaiting-approval",
+        "approved",
+        "rejected"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/PairingOperation.swift",
+          "Sources/CliveCore/Pairing.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Tests/CliveDaemonTests/ControlSocketTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.pairing.cancel-button",
+      "semantic_name": "Cancel Pairing Button",
+      "platform": "macos",
+      "kind": "control",
+      "parent": "macos.pairing.window",
+      "canonical_path": "Pair iPhone/Cancel Pairing Button",
+      "order": 3,
+      "aliases": [],
+      "presentation": "Action invalidating pending pairing and dismissing the window.",
+      "repetition": null,
+      "related_components": [],
+      "states": [],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/PairingOperation.swift",
+          "Sources/CliveCore/Pairing.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Tests/CliveDaemonTests/ControlSocketTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/protocol.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.cellular.route-group",
+      "semantic_name": "Cellular Route Group",
+      "platform": "macos",
+      "kind": "group",
+      "parent": "macos.cellular.window",
+      "canonical_path": "Cellular Setup/Cellular Route Group",
+      "order": 1,
+      "aliases": [],
+      "presentation": "Configuration mode, mapping permission, manual endpoint, and listener-port controls.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "automatic",
+        "manual-port-forwarding",
+        "valid",
+        "invalid"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.cellular.status-group",
+      "semantic_name": "Cellular Status Group",
+      "platform": "macos",
+      "kind": "group",
+      "parent": "macos.cellular.window",
+      "canonical_path": "Cellular Setup/Cellular Status Group",
+      "order": 2,
+      "aliases": [],
+      "presentation": "Configuration, verification, advertised-route, and sanitized diagnostic status.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "disabled",
+        "preparing",
+        "verifying",
+        "available",
+        "configuration-required",
+        "blocked"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.cellular.actions-row",
+      "semantic_name": "Cellular Actions Row",
+      "platform": "macos",
+      "kind": "row",
+      "parent": "macos.cellular.window",
+      "canonical_path": "Cellular Setup/Cellular Actions Row",
+      "order": 3,
+      "aliases": [],
+      "presentation": "Refresh, Retry iPhone Test, and Configure and Test controls.",
+      "repetition": null,
+      "related_components": [],
+      "states": [
+        "idle",
+        "configuring"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [
+          "Sources/CliveDaemon/ControlSocket.swift",
+          "Sources/CliveDaemon/PublicNetwork.swift"
+        ],
+        "accessibility_ids": [],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/RouterPortMapperTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "docs/architecture.md",
+          "docs/cellular-connectivity.md",
+          "docs/security.md"
+        ]
+      }
+    },
+    {
+      "id": "macos.connection-setup.window",
+      "semantic_name": "Connection Setup",
+      "platform": "macos",
+      "kind": "window",
+      "parent": null,
+      "canonical_path": "Connection Setup",
+      "order": 4,
+      "aliases": [
+        "Get Clive for iPhone"
+      ],
+      "presentation": "Menu-bar window automatically opened once per launch while no iPhone is paired, and always available from Connection Setup in the menu.",
+      "repetition": null,
+      "related_components": [
+        "macos.menubar.root",
+        "macos.pairing.window",
+        "ios.settings.setup-guide"
+      ],
+      "states": [
+        "no-paired-iphone",
+        "paired-iphone"
+      ],
+      "resources": {
+        "views": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "state_actions_navigation": [
+          "Apps/CliveMac/App/CliveMacApp.swift"
+        ],
+        "models_services_protocols": [],
+        "accessibility_ids": [
+          "connection-setup-window",
+          "connection-setup-testflight-qr",
+          "connection-setup-testflight-link",
+          "connection-setup-pair-iphone-button"
+        ],
+        "localization": [],
+        "tests": [
+          "Apps/CliveMac/Tests/ConnectionSetupGuideTests.swift"
+        ],
+        "fixtures": [],
+        "assets": [],
+        "previews": [],
+        "documentation": [
+          "README.md",
+          "docs/releases.md"
+        ]
+      }
+    }
+  ],
+  "legacy_components": [],
+  "reviews": [
+    {
+      "id": "2026-08-23-daemon-control-socket-ownership",
+      "reason": "Daemon instance locking and ownership-safe control-socket cleanup preserve the existing macOS and iOS surfaces and resource relationships.",
+      "paths": [
+        "Sources/CliveDaemon/ControlSocket.swift",
+        "Tests/CliveDaemonTests/ControlSocketTests.swift",
+        "docs/architecture.md",
+        "scripts/test-macos-integration.sh"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-issue-branch-names",
+      "reason": "Branch naming guidance affects contributor workflow only and does not change any mapped user interface component or resource relationship.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-stale-terminal-recovery",
+      "reason": "Stale local terminal recovery changes daemon session lifecycle behavior without changing mapped user interface components or their resource relationships.",
+      "paths": [
+        "Sources/CliveDaemon/DaemonRuntime.swift",
+        "Sources/CliveDaemon/TerminalSessionManager.swift",
+        "Tests/CliveDaemonTests/TerminalSessionManagerTests.swift",
+        "docs/architecture.md"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-ui-feature-map-pr-check",
+      "reason": "Agent issue-creation guidance and its pre-pull-request validation requirement do not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-ui-hig-agentic-workflow-guidance",
+      "reason": "HIG reference, naming guidance, and audit-skill documentation do not change mapped user interface components or their resource relationships.",
+      "paths": [
+        "AGENTS.md",
+        "docs/human-interface-guidelines.md",
+        "docs/ui-feature-map-naming.md",
+        "skills/clive-hig-audit/SKILL.md",
+        "skills/clive-hig-audit/agents/openai.yaml"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-z-repository-cleanup-skill",
+      "reason": "Repository cleanup guidance affects contributor workflow and remote GitHub maintenance only; it does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "skills/repository-cleanup/SKILL.md",
+        "skills/repository-cleanup/agents/openai.yaml"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zz-github-cli-authentication-checks",
+      "reason": "GitHub CLI authentication guidance affects contributor workflow only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zz-signed-local-refresh",
+      "reason": "The opt-in physical-device refresh workflow changes development deployment behavior without changing mapped application components or resource relationships.",
+      "paths": [
+        "README.md",
+        "scripts/test-macos-integration.sh",
+        "scripts/update-local.sh"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzz-homebrew-cask-distribution",
+      "reason": "Homebrew distribution automation, checksum validation, and installation documentation do not change any mapped user interface component or resource relationship.",
+      "paths": [
+        ".github/workflows/macos-release.yml",
+        "README.md",
+        "Tests/HomebrewCaskTests/test_render_homebrew_cask.py",
+        "docs/releases.md",
+        "scripts/render-homebrew-cask.py",
+        "scripts/update-homebrew-cask.sh"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzz-github-auth-preflight",
+      "reason": "Expanded GitHub CLI authentication guidance affects contributor workflow only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzz-release-merge-conflict-resolution",
+      "reason": "Release-branch conflict resolution restores an existing terminal navigation UI test without changing mapped user interface components or resource relationships.",
+      "paths": [
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzz-ios-ui-test-diagnostics",
+      "reason": "Local iOS test-result diagnostics improve developer troubleshooting without changing mapped user interface components or resource relationships.",
+      "paths": [
+        "scripts/verify-local.sh"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzz-stable-terminal-navigation-test",
+      "reason": "A deterministic terminal-navigation UI test, GitHub authentication recovery guidance, and serialized verification scheduling do not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md",
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift",
+        "scripts/verify-local.sh"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzz-gh-auth-startup-preflight",
+      "reason": "GitHub authentication preflight guidance changes contributor workflow only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzzz-retain-ios-test-results",
+      "reason": "Failed iOS verification result-bundle retention changes CI diagnostics only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        ".github/workflows/verify.yml"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzzzz-fix-ios-test-result-artifact-path",
+      "reason": "Correcting the CI result-bundle artifact path changes verification diagnostics only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        ".github/workflows/verify.yml"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzzzzz-develop-compatibility-gate",
+      "reason": "Reusable pull-request compatibility checks and terminal UI-test synchronization change CI coverage and test automation without changing mapped component relationships.",
+      "paths": [
+        ".github/workflows/compatibility.yml",
+        ".github/workflows/verify-develop.yml",
+        ".github/workflows/verify.yml",
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzzzzzz-connection-details-list-query",
+      "reason": "The Connection details UI test now queries its stable list identifier independent of the accessibility element type used by each iOS simulator.",
+      "paths": [
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+      ],
+      "result": "no-component-impact"
+    }
+  ]
+}

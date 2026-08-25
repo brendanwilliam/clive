@@ -1,0 +1,71 @@
+name: Run compatibility checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: Shared tests, app builds, and macOS integration
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      CLIVE_IOS_RESULT_BUNDLE: /private/tmp/clive-local-verify/ios-ci-test-results.xcresult
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify runner Xcode
+        run: |
+          xcode-select -p
+          xcrun --find xcodebuild
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Boot an iOS Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulator_id="$(xcrun simctl list devices available | awk '
+            /^-- iOS / { in_ios = 1; next }
+            /^-- / { if (in_ios) exit }
+            in_ios && /iPhone/ && match($0, /\([0-9A-F-]{36}\)/) {
+              print substr($0, RSTART + 1, RLENGTH - 2)
+              exit
+            }
+          ')"
+          [[ -n "$simulator_id" ]] || { echo "::error::No available iPhone Simulator was found"; exit 1; }
+          xcrun simctl boot "$simulator_id"
+          xcrun simctl bootstatus "$simulator_id" -b
+          echo "CLIVE_IOS_DESTINATION_ID=$simulator_id" >> "$GITHUB_ENV"
+
+      - name: Verify both platforms
+        run: ./scripts/verify-local.sh
+
+      - name: Upload failed iOS test result bundle
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: failed-ios-test-results
+          path: /private/tmp/clive-local-verify/ios-ci-test-results.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Verify localhost control socket
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/clive-integration.keychain-db"
+          keychain_password="$(uuidgen)"
+          cleanup() { security delete-keychain "$keychain_path" 2>/dev/null || true; }
+          trap cleanup EXIT
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 3600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security default-keychain -d user -s "$keychain_path"
+          ./scripts/test-macos-integration.sh

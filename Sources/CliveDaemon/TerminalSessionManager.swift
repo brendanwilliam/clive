@@ -3,7 +3,17 @@ import CliveCore
 
 final class TerminalSessionManager: @unchecked Sendable {
     struct Attachment { let serverSessionID: UUID; let disposition: SessionOpened.Disposition; let replay: Data; let replayOffset: UInt64; let replayTruncated: Bool }
-    enum DetachmentReason { case slowConsumer }
+    enum DetachmentReason { case slowConsumer, replaced }
+    enum AttachmentError: Error, Equatable, LocalizedError {
+        case attachedByDifferentEndpoint
+
+        var errorDescription: String? {
+            switch self {
+            case .attachedByDifferentEndpoint:
+                "The requested session is still attached to an active terminal on a different endpoint. Disconnect it before trying again."
+            }
+        }
+    }
     typealias Output = @Sendable (TerminalOutputChunk, @escaping @Sendable () -> Void) -> Void
     typealias CatalogUpdate = @Sendable ([SessionDescriptor]) -> Void
     typealias StateUpdate = @Sendable (AttachmentState) -> Void
@@ -63,6 +73,12 @@ final class TerminalSessionManager: @unchecked Sendable {
                 entry = Entry(session: session, shell: shell); entries[key] = entry; disposition = .created; Task { await registry.record(session) }
             }
             entry.detachTimer?.cancel(); entry.detachTimer = nil
+            if let existing = entry.sinks.values.first {
+                guard existing.kind == attachmentKind else { throw AttachmentError.attachedByDifferentEndpoint }
+                entry.sinks.removeValue(forKey: existing.id)
+                if entry.resizeOwner == existing.id { entry.resizeOwner = nil }
+                existing.onDetached(.replaced)
+            }
             entry.activitySequence &+= 1
             entry.sinks[attachmentID] = Sink(id: attachmentID, kind: attachmentKind, size: size, activitySequence: entry.activitySequence, output: output, onDetached: onDetached, onShellExit: onShellExit, onState: onState)
             if entry.resizeOwner == nil { entry.resizeOwner = attachmentID; entry.shell.resize(to: size) }
@@ -84,6 +100,14 @@ final class TerminalSessionManager: @unchecked Sendable {
     func unsubscribe(identifier: UUID) { queue.async { self.catalogSubscribers.removeValue(forKey: identifier) } }
     func clientSessionID(deviceID: String, serverSessionID: UUID) -> UUID? { queue.sync { entries.first { $0.key.deviceID == deviceID && $0.value.session.id == serverSessionID }?.key.clientSessionID } }
     func end(deviceID: String, serverSessionID: UUID) -> Bool { queue.sync { guard let key = entries.first(where: { $0.key.deviceID == deviceID && $0.value.session.id == serverSessionID })?.key else { return false }; terminate(key); return true } }
+    func endMany(deviceID: String, serverSessionIDs: [UUID]) -> [UUID] { queue.sync {
+        let requested = Set(serverSessionIDs)
+        let matches = entries.compactMap { key, entry in
+            key.deviceID == deviceID && requested.contains(entry.session.id) ? (key, entry.session.id) : nil
+        }
+        matches.forEach { terminate($0.0) }
+        return matches.map(\.1).sorted { $0.uuidString < $1.uuidString }
+    } }
 
     private func current(_ deviceID: String, _ clientSessionID: UUID, _ attachmentID: UUID) -> Entry? { let entry = entries[Key(deviceID: deviceID, clientSessionID: clientSessionID)]; return entry?.sinks[attachmentID] == nil ? nil : entry }
     private func receive(_ bytes: Data, for key: Key) {

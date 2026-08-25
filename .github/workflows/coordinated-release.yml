@@ -30,6 +30,18 @@ jobs:
     name: Validate coordinated release
     runs-on: macos-26
     steps:
+      - name: Authorize release initiator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${GITHUB_ACTOR}/permission" --jq .permission)"
+          if [[ "${permission}" != admin ]]; then
+            echo "::error::Only a repository owner or administrator may dispatch a coordinated release"
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -55,19 +67,13 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Select Xcode 26.5
-        env:
-          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+      - name: Verify runner Xcode
         run: |
-          test -x "${DEVELOPER_DIR}/usr/bin/xcodebuild" || {
-            echo "::error::Pinned Xcode is unavailable at ${DEVELOPER_DIR}"
-            exit 1
-          }
+          xcode-select -p
+          xcrun --find xcodebuild
           xcodebuild -version
 
       - name: Verify both platforms
-        env:
-          DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
         run: ./scripts/verify-local.sh
 
   macos:

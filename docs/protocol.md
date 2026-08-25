@@ -1,8 +1,8 @@
 # Protocol and lifecycle
 
-Protocol v3 is a coordinated Mac and iOS/TestFlight upgrade. Existing pairing records remain valid, but v2 frames are rejected before `session.open` can allocate a PTY. Sessions use stable server IDs and support iPhone and Mac CLI attachments through session list, attach, attachment-state, resize-claim, and explicit-termination frames.
+Protocol v3 is a coordinated Mac and iOS/TestFlight upgrade. Existing pairing records remain valid, but v2 frames are rejected before `session.open` can allocate a PTY. A Mac accepts one paired iPhone at a time. Sessions use stable server IDs and support iPhone and Mac CLI attachment through session list, attach, attachment-state, resize-claim, and explicit-termination frames.
 
-Terminal output carries a monotonically increasing byte offset. Reconnecting clients supply their last received offset; the daemon returns bounded replay and reports truncation when that offset predates the replay ring. Sessions are scoped to one paired certificate. Resize ownership follows the latest accepted input or explicit claim, and slow attachments are evicted independently.
+Terminal output carries a monotonically increasing byte offset. Reconnecting clients supply their last received offset; the daemon returns bounded replay and reports truncation when that offset predates the replay ring. Sessions are scoped to one paired certificate and allow at most one attachment. A reconnect from the same endpoint replaces its prior attachment; a different endpoint is rejected.
 
 ## Discovery
 
@@ -14,7 +14,7 @@ For opted-in cellular access, the same-account CloudKit private database stores 
 
 1. The Mac user chooses **Pair iPhone** in the menu-bar app (or uses `clive pair` as a terminal fallback) and confirms the request locally.
 2. The daemon creates a single-use pairing ticket that expires after 5 minutes. It uses the same persistent P-256 identity used by sessions.
-3. It displays a compact `CL2:` Base45 QR containing the temporary endpoint, version, expiry, one-time secret, and persistent daemon certificate fingerprint. The QR contains no private key. The iOS app continues to accept legacy v1 JSON/Base64 pairing codes.
+3. It displays a compact `CL2:` Base45 QR containing the temporary endpoint, version, expiry, one-time secret, and persistent daemon certificate fingerprint. The QR contains no private key. The iOS app accepts only this current format; older JSON/Base64 payloads fail closed and require a new pairing code.
 4. The iOS app scans the code, generates its own device key pair in the Keychain/Secure Enclave when available, and connects using TLS.
 5. The one-time secret authorizes exchange of the two public certificates. Each side stores the peer certificate fingerprint, device identifier, and creation time as its pairing record.
 6. The Mac reports the iPhone device name and fingerprint for local confirmation, then invalidates the one-time secret.
@@ -26,7 +26,7 @@ The pairing endpoint accepts only one successful exchange. Expired, consumed, or
 - TCP is protected by TLS 1.3 with client and server certificate authentication.
 - The peer certificate must exactly match the stored fingerprint for the selected pairing record.
 - TLS errors, certificate changes, protocol-version incompatibility, or missing biometric authorization terminate the attempt before shell creation.
-- The app sends `session.open` only after mutual TLS completes. The Mac responds with `session.opened` containing an opaque session ID, a `created` or `resumed` disposition, and a replay-truncation flag. Older replies without those fields mean `created` and not truncated.
+- The app sends `session.open` only after mutual TLS completes. The Mac responds with `session.opened` containing an opaque session ID, a `created` or `resumed` disposition, and a replay-truncation flag. These current fields are required.
 - One TLS connection is either a foreground `session.list` subscription or one terminal attachment. Catalog subscriptions never count as terminal attachments.
 
 ## Framing
@@ -53,9 +53,9 @@ Frames have a bounded maximum size and an explicit protocol version. The Mac rej
 
 ## Session lifecycle
 
-Each authenticated device ID and stable client session ID maps to one PTY and login shell. Any number of authenticated iPhone or local CLI transports may attach to that PTY. Network loss and ordinary navigation detach only that transport; after the final detach the Mac retains the shell for 30 minutes. Detached output does not extend the timer. Up to 1 MiB of output is replayed in order, with oldest bytes discarded and truncation reported. Output is offset-tagged and ordered independently for every attachment; a bounded slow consumer is evicted without suspending the PTY or its peers.
+Each authenticated device ID and stable client session ID maps to one PTY and login shell. A PTY has at most one terminal attachment. Network loss and ordinary navigation detach that attachment; after the final detach the Mac retains the shell for 30 minutes. Detached output does not extend the timer. Up to 1 MiB of output is replayed in order, with oldest bytes discarded and truncation reported. Output is offset-tagged; a bounded slow consumer is evicted without suspending the PTY.
 
-Every input frame is written atomically on the session queue. Each attachment retains its latest viewport. The most recent accepted input or explicit `resize.claim` becomes resize owner and immediately applies that viewport; a non-owner resize only updates its stored viewport. Owner detachment transfers ownership to a remaining attachment and applies its viewport. Explicit `session.terminate`, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY everywhere. Shell exit sends `session.close` to all current attachments. The iOS app persists only opaque session IDs and labels, never terminal contents.
+Every input frame is written atomically on the session queue. The active attachment owns the terminal viewport. Explicit `session.terminate`, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY everywhere. Shell exit sends `session.close` to the current attachment. The iOS app persists only opaque session IDs and labels, never terminal contents.
 
 Successful terminal input and produced output refresh one daemon-wide idle-system-sleep assertion for 30 minutes. Pairing, authentication, resize traffic, and idle connections do not. Display sleep, explicit Sleep, lid close, shutdown, and system policy remain unaffected.
 

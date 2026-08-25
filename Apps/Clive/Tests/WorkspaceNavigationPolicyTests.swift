@@ -3,6 +3,13 @@ import XCTest
 @testable import Clive
 
 final class WorkspaceNavigationPolicyTests: XCTestCase {
+    func testTwoFingerNavigationDoesNothingAtListBoundaries() {
+        XCTAssertNil(TerminalTwoFingerNavigationPolicy.adjacentIndex(current: 0, count: 2, forward: false))
+        XCTAssertEqual(TerminalTwoFingerNavigationPolicy.adjacentIndex(current: 0, count: 2, forward: true), 1)
+        XCTAssertEqual(TerminalTwoFingerNavigationPolicy.adjacentIndex(current: 1, count: 2, forward: false), 0)
+        XCTAssertNil(TerminalTwoFingerNavigationPolicy.adjacentIndex(current: 1, count: 2, forward: true))
+    }
+
     func testPagerSelectsNormalPagesBidirectionally() {
         let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
         XCTAssertEqual(policy.transition(to: .terminal(last), terminalIDs: [first, last]), .select(last))
@@ -20,6 +27,12 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
         XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)
     }
 
+    func testPagerKeepsDrawerAndNewTerminalGesturesAvailableWithoutSessions() {
+        var policy = TerminalPagerPolicy()
+        XCTAssertEqual(policy.transition(to: .leading, terminalIDs: []), .openDrawer(restoring: nil))
+        XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: []), .createTerminal)
+    }
+
     func testPagerPreventsDuplicateSentinelEventsAndCreatesOnlyOnce() {
         let first = UUID(), last = UUID(); var policy = TerminalPagerPolicy()
         XCTAssertEqual(policy.transition(to: .trailing, terminalIDs: [first, last]), .createTerminal)
@@ -34,8 +47,10 @@ final class WorkspaceNavigationPolicyTests: XCTestCase {
         XCTAssertNil(TerminalPagerPolicy.horizontalDirection(translation: CGSize(width: 50, height: 48)))
     }
 
-    func testTerminalUsesInteractiveKeyboardDismissal() {
-        XCTAssertEqual(TerminalSurfaceConfiguration.keyboardDismissMode, .interactive)
+    func testTerminalKeepsScrollHistoryStillDuringKeyboardDismissal() {
+        XCTAssertEqual(TerminalSurfaceConfiguration.keyboardDismissMode, .none)
+        XCTAssertFalse(TerminalSurfaceConfiguration.scrollsToTop)
+        XCTAssertEqual(TerminalSurfaceConfiguration.contentPadding, 2)
     }
 
     func testDrawerRevealPolicyOpensClosesAndKeepsOneRowOpen() {

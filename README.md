@@ -28,17 +28,31 @@ Clive combines a native SwiftUI terminal client with a user-started macOS menu b
 
 ## Install and pair
 
-macOS prerelease packages are available from [GitHub Releases](https://github.com/brendanwilliam/clive/releases). Download `clive.pkg` and `clive.pkg.sha256`, verify the checksum, and open the installer:
+Install the Apple-silicon macOS companion with Homebrew (macOS 14 or later):
+
+```sh
+brew install --cask brendanwilliam/tap/clive
+```
+
+This installs `/Applications/Clive.app` and `/usr/local/bin/clive`. Use `brew upgrade --cask brendanwilliam/tap/clive` to update. Ordinary uninstall preserves your local pairing state:
+
+```sh
+brew uninstall --cask clive
+```
+
+Use `brew uninstall --cask --zap clive` only when you want to erase Clive's local pairing state and pair every device again. The tap follows prereleases as well as stable releases, so prerelease updates may be offered before the next stable version.
+
+If Homebrew is unavailable, download `clive.pkg` and `clive.pkg.sha256` from [GitHub Releases](https://github.com/brendanwilliam/clive/releases), verify the checksum, and open the installer:
 
 ```sh
 shasum -a 256 -c clive.pkg.sha256
 ```
 
-The iOS app is currently distributed through TestFlight only; there is no public invitation link. Contributors and testers can also build it from source.
+Clive for iPhone is available through the public [TestFlight invitation](https://testflight.apple.com/join/SUcN1FkH). The macOS Connection Setup window includes a discovery QR for this link; it only opens TestFlight and is not a pairing code. Contributors and testers can also build it from source.
 
 1. Open `/Applications/Clive.app` on the Mac.
-2. Choose **Pair iPhone** in the menu bar app. `clive pair` is the terminal-only fallback.
-3. In the iOS app, choose **Pair a Mac**, scan the short-lived QR code, and approve the displayed device fingerprint on the Mac.
+2. Choose **Connection Setup** then **Pair iPhone** in the menu bar app. `clive pair` is the terminal-only fallback.
+3. In the iOS app, choose **Pair a Mac**, scan the separately labeled secure **Pair this iPhone** code, and approve the displayed device fingerprint on the Mac. That code is single-use and expires after five minutes.
 4. Select the paired Mac and open a terminal.
 
 The macOS companion owns resumable shells. Closing a window or briefly losing transport detaches a session; stopping Clive, revoking the device, closing the terminal, shell exit, or the 30-minute detached-session expiry ends it.
@@ -56,7 +70,9 @@ swift run clive status
 
 `verify-local.sh` runs shared Swift tests plus macOS and iOS tests/builds. Pass `--signed` only when checking local signing readiness. To open the iOS project, run `cd Apps/Clive && xcodegen generate`, then open `Clive.xcodeproj`. Local bundle identifiers and signing settings belong in an ignored `Local.xcconfig`; see the example files in each app's `Config` directory.
 
-For the quickest physical-device development loop, connect and unlock an iPhone, configure `Apps/Clive/Config/Local.xcconfig`, and run `./scripts/run-on-iphone.sh`. It rebuilds and runs the daemon as a supervised per-user `launchd` job, builds the iOS app, then installs and launches it on the connected phone. When launched from a Clive terminal, the script automatically hands the rebuild to `launchd` before restarting the daemon, because that restart closes the terminal that initiated it. Progress is written to `/private/tmp/clive-device-run/refresh.log`; the app reconnects when the deployment finishes. Set `CLIVE_IOS_DESTINATION_ID` when more than one physical iOS device is connected.
+For the quickest physical-device development loop, connect and unlock an iPhone, configure `Apps/Clive/Config/Local.xcconfig`, and run `./scripts/update-local.sh`. It rebuilds and runs the daemon as a supervised per-user `launchd` job, builds the iOS app, then installs and launches it on the connected phone. `./scripts/update-local.sh --signed-companion` instead builds, locally signs, and launches the macOS companion, preserving the CloudKit entitlement required for cellular testing. This mode also requires `Apps/CliveMac/Config/Local.xcconfig` to use the same signing team and CloudKit container as the iOS configuration. Both refresh modes replace the current Mac owner and end its active terminal sessions. When launched from a Clive terminal, the script automatically hands the rebuild to `launchd` before restarting the owner, because that restart closes the terminal that initiated it. Progress is written to `/private/tmp/clive-device-run/refresh.log`; the app reconnects when the deployment finishes. Set `CLIVE_IOS_DESTINATION_ID` when more than one physical iOS device is connected.
+
+To publish a coordinated `main` release, an administrator runs `./scripts/update-builds.sh [version] --cloudkit-production-schema-deployed`. It verifies that local `main` exactly matches `origin/main`, requires administrator permission, then dispatches the signed/notarized macOS package and TestFlight upload workflow. If `version` is omitted, it increments the patch number from the latest stable release tag. Add `--release` to create a non-prerelease GitHub Release.
 
 ## Architecture and security
 
@@ -80,6 +96,7 @@ Please use the [bug form](https://github.com/brendanwilliam/clive/issues/new?tem
 
 - [Contributing](CONTRIBUTING.md)
 - [Development branch policy](docs/development-branch-policy.md)
+- [Agent-ready issue automation](docs/agent-ready-automation.md)
 - [Roadmap](docs/roadmap.md)
 - [Changelog](CHANGELOG.md)
 - [Releases and versioning](docs/releases.md)

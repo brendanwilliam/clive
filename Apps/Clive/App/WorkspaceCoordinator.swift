@@ -208,6 +208,25 @@ struct AuthenticationGracePolicy: Equatable {
     func close() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); clearTransientActivity(); client.close() }
     func terminate() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); clearTransientActivity(); client.terminate() }
     func detach() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); client.detach() }
+    func disconnect() {
+        retryTask?.cancel()
+        reconnectNoticeTask?.cancel()
+        reconnecting = false
+        client.close()
+        state = .disconnected
+    }
+    func reconnect() {
+        retryTask?.cancel()
+        reconnectNoticeTask?.cancel()
+        reconnecting = false
+        routeIndex = 0
+        guard !routes.isEmpty else {
+            state = .reconnecting(waitingForWiFi: true)
+            return
+        }
+        state = .connecting
+        connectCurrentRoute(expectsResumption: hasOpened)
+    }
 
     func updateRoutes(_ newRoutes: [MacRoute]) {
         let changed = newRoutes != routes
@@ -296,8 +315,34 @@ struct AuthenticationGracePolicy: Equatable {
     }
 }
 
+struct LocalStateResetter {
+    let removePairedMacs: () throws -> Void
+    let removeWorkspace: () throws -> Void
+    let removeRestoration: () throws -> Void
+    let removePreferences: () throws -> Void
+
+    init(
+        removePairedMacs: @escaping () throws -> Void = { try PairedMacStore().removeAll() },
+        removeWorkspace: @escaping () throws -> Void = { try WorkspaceStore().remove() },
+        removeRestoration: @escaping () throws -> Void = { try RestorableDestinationStore().remove() },
+        removePreferences: @escaping () throws -> Void = { try AppPreferencesStore().remove() }
+    ) {
+        self.removePairedMacs = removePairedMacs
+        self.removeWorkspace = removeWorkspace
+        self.removeRestoration = removeRestoration
+        self.removePreferences = removePreferences
+    }
+
+    func reset() throws {
+        try removePairedMacs()
+        try removeWorkspace()
+        try removeRestoration()
+        try removePreferences()
+    }
+}
+
 @MainActor @Observable final class WorkspaceCoordinator {
-    enum State: Equatable { case locked, authenticating, active, authenticationCancelled, failed(String) }
+    enum State: Equatable { case locked, authenticating, active, authenticationCancelled, unsupportedLocalState, failed(String) }
     enum PresentedScreen: Equatable { case terminalList, settings }
     enum Recovery: Equatable { case unavailableMac(String), noPairedMac, disconnected }
 
@@ -306,25 +351,31 @@ struct AuthenticationGracePolicy: Equatable {
     var state: State = .locked
     var selectedMacID: String?
     var sessions: [WorkspaceSession] = []
+    var catalogSessions: [CliveCore.SessionDescriptor] = []
     var selectedSessionID: UUID?
     var presentedScreen: PresentedScreen?
     var recovery: Recovery?
     var isDisconnecting = false
     var disconnectError: String?
+    var isDeletingAllVisibleSessions = false
+    var deleteAllError: String?
 
     private var snapshot = WorkspaceSnapshot(selectedMacID: nil, sessionsByMac: [:])
     private var restorableDestination: RestorableDestination?
     private var identity: IPhoneIdentity?
     private var suppressDestinationUpdates = false
     private var pendingExternalAction: ExternalLaunchURL.Action?
+    private let sessionCatalog = SessionCatalogClient()
     private let authenticate: @Sendable () async throws -> Void
     private let provideIdentity: @MainActor () throws -> IPhoneIdentity
     private let authenticationGracePolicy: AuthenticationGracePolicy
     private let now: () -> Date
+    private let localStateResetter: LocalStateResetter
     private var lastSuccessfulAuthentication: Date?
     private var isSceneActive = false
     private var hasCapturedForeground = false
     private var authenticationInFlight = false
+    private var connectionSetupPolicy = ConnectionSetupPresentationPolicy()
     private let isUITestFixture: Bool
 
     init(
@@ -332,25 +383,53 @@ struct AuthenticationGracePolicy: Equatable {
         provideIdentity: @escaping @MainActor () throws -> IPhoneIdentity = { try IPhoneIdentityProvider().loadOrCreate() },
         authenticationGracePolicy: AuthenticationGracePolicy = .standard,
         now: @escaping () -> Date = Date.init,
+        localStateResetter: LocalStateResetter = LocalStateResetter(),
         isUITestFixture: Bool = false
     ) {
         self.authenticate = authenticate
         self.provideIdentity = provideIdentity
         self.authenticationGracePolicy = authenticationGracePolicy
         self.now = now
+        self.localStateResetter = localStateResetter
         self.isUITestFixture = isUITestFixture
+        sessionCatalog.onSessions = { [weak self] sessions in
+            DispatchQueue.main.async { self?.applyCatalog(sessions) }
+        }
     }
 
     func start() {
         if isUITestFixture { return }
+        do {
+            snapshot = try WorkspaceStore().loadIfPresent() ?? snapshot
+            restorableDestination = try RestorableDestinationStore().loadIfPresent()
+            _ = try AppPreferencesStore().loadIfPresent()
+        } catch {
+            state = .unsupportedLocalState
+            return
+        }
         macs.start()
         macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
-        snapshot = (try? WorkspaceStore().load()) ?? snapshot
-        restorableDestination = try? RestorableDestinationStore().load()
         selectedMacID = snapshot.selectedMacID
     }
 
-    func stop() { detachLiveSessions(); macs.stop() }
+    func resetUnsupportedLocalState() {
+        guard state == .unsupportedLocalState else { return }
+        do {
+            try localStateResetter.reset()
+            snapshot = WorkspaceSnapshot(selectedMacID: nil, sessionsByMac: [:])
+            restorableDestination = nil
+            selectedMacID = nil
+            sessions = []
+            catalogSessions = []
+            state = .locked
+            macs.start()
+            macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
+        } catch {
+            state = .unsupportedLocalState
+        }
+    }
+
+    func stop() { sessionCatalog.close(); detachLiveSessions(); macs.stop() }
     var selectedMac: PairedMac? { macs.devices.first { $0.id == selectedMacID } }
     var selectedSession: WorkspaceSession? { sessions.first { $0.id == selectedSessionID } }
 
@@ -425,6 +504,16 @@ struct AuthenticationGracePolicy: Equatable {
     func showSettings() { presentedScreen = .settings }
     func showConnections() { showTerminalList() }
 
+    func shouldPresentConnectionSetupGuide() -> Bool {
+        connectionSetupPolicy.shouldAutoPresent(hasPairedDevice: !macs.devices.isEmpty)
+    }
+
+    func pairingDidSucceed() {
+        connectionSetupPolicy.completePairing()
+        recovery = nil
+        resolveExternalLaunch()
+    }
+
     func dismissPresentedScreen() {
         presentedScreen = nil
         if let id = selectedSessionID, let macID = selectedMacID {
@@ -450,6 +539,51 @@ struct AuthenticationGracePolicy: Equatable {
         sessions.append(session); selectSession(session.id); saveCurrentDescriptors(); persist()
     }
 
+    var unrepresentedCatalogSessions: [CliveCore.SessionDescriptor] {
+        catalogSessions.filter { catalog in
+            !sessions.contains { $0.descriptor.serverSessionID == catalog.id }
+        }
+    }
+
+    var openSessionCount: Int {
+        Set(catalogSessions.map(\.id)).union(sessions.compactMap(\.descriptor.serverSessionID)).count
+            + sessions.filter { $0.descriptor.serverSessionID == nil }.count
+    }
+
+    var activeSessionCount: Int {
+        let activeCatalog = Set(catalogSessions.filter { $0.attachmentCount > 0 }.map(\.id))
+        let activeLocal = sessions.filter { session in
+            guard case .active = session.state else { return false }
+            return session.descriptor.serverSessionID.map { !activeCatalog.contains($0) } ?? true
+        }.count
+        return activeCatalog.count + activeLocal
+    }
+
+    func reconnect(_ catalogSession: CliveCore.SessionDescriptor) {
+        guard catalogSession.attachmentCount == 0,
+              let mac = selectedMac,
+              let identity else { return }
+        let routes = routes(for: mac)
+        guard !routes.isEmpty else { recovery = .unavailableMac(mac.displayName); return }
+        let descriptor = SessionDescriptor(label: "Reconnected terminal", serverSessionID: catalogSession.id)
+        let session = makeSession(descriptor: descriptor, mac: mac, routes: routes, identity: identity)
+        sessions.append(session)
+        selectSession(session.id)
+        saveCurrentDescriptors()
+        persist()
+        presentedScreen = nil
+    }
+
+    func disconnect(_ session: WorkspaceSession) {
+        session.disconnect()
+        saveCurrentDescriptors()
+        persist()
+    }
+
+    func reconnect(_ session: WorkspaceSession) {
+        session.reconnect()
+    }
+
     @discardableResult
     func runShortcut(_ shortcut: CLIShortcut) -> Bool {
         let command = shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -466,12 +600,37 @@ struct AuthenticationGracePolicy: Equatable {
         if sessions.isEmpty { clearDestination() }
     }
 
-    func closeAll() {
-        sessions.forEach { $0.close() }
-        sessions.removeAll()
-        selectSession(nil)
+    func disconnectAll() {
+        sessions.forEach { $0.disconnect() }
         saveCurrentDescriptors(); persist()
-        clearDestination()
+    }
+
+    func deleteAllVisibleSessions() async {
+        guard !isDeletingAllVisibleSessions else { return }
+        let visibleIDs = Array(Set(catalogSessions.map(\.id)).union(sessions.compactMap(\.descriptor.serverSessionID)))
+        isDeletingAllVisibleSessions = true; deleteAllError = nil
+        defer { isDeletingAllVisibleSessions = false }
+#if DEBUG
+        if isUITestFixture { sessions.forEach { $0.terminate() }; sessions.removeAll(); catalogSessions.removeAll(); selectSession(nil); return }
+#endif
+        if visibleIDs.isEmpty {
+            sessions.forEach { $0.terminate() }; sessions.removeAll(); selectSession(nil)
+            saveCurrentDescriptors(); persist(); clearDestination()
+            return
+        }
+        let result: Result<[UUID], Error> = await withCheckedContinuation { continuation in
+            sessionCatalog.terminate(sessionIDs: visibleIDs) { result in continuation.resume(returning: result) }
+        }
+        switch result {
+        case .success(let terminated) where Set(terminated) == Set(visibleIDs):
+            sessions.filter { $0.descriptor.serverSessionID == nil }.forEach { $0.terminate() }
+            sessions.removeAll(); catalogSessions.removeAll(); selectSession(nil)
+            saveCurrentDescriptors(); persist(); clearDestination()
+        case .success(let terminated):
+            deleteAllError = "Deleted \(terminated.count) of \(visibleIDs.count) terminals. Refresh and try again."
+        case .failure:
+            deleteAllError = "Couldn’t delete all terminals. Check the connection and try again."
+        }
     }
 
     func end(_ session: WorkspaceSession) {
@@ -520,6 +679,8 @@ struct AuthenticationGracePolicy: Equatable {
         hasCapturedForeground = true
         if !sessions.isEmpty { saveCurrentDescriptors(); persist() }
         sessions.forEach { $0.clearTransientActivity() }
+        sessionCatalog.close()
+        catalogSessions.removeAll()
         detachLiveSessions()
         presentedScreen = nil
         state = .locked
@@ -559,6 +720,7 @@ struct AuthenticationGracePolicy: Equatable {
         suppressDestinationUpdates = true
         closeLiveSessions()
         sessions = (snapshot.sessionsByMac[macID] ?? []).map { makeSession(descriptor: $0, mac: mac, routes: routes, identity: identity) }
+        startSessionCatalog(for: mac, routes: routes, identity: identity)
         self.selectedSessionID = selectedSessionID ?? sessions.first?.id
         presentedScreen = showList ? .terminalList : nil
         recovery = nil
@@ -584,6 +746,7 @@ struct AuthenticationGracePolicy: Equatable {
             initialCommand: configuration.initialCommand
         )
         sessions = [session]
+        startSessionCatalog(for: mac, routes: routes, identity: identity)
         snapshot.sessionsByMac[mac.id] = [descriptor]
         recovery = nil
         selectSession(session.id); persist()
@@ -629,6 +792,7 @@ struct AuthenticationGracePolicy: Equatable {
             return
         }
         sessions.forEach { $0.updateRoutes(current) }
+        if let identity { startSessionCatalog(for: mac, routes: current, identity: identity) }
     }
 
     nonisolated static func shouldRetryUnavailableMac(recovery: Recovery?, state: State, routesAvailable: Bool) -> Bool {
@@ -647,7 +811,30 @@ struct AuthenticationGracePolicy: Equatable {
         Task { await RestorableDestinationPersistence.shared.remove() }
     }
 
-    private func closeLiveSessions() { sessions.forEach { $0.close() }; sessions.removeAll(); selectedSessionID = nil }
+    private func startSessionCatalog(for mac: PairedMac, routes: [MacRoute], identity: IPhoneIdentity) {
+        guard let route = routes.first else { catalogSessions.removeAll(); sessionCatalog.close(); return }
+        sessionCatalog.connect(host: route.host, port: route.port, pinnedFingerprint: mac.certificateFingerprint, identity: identity.identity, wanGateToken: route.wanGateToken)
+    }
+
+    private func applyCatalog(_ catalog: [CliveCore.SessionDescriptor]) {
+        catalogSessions = catalog
+        let liveServerSessionIDs = Set(catalog.map(\.id))
+        let staleSessionIDs: [UUID] = sessions.compactMap { session -> UUID? in
+            guard let serverSessionID = session.descriptor.serverSessionID,
+                  !liveServerSessionIDs.contains(serverSessionID) else { return nil }
+            return session.id
+        }
+        guard !staleSessionIDs.isEmpty else { return }
+        sessions.filter { staleSessionIDs.contains($0.id) }.forEach { $0.close() }
+        sessions.removeAll { staleSessionIDs.contains($0.id) }
+        if let selectedSessionID, staleSessionIDs.contains(selectedSessionID) {
+            selectSession(sessions.first?.id)
+        }
+        saveCurrentDescriptors()
+        persist()
+    }
+
+    private func closeLiveSessions() { sessionCatalog.close(); sessions.forEach { $0.close() }; sessions.removeAll(); selectedSessionID = nil; catalogSessions.removeAll() }
     private func detachLiveSessions() { sessions.forEach { $0.detach() }; sessions.removeAll(); selectedSessionID = nil }
     private func saveCurrentDescriptors() { guard let id = selectedMacID else { return }; snapshot.sessionsByMac[id] = sessions.map(\.descriptor); snapshot.selectedMacID = id }
     private func persist() { try? WorkspaceStore().save(snapshot) }
@@ -666,7 +853,23 @@ struct AuthenticationGracePolicy: Equatable {
             WorkspaceSession(fixture: SessionDescriptor(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, label: "Shell 1"), state: .active(UUID(), .resumed, true)),
             WorkspaceSession(fixture: SessionDescriptor(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, label: "Shell 2"), state: .active(UUID(), .created, false))
         ]
+        coordinator.catalogSessions = [
+            CliveCore.SessionDescriptor(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+                label: "Detached shell",
+                attachmentCount: 0,
+                resizeOwner: nil,
+                outputOffset: 0
+            )
+        ]
         coordinator.selectedSessionID = coordinator.sessions.first?.id
+        return coordinator
+    }
+
+    static func uiTestSetupGuideFixture() -> WorkspaceCoordinator {
+        let coordinator = WorkspaceCoordinator(authenticate: {}, provideIdentity: { throw CocoaError(.userCancelled) }, isUITestFixture: true)
+        coordinator.state = .active
+        coordinator.recovery = .noPairedMac
         return coordinator
     }
 #endif
@@ -681,10 +884,15 @@ struct WorkspaceStore {
 
     private var url: URL { rootURL.appending(path: "workspace.json") }
     func load() throws -> WorkspaceSnapshot { try JSONDecoder().decode(WorkspaceSnapshot.self, from: Data(contentsOf: url)) }
+    func loadIfPresent() throws -> WorkspaceSnapshot? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try load()
+    }
     func save(_ snapshot: WorkspaceSnapshot) throws {
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
         try JSONEncoder().encode(snapshot).write(to: url, options: [.atomic, .completeFileProtection])
     }
+    func remove() throws { if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) } }
 }
 
 struct RestorableDestinationStore {
@@ -699,6 +907,10 @@ struct RestorableDestinationStore {
         let destination = try JSONDecoder().decode(RestorableDestination.self, from: Data(contentsOf: url))
         guard destination.isSupported else { throw CocoaError(.fileReadCorruptFile) }
         return destination
+    }
+    func loadIfPresent() throws -> RestorableDestination? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try load()
     }
     func save(_ destination: RestorableDestination) throws {
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)

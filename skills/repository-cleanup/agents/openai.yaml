@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repository Cleanup"
+  short_description: "Close completed work and prune merged branches"
+  default_prompt: "Audit completed issues and merged branches, then clean them up safely."

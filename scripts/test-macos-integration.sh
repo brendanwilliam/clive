@@ -19,6 +19,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+UPDATE_LOCAL_HELP=$("${ROOT_DIR}/scripts/update-local.sh" --help) || fail "update-local help failed"
+[[ ${UPDATE_LOCAL_HELP} == *"--signed-companion"* ]] || fail "update-local help omitted signed companion mode"
+if "${ROOT_DIR}/scripts/update-local.sh" --invalid-option >/dev/null 2>&1; then
+    fail "update-local accepted an invalid option"
+fi
+
 swift build --package-path "${ROOT_DIR}"
 CLIVE_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" start --allow-non-private-network >"${TEST_STATE}/daemon.log" 2>&1 &
 DAEMON_PID=$!
@@ -31,8 +37,19 @@ if [[ ! -S ${TEST_STATE}/control.sock ]]; then
 fi
 PERMISSIONS=$(stat -f %Lp "${TEST_STATE}/control.sock")
 [[ ${PERMISSIONS} == 600 ]] || fail "control socket permissions were ${PERMISSIONS}, expected 600"
+LOCK_PERMISSIONS=$(stat -f %Lp "${TEST_STATE}/daemon.lock")
+[[ ${LOCK_PERMISSIONS} == 600 ]] || fail "daemon lock permissions were ${LOCK_PERMISSIONS}, expected 600"
 STATUS=$(CLIVE_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" status) || fail "status command failed"
 [[ ${STATUS} == "No paired devices."* ]] || fail "unexpected status output: ${STATUS}"
+CLIVE_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" start --allow-non-private-network >"${TEST_STATE}/second-daemon.log" 2>&1 &
+SECOND_DAEMON_PID=$!
+if wait ${SECOND_DAEMON_PID}; then
+    fail "second daemon started successfully"
+fi
+SECOND_OUTPUT=$(<"${TEST_STATE}/second-daemon.log")
+[[ ${SECOND_OUTPUT} == *"Another Clive daemon is already running."* ]] || fail "unexpected second daemon output: ${SECOND_OUTPUT}"
+STATUS=$(CLIVE_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" status) || fail "status failed after rejected second daemon"
+[[ ${STATUS} == "No paired devices."* ]] || fail "unexpected status after rejected second daemon: ${STATUS}"
 STOP_OUTPUT=$(CLIVE_STATE_DIRECTORY=${TEST_STATE} "${DAEMON}" stop) || fail "stop command failed"
 [[ ${STOP_OUTPUT} == "Stopping daemon." ]] || fail "unexpected stop output: ${STOP_OUTPUT}"
 wait ${DAEMON_PID} || fail "daemon exited unsuccessfully"

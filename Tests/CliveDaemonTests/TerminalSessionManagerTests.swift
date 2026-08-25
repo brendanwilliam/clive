@@ -26,7 +26,7 @@ private final class Box<Value>: @unchecked Sendable {
 final class TerminalSessionManagerTests: XCTestCase {
     private let size = TerminalSize(columns: 80, rows: 24)
 
-    func testSecondAttachmentDoesNotSupersedeFirstAttachment() throws {
+    func testSameEndpointReconnectReplacesExistingAttachment() throws {
         let process = FakeTerminalProcess()
         let superseded = Box(false)
         let manager = makeManager(process)
@@ -34,16 +34,25 @@ final class TerminalSessionManagerTests: XCTestCase {
         _ = try attach(manager, clientID: clientID, attachmentID: first, superseded: { superseded.value = true })
         let resumed = try attach(manager, clientID: clientID, attachmentID: second)
 
-        try manager.input(deviceID: "phone", clientSessionID: clientID, attachmentID: first, bytes: Data("first".utf8))
-        manager.resize(deviceID: "phone", clientSessionID: clientID, attachmentID: first, size: TerminalSize(columns: 1, rows: 1))
-        manager.detach(deviceID: "phone", clientSessionID: clientID, attachmentID: first)
-        manager.synchronize()
         try manager.input(deviceID: "phone", clientSessionID: clientID, attachmentID: second, bytes: Data("current".utf8))
+        manager.synchronize()
 
-        XCTAssertFalse(superseded.value)
+        XCTAssertTrue(superseded.value)
         XCTAssertEqual(resumed.disposition, .resumed)
-        XCTAssertEqual(process.writes, [Data("first".utf8), Data("current".utf8)])
+        XCTAssertEqual(manager.descriptors(deviceID: "phone").first?.attachmentCount, 1)
+        XCTAssertEqual(process.writes, [Data("current".utf8)])
         XCTAssertEqual(process.terminateCount, 0)
+    }
+
+    func testDifferentEndpointCannotAttachToAnAttachedSession() throws {
+        let manager = makeManager(FakeTerminalProcess())
+        let original = try attach(manager, clientID: UUID(), attachmentID: UUID())
+
+        XCTAssertThrowsError(try manager.attachExisting(deviceID: "phone", serverSessionID: original.serverSessionID, size: size, attachmentID: UUID(), attachmentKind: .macCLI, lastReceivedOffset: 0, output: { _, done in done() }, onDetached: { _ in }, onShellExit: {})) { error in
+            XCTAssertEqual(error as? TerminalSessionManager.AttachmentError, .attachedByDifferentEndpoint)
+            XCTAssertEqual(error.localizedDescription, "The requested session is still attached to an active terminal on a different endpoint. Disconnect it before trying again.")
+        }
+        XCTAssertEqual(manager.descriptors(deviceID: "phone").first?.attachmentCount, 1)
     }
 
     func testDetachedOutputReplaysInOrderAndEvictsOldestBytes() throws {
@@ -115,7 +124,7 @@ final class TerminalSessionManagerTests: XCTestCase {
         XCTAssertEqual(process.resumeCount, 0)
     }
 
-    func testMultipleAttachmentsReceiveOrderedOutputAndInputTransfersResizeOwnership() throws {
+    func testReplacementAttachmentReceivesTerminalOutputAndInput() throws {
         let process = FakeTerminalProcess(); let manager = makeManager(process); let clientID = UUID()
         let first = UUID(), second = UUID(); let firstOutput = Box<[String]>([]), secondOutput = Box<[String]>([])
         _ = try attach(manager, clientID: clientID, attachmentID: first, output: { chunk, done in firstOutput.value.append(String(decoding: chunk.bytes, as: UTF8.self)); done() })
@@ -124,7 +133,7 @@ final class TerminalSessionManagerTests: XCTestCase {
         try manager.input(deviceID: "phone", clientSessionID: clientID, attachmentID: second, bytes: Data("x".utf8))
         manager.resize(deviceID: "phone", clientSessionID: clientID, attachmentID: first, size: TerminalSize(columns: 10, rows: 10))
         manager.resize(deviceID: "phone", clientSessionID: clientID, attachmentID: second, size: TerminalSize(columns: 20, rows: 20)); manager.synchronize()
-        XCTAssertEqual(firstOutput.value, ["a", "b"]); XCTAssertEqual(secondOutput.value, ["a", "b"])
+        XCTAssertEqual(firstOutput.value, []); XCTAssertEqual(secondOutput.value, ["a", "b"])
         XCTAssertEqual(process.writes, [Data("x".utf8)]); XCTAssertEqual(process.sizes.last, TerminalSize(columns: 20, rows: 20))
     }
 
@@ -162,6 +171,40 @@ final class TerminalSessionManagerTests: XCTestCase {
         XCTAssertEqual(process.terminateCount, 1)
     }
 
+    func testRepeatedDisconnectCleanupLeavesSessionAvailableForLocalResume() throws {
+        let process = FakeTerminalProcess()
+        let manager = TerminalSessionManager(registry: SessionRegistry(), graceInterval: 60, processFactory: { _, _, output, exit in
+            process.output = output; process.exit = exit; return process
+        })
+        let clientID = UUID()
+        let originalAttachment = UUID()
+        let original = try attach(manager, clientID: clientID, attachmentID: originalAttachment)
+
+        // A crashed local control socket can report disconnect more than once. The
+        // cleanup must release only its attachment and retain the underlying PTY.
+        manager.detach(deviceID: "phone", clientSessionID: clientID, attachmentID: originalAttachment)
+        manager.detach(deviceID: "phone", clientSessionID: clientID, attachmentID: originalAttachment)
+        manager.synchronize()
+
+        XCTAssertEqual(manager.descriptors(deviceID: "phone").first?.attachmentCount, 0)
+        let resumed = try manager.attachExisting(
+            deviceID: "phone",
+            serverSessionID: original.serverSessionID,
+            size: size,
+            attachmentID: UUID(),
+            attachmentKind: .macCLI,
+            lastReceivedOffset: 0,
+            output: { _, completion in completion() },
+            onDetached: { _ in },
+            onShellExit: {}
+        )
+
+        XCTAssertEqual(resumed?.serverSessionID, original.serverSessionID)
+        XCTAssertEqual(resumed?.disposition, .resumed)
+        XCTAssertEqual(manager.descriptors(deviceID: "phone").first?.attachmentCount, 1)
+        XCTAssertEqual(process.terminateCount, 0)
+    }
+
     func testRepeatedRouteRacesKeepOnePTYAndOneLogicalSession() throws {
         let process = FakeTerminalProcess()
         let creations = Box(0)
@@ -193,7 +236,7 @@ final class TerminalSessionManagerTests: XCTestCase {
         let process = FakeTerminalProcess(), creations = Box(0)
         let manager = TerminalSessionManager(registry: SessionRegistry(), processFactory: { _, _, output, exit in creations.value += 1; process.output = output; process.exit = exit; return process })
         let original = try attach(manager, clientID: UUID(), attachmentID: UUID())
-        let resumed = try manager.attachExisting(deviceID: "phone", serverSessionID: original.serverSessionID, size: size, attachmentID: UUID(), attachmentKind: .macCLI, lastReceivedOffset: 0, output: { _, done in done() }, onDetached: { _ in }, onShellExit: {})
+        let resumed = try manager.attachExisting(deviceID: "phone", serverSessionID: original.serverSessionID, size: size, attachmentID: UUID(), attachmentKind: .iPhone, lastReceivedOffset: 0, output: { _, done in done() }, onDetached: { _ in }, onShellExit: {})
         let unavailable = try manager.attachExisting(deviceID: "phone", serverSessionID: UUID(), size: size, attachmentID: UUID(), attachmentKind: .iPhone, lastReceivedOffset: 0, output: { _, done in done() }, onDetached: { _ in }, onShellExit: {})
         XCTAssertEqual(resumed?.serverSessionID, original.serverSessionID)
         XCTAssertNil(unavailable); XCTAssertEqual(creations.value, 1)
@@ -209,6 +252,20 @@ final class TerminalSessionManagerTests: XCTestCase {
         XCTAssertEqual(snapshots.value.last?.first?.attachmentCount, 0)
     }
 
+    func testBulkTerminationOnlyEndsOwnedKnownSessions() throws {
+        let first = FakeTerminalProcess(), other = FakeTerminalProcess()
+        let processes = Box([first, other])
+        let manager = TerminalSessionManager(registry: SessionRegistry(), processFactory: { _, _, output, exit in
+            let process = processes.value.removeFirst(); process.output = output; process.exit = exit; return process
+        })
+        let owned = try attach(manager, clientID: UUID(), attachmentID: UUID())
+        let foreign = try manager.attach(deviceID: "other-phone", clientSessionID: UUID(), size: size, workingDirectory: nil, attachmentID: UUID(), output: { _, done in done() }, onSuperseded: {}, onShellExit: {})
+        let terminated = manager.endMany(deviceID: "phone", serverSessionIDs: [owned.serverSessionID, foreign.serverSessionID, UUID()])
+        XCTAssertEqual(terminated, [owned.serverSessionID])
+        XCTAssertEqual(first.terminateCount, 1)
+        XCTAssertEqual(other.terminateCount, 0)
+    }
+
     func testNonOwnerViewportIsStoredAndAppliedWhenInputClaimsOwnership() throws {
         let process = FakeTerminalProcess(), manager = makeManager(process), client = UUID(), first = UUID(), second = UUID()
         _ = try attach(manager, clientID: client, attachmentID: first)
@@ -216,21 +273,6 @@ final class TerminalSessionManagerTests: XCTestCase {
         let secondSize = TerminalSize(columns: 120, rows: 50)
         manager.resize(deviceID: "phone", clientSessionID: client, attachmentID: second, size: secondSize); manager.synchronize()
         try manager.input(deviceID: "phone", clientSessionID: client, attachmentID: second, bytes: Data("x".utf8))
-        XCTAssertEqual(process.sizes.last, secondSize)
-    }
-
-    func testResizeOwnerLossFallsBackToMostRecentlyActiveAttachment() throws {
-        let process = FakeTerminalProcess(), manager = makeManager(process), client = UUID()
-        let first = UUID(), second = UUID(), third = UUID()
-        _ = try attach(manager, clientID: client, attachmentID: first)
-        _ = try attach(manager, clientID: client, attachmentID: second)
-        _ = try attach(manager, clientID: client, attachmentID: third)
-        let secondSize = TerminalSize(columns: 111, rows: 33)
-        manager.resize(deviceID: "phone", clientSessionID: client, attachmentID: second, size: secondSize)
-        manager.claimResize(deviceID: "phone", clientSessionID: client, attachmentID: second)
-        manager.claimResize(deviceID: "phone", clientSessionID: client, attachmentID: third)
-        manager.detach(deviceID: "phone", clientSessionID: client, attachmentID: third)
-        manager.synchronize()
         XCTAssertEqual(process.sizes.last, secondSize)
     }
 

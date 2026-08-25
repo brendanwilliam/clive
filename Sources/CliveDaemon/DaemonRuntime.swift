@@ -85,6 +85,7 @@ final class DaemonRuntime: @unchecked Sendable {
             } catch { try? channel.send(ControlResponse(success: false, message: error.localizedDescription)) }
         case .pair:
             guard lock.withLock({ pairing == nil }) else { try? channel.send(ControlResponse(success: false, message: "Another pairing operation is active.")); return }
+            guard await trustStore.all().isEmpty else { try? channel.send(ControlResponse(success: false, message: "Only one iPhone can be paired. Revoke the current iPhone before pairing another.")); return }
             guard let endpoint = PrivateNetwork.eligibleAddresses().first else { try? channel.send(ControlResponse(success: false, message: "No eligible private network interface.")); return }
             do {
                 let operation = try PairingOperation(identity: identity, identityStore: identityStore, state: state, trustStore: trustStore, endpoint: endpoint, channel: channel, rendezvousCapability: await rendezvous.capability(), onPaired: { [weak self] in await self?.refreshTrust(); await self?.rendezvous.pairingChanged() }) { [weak self] in
@@ -150,24 +151,25 @@ final class DaemonRuntime: @unchecked Sendable {
 
     private func runLocalAttachment(deviceID: String, clientSessionID: UUID?, serverSessionID: UUID? = nil, channel: ControlChannel, size: TerminalSize) async {
         let attachmentID = UUID()
+        var resolvedClientSessionID: UUID?
         do {
             let sendOutput: TerminalSessionManager.Output = { chunk, completion in
                 do { try channel.send(ProtocolFrame(kind: .terminalOutput, payload: ProtocolPayload.encode(chunk))); completion() }
                 catch { completion() }
             }
             let attachment: TerminalSessionManager.Attachment
-            let resolvedClientSessionID: UUID
             if let serverSessionID {
                 guard let existingClientID = terminalSessions.clientSessionID(deviceID: deviceID, serverSessionID: serverSessionID),
-                      let existing = try terminalSessions.attachExisting(deviceID: deviceID, serverSessionID: serverSessionID, size: size, attachmentID: attachmentID, attachmentKind: .macCLI, lastReceivedOffset: 0, output: sendOutput, onDetached: { _ in }, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) }) else {
+                      let existing = try terminalSessions.attachExisting(deviceID: deviceID, serverSessionID: serverSessionID, size: size, attachmentID: attachmentID, attachmentKind: .macCLI, lastReceivedOffset: 0, output: sendOutput, onDetached: { _ in try? channel.send(ProtocolFrame(kind: .sessionClose)) }, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) }) else {
                     try channel.send(ControlResponse(success: false, message: "The requested session is unavailable.")); return
                 }
                 resolvedClientSessionID = existingClientID; attachment = existing
             } else {
                 guard let clientSessionID else { throw ControlSocketError.malformedMessage }
                 resolvedClientSessionID = clientSessionID
-                attachment = try terminalSessions.attach(deviceID: deviceID, clientSessionID: clientSessionID, size: size, workingDirectory: nil, attachmentID: attachmentID, attachmentKind: .macCLI, output: sendOutput, onSuperseded: {}, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) })
+                attachment = try terminalSessions.attach(deviceID: deviceID, clientSessionID: clientSessionID, size: size, workingDirectory: nil, attachmentID: attachmentID, attachmentKind: .macCLI, output: sendOutput, onSuperseded: { try? channel.send(ProtocolFrame(kind: .sessionClose)) }, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) })
             }
+            guard let resolvedClientSessionID else { throw ControlSocketError.malformedMessage }
             try channel.send(ControlResponse(success: true, sessions: [SessionDescriptor(id: attachment.serverSessionID, attachmentCount: 1, resizeOwner: .macCLI, outputOffset: attachment.replayOffset)]))
             if !attachment.replay.isEmpty { try channel.send(ProtocolFrame(kind: .terminalOutput, payload: ProtocolPayload.encode(TerminalOutputChunk(offset: attachment.replayOffset, bytes: attachment.replay)))) }
             while true {
@@ -183,7 +185,9 @@ final class DaemonRuntime: @unchecked Sendable {
                 }
             }
         } catch {
-            if let clientSessionID { terminalSessions.detach(deviceID: deviceID, clientSessionID: clientSessionID, attachmentID: attachmentID) }
+            if let resolvedClientSessionID {
+                terminalSessions.detach(deviceID: deviceID, clientSessionID: resolvedClientSessionID, attachmentID: attachmentID)
+            }
             try? channel.send(ControlResponse(success: false, message: error.localizedDescription))
         }
     }
@@ -269,5 +273,11 @@ struct RuntimePaths: Sendable {
         let base = ProcessInfo.processInfo.environment["CLIVE_STATE_DIRECTORY"].map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "clive")
         return RuntimePaths(baseURL: base)
+    }
+
+    /// Removes only Clive's user-scoped state after the caller verifies no daemon owns it.
+    func removeLocalState(fileManager: FileManager = .default) throws {
+        guard fileManager.fileExists(atPath: baseURL.path) else { return }
+        try fileManager.removeItem(at: baseURL)
     }
 }
