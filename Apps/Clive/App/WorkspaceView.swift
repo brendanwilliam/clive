@@ -61,8 +61,10 @@ struct WorkspaceView: View {
             else if coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
             else if ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
         }
-        .fullScreenCover(isPresented: settingsBinding) {
+        .sheet(isPresented: settingsBinding) {
             SettingsView(coordinator: coordinator, opensShortcutSettings: coordinator.presentedScreen == .shortcutSettings)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: $showingSetupGuide) {
             NavigationStack {
@@ -120,11 +122,13 @@ struct WorkspaceView: View {
                         .zIndex(1)
                     terminalSidebar
                         .frame(width: min(320, proxy.size.width * 0.84))
+                        .frame(maxHeight: .infinity, alignment: .top)
                         .background(Color(uiColor: .secondarySystemBackground))
                         .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
                         .shadow(color: .black.opacity(0.28), radius: 18, x: 6)
                         .transition(.move(edge: .leading))
                         .zIndex(2)
+                        .ignoresSafeArea(.container, edges: .vertical)
                 }
             }
         }
@@ -160,11 +164,11 @@ struct WorkspaceView: View {
                 if horizontalSizeClass == .compact {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
+                            dismissKeyboard()
                             withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = true }
                         } label: {
                             Image(systemName: "sidebar.leading")
                         }
-                        .foregroundStyle(.primary)
                         .accessibilityLabel("Terminals")
                         .accessibilityIdentifier("terminal-sidebar-button")
                     }
@@ -172,7 +176,7 @@ struct WorkspaceView: View {
                 ToolbarItem(placement: .principal) { terminalTitleButton }
                 ToolbarItem(placement: .topBarTrailing) { terminalActions }
             }
-            .toolbarBackground(Color.black.opacity(0.18), for: .navigationBar)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
     }
@@ -201,9 +205,13 @@ struct WorkspaceView: View {
     private var terminalActions: some View {
         Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus.rectangle.on.rectangle").frame(width: 38, height: 34) }
             .accessibilityLabel("New Terminal").accessibilityIdentifier("new-terminal-button")
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(.tint)
         .buttonStyle(.plain)
         .background(.thinMaterial, in: Capsule())
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private var workspace: some View {
@@ -225,7 +233,7 @@ struct WorkspaceView: View {
                             accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
                             isSelected: true,
                             shortcuts: coordinator.preferences.value.shortcuts,
-                            openDrawer: { coordinator.showTerminalList() },
+                            openDrawer: { dismissKeyboard(); coordinator.showTerminalList() },
                             selectAdjacentTerminal: selectAdjacentTerminal,
                             runShortcut: coordinator.runShortcut,
                             manageShortcuts: { coordinator.showShortcutSettings() }
@@ -291,6 +299,8 @@ struct WorkspaceView: View {
                     .disabled(coordinator.openSessionCount == 0)
                 }
             }
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             if let current = coordinator.selectedMac {
                 Divider()
                 HStack(spacing: 12) {
@@ -318,7 +328,8 @@ struct WorkspaceView: View {
         }
         .safeAreaPadding(.top, 6)
         .safeAreaPadding(.bottom, 4)
-        .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea())
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea(.container, edges: .vertical))
     }
 
     private func terminalRow(_ session: WorkspaceSession) -> some View {
@@ -563,13 +574,22 @@ private struct SettingsView: View {
     let opensShortcutSettings: Bool
     @Environment(\.dismiss) private var dismiss
     @State private var showingScanner = false
+    @State private var showingShortcutSettings: Bool
+
+    init(coordinator: WorkspaceCoordinator, opensShortcutSettings: Bool) {
+        self.coordinator = coordinator
+        self.opensShortcutSettings = opensShortcutSettings
+        _showingShortcutSettings = State(initialValue: opensShortcutSettings)
+    }
 
     private var preferences: AppPreferencesModel { coordinator.preferences }
 
     var body: some View {
         NavigationStack {
-            if opensShortcutSettings {
-                ShortcutManagementView(preferences: preferences)
+            if showingShortcutSettings {
+                ShortcutManagementView(preferences: preferences) {
+                    showingShortcutSettings = false
+                }
             } else {
                 settingsList
             }
@@ -631,8 +651,8 @@ private struct SettingsView: View {
                     Text("Ordinary new terminals use the selected shortcut. With no selection, Clive starts a login shell in your Home directory.")
                 }
                 Section {
-                    NavigationLink {
-                        ShortcutManagementView(preferences: preferences)
+                        NavigationLink {
+                            ShortcutManagementView(preferences: preferences)
                     } label: {
                         LabeledContent("Shortcuts", value: "\(preferences.value.shortcuts.count)")
                     }
@@ -649,25 +669,39 @@ private struct SettingsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
         }
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
 }
 
 private struct ShortcutManagementView: View {
     @Bindable var preferences: AppPreferencesModel
+    var onBackToSettings: (() -> Void)? = nil
     @State private var isEditing = false
     var body: some View {
         List {
             ForEach(preferences.value.shortcuts) { shortcut in
-                NavigationLink(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name) {
+                NavigationLink {
                     ShortcutEditorView(preferences: preferences, shortcutID: shortcut.id)
+                } label: {
+                    Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
+                        .foregroundStyle(.primary)
                 }
             }
             .onDelete(perform: preferences.deleteShortcuts)
             .onMove(perform: preferences.moveShortcuts)
         }
         .environment(\.editMode, .constant(isEditing ? .active : .inactive))
+        .listStyle(.plain)
+        .listRowBackground(Color.clear)
         .navigationTitle("Shortcuts")
         .toolbar {
+            if let onBackToSettings {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Settings", action: onBackToSettings)
+                        .accessibilityIdentifier("shortcut-settings-back-button")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 ControlGroup {
                     Button(isEditing ? "Done" : "Edit", systemImage: isEditing ? "checkmark" : "pencil") {
@@ -676,8 +710,11 @@ private struct ShortcutManagementView: View {
                     Button("Add", systemImage: "plus") { preferences.addShortcut() }
                 }
                 .accessibilityIdentifier("shortcut-management-actions")
+                .foregroundStyle(.tint)
             }
         }
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
 }
 
@@ -752,6 +789,8 @@ private struct SetupGuideView: View {
         }
         .navigationTitle("Setup Guide")
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done", action: dismiss) } }
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .accessibilityIdentifier("setup-guide-screen")
     }
 }

@@ -375,10 +375,11 @@
       "aliases": [
         "Terminal keyboard row"
       ],
-      "presentation": "Persistent bottom control bar anchored to the Terminal keyboard layout guide; the Down, Up, and Enter key row remains visible, while keyboard and shortcut actions move above it when the software keyboard is shown.",
+      "presentation": "Persistent bottom control bar anchored to the Terminal keyboard layout guide. Semantic system-material groups keep the 44-point keyboard, key-row, and shortcuts controls distinct at compact iPhone and regular iPad widths; shortcut presentation hides the keyboard and key-row controls, then restores the prior keyboard state when dismissed.",
       "repetition": null,
       "related_components": [
-        "ios.workspace.terminal-keyboard"
+        "ios.workspace.terminal-keyboard",
+        "ios.workspace.shortcut-button"
       ],
       "states": [
         "compact",
@@ -394,7 +395,9 @@
           "Apps/Clive/App/TerminalKeyboardAccessory.swift"
         ],
         "models_services_protocols": [],
-        "accessibility_ids": [],
+        "accessibility_ids": [
+          "terminal-keyboard-button"
+        ],
         "localization": [],
         "tests": [
           "Apps/Clive/Tests/TerminalKeyboardAccessoryTests.swift"
@@ -696,7 +699,7 @@
       "aliases": [
         "Connection settings"
       ],
-      "presentation": "Full-screen cover reached from the Workspace connection status or drawer footer.",
+      "presentation": "Large bottom sheet reached from the Workspace connection status or drawer footer; its Shortcut Management destination can return to the general Settings screen.",
       "repetition": null,
       "related_components": [
         "ios.workspace.root",
@@ -798,7 +801,7 @@
         "CLI shortcuts",
         "Saved commands"
       ],
-      "presentation": "Settings navigation destination with reorder, add, delete, title, and command editing.",
+      "presentation": "Settings navigation destination with reorder, add, delete, title, and command editing; when opened directly from the Terminal shortcut pop-up, it provides a Settings back action.",
       "repetition": "One navigation row per saved shortcut.",
       "related_components": [
         "ios.shortcuts.sheet",
@@ -820,7 +823,8 @@
           "Apps/Clive/App/AppPreferences.swift"
         ],
         "accessibility_ids": [
-          "shortcut-management-actions"
+          "shortcut-management-actions",
+          "shortcut-settings-back-button"
         ],
         "localization": [],
         "tests": [
@@ -898,7 +902,7 @@
       "aliases": [
         "Saved commands"
       ],
-      "presentation": "Keyboard-area pop-up used to launch a saved shortcut or jump directly to shortcut Settings.",
+      "presentation": "Keyboard-area popover used to launch a saved shortcut or jump directly to Shortcut Management in the large Settings sheet.",
       "repetition": "One row per saved shortcut.",
       "related_components": [
         "ios.workspace.root",
@@ -912,7 +916,7 @@
       ],
       "resources": {
         "views": [
-          "Apps/Clive/App/WorkspaceView.swift"
+          "Apps/Clive/App/TerminalSurfaceView.swift"
         ],
         "state_actions_navigation": [
           "Apps/Clive/App/WorkspaceCoordinator.swift",

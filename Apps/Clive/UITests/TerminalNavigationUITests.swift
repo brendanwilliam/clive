@@ -111,7 +111,7 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(waitForSelection(of: terminalSurface(secondID)))
     }
 
-    func testDrawerRowSelectionOutsideMenu() {
+    func testAdaptiveTerminalSelectionFromCompactDrawerOrRegularSidebar() {
         openTerminalDrawer()
         drawerRow(secondID).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
         XCTAssertEqual(terminalSurface(secondID).value as? String, "Selected")
@@ -195,6 +195,10 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Done"].exists)
         app.buttons["manage-shortcuts-button"].tap()
         XCTAssertTrue(app.navigationBars["Shortcuts"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["shortcut-settings-back-button"].exists)
+        app.buttons["shortcut-settings-back-button"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Done"].exists)
     }
 
     func testSetupGuideShowsMacInstallAndPairAction() {
@@ -230,8 +234,9 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     private func openTerminalDrawer() {
-        XCTAssertTrue(terminalDrawerButton.waitForExistence(timeout: 3))
-        terminalDrawerButton.tap()
+        if terminalDrawerButton.waitForExistence(timeout: 1) {
+            terminalDrawerButton.tap()
+        }
         XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 3))
     }
     private func waitForSelection(of terminal: XCUIElement, timeout: TimeInterval = 4) -> Bool {

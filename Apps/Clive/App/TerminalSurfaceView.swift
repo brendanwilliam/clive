@@ -199,24 +199,31 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
 }
 
-@MainActor private final class TerminalBottomControls: UIView {
+@MainActor final class TerminalBottomControls: UIView {
     var onKeyboard: ((Bool) -> Void)?
     var onShortcuts: (() -> Void)?
     private let keyboardButton = UIButton(type: .system)
     let shortcutButton = UIButton(type: .system)
+    private let keyboardGroup = UIVisualEffectView(effect: nil)
+    private let keyRowGroup = UIVisualEffectView(effect: nil)
+    private let shortcutsGroup = UIVisualEffectView(effect: nil)
     private let rowHost = UIView()
     private var keyRow: TerminalKeyboardAccessory?
     private var keyboardVisible = false
     private var policy = TerminalInputControlPolicy()
-    private var heightConstraint: NSLayoutConstraint!
     private var compactRowLeadingConstraint: NSLayoutConstraint!
     private var expandedRowLeadingConstraint: NSLayoutConstraint!
-    private var compactVerticalConstraints: [NSLayoutConstraint] = []
-    private var expandedVerticalConstraints: [NSLayoutConstraint] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .systemGroupedBackground
+        backgroundColor = .clear
+        [keyboardGroup, keyRowGroup, shortcutsGroup].forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false
+            $0.layer.cornerRadius = 14
+            $0.layer.cornerCurve = .continuous
+            $0.clipsToBounds = true
+            addSubview($0)
+        }
         keyboardButton.accessibilityIdentifier = "terminal-keyboard-button"
         shortcutButton.accessibilityIdentifier = "terminal-shortcuts-button"
         shortcutButton.accessibilityLabel = "Shortcuts"
@@ -225,31 +232,30 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyboardButton.translatesAutoresizingMaskIntoConstraints = false
         shortcutButton.translatesAutoresizingMaskIntoConstraints = false
         rowHost.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(keyboardButton); addSubview(rowHost); addSubview(shortcutButton)
-        heightConstraint = heightAnchor.constraint(equalToConstant: 48)
+        keyboardGroup.contentView.addSubview(keyboardButton)
+        keyRowGroup.contentView.addSubview(rowHost)
+        shortcutsGroup.contentView.addSubview(shortcutButton)
         NSLayoutConstraint.activate([
-            keyboardButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), keyboardButton.widthAnchor.constraint(equalToConstant: 44), keyboardButton.heightAnchor.constraint(equalToConstant: 44),
-            shortcutButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), shortcutButton.widthAnchor.constraint(equalToConstant: 44), shortcutButton.heightAnchor.constraint(equalToConstant: 44),
-            rowHost.trailingAnchor.constraint(equalTo: shortcutButton.leadingAnchor, constant: -4),
-            heightConstraint,
+            keyboardGroup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), keyboardGroup.widthAnchor.constraint(equalToConstant: 44), keyboardGroup.heightAnchor.constraint(equalToConstant: 44), keyboardGroup.centerYAnchor.constraint(equalTo: centerYAnchor),
+            shortcutsGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), shortcutsGroup.widthAnchor.constraint(equalToConstant: 44), shortcutsGroup.heightAnchor.constraint(equalToConstant: 44), shortcutsGroup.centerYAnchor.constraint(equalTo: centerYAnchor),
+            keyRowGroup.trailingAnchor.constraint(equalTo: shortcutsGroup.leadingAnchor, constant: -4),
+            heightAnchor.constraint(equalToConstant: 48),
+            keyboardButton.leadingAnchor.constraint(equalTo: keyboardGroup.contentView.leadingAnchor), keyboardButton.trailingAnchor.constraint(equalTo: keyboardGroup.contentView.trailingAnchor), keyboardButton.topAnchor.constraint(equalTo: keyboardGroup.contentView.topAnchor), keyboardButton.bottomAnchor.constraint(equalTo: keyboardGroup.contentView.bottomAnchor),
+            shortcutButton.leadingAnchor.constraint(equalTo: shortcutsGroup.contentView.leadingAnchor), shortcutButton.trailingAnchor.constraint(equalTo: shortcutsGroup.contentView.trailingAnchor), shortcutButton.topAnchor.constraint(equalTo: shortcutsGroup.contentView.topAnchor), shortcutButton.bottomAnchor.constraint(equalTo: shortcutsGroup.contentView.bottomAnchor),
+            rowHost.leadingAnchor.constraint(equalTo: keyRowGroup.contentView.leadingAnchor), rowHost.trailingAnchor.constraint(equalTo: keyRowGroup.contentView.trailingAnchor), rowHost.topAnchor.constraint(equalTo: keyRowGroup.contentView.topAnchor), rowHost.bottomAnchor.constraint(equalTo: keyRowGroup.contentView.bottomAnchor),
         ])
-        compactRowLeadingConstraint = rowHost.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8)
-        expandedRowLeadingConstraint = rowHost.leadingAnchor.constraint(equalTo: keyboardButton.trailingAnchor, constant: 4)
-        compactVerticalConstraints = [
-            keyboardButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            shortcutButton.centerYAnchor.constraint(equalTo: centerYAnchor),
-            rowHost.centerYAnchor.constraint(equalTo: centerYAnchor),
-            rowHost.heightAnchor.constraint(equalToConstant: 40),
-        ]
-        expandedVerticalConstraints = [
-            keyboardButton.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            shortcutButton.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            rowHost.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
-            rowHost.heightAnchor.constraint(equalToConstant: 44),
-        ]
+        compactRowLeadingConstraint = keyRowGroup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8)
+        expandedRowLeadingConstraint = keyRowGroup.leadingAnchor.constraint(equalTo: keyboardGroup.trailingAnchor, constant: 4)
+        NSLayoutConstraint.activate([
+            keyRowGroup.centerYAnchor.constraint(equalTo: centerYAnchor),
+            keyRowGroup.heightAnchor.constraint(equalToConstant: 40),
+        ])
         shortcutButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
-        keyboardButton.tintColor = .label
+        keyboardButton.tintColor = .tintColor
         shortcutButton.tintColor = .tintColor
+        [keyboardGroup, keyRowGroup, shortcutsGroup].forEach { group in
+            group.effect = UIBlurEffect(style: .systemMaterial)
+        }
         updateAppearance()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -259,7 +265,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
         NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo: rowHost.leadingAnchor), row.trailingAnchor.constraint(equalTo: rowHost.trailingAnchor), row.topAnchor.constraint(equalTo: rowHost.topAnchor), row.bottomAnchor.constraint(equalTo: rowHost.bottomAnchor)])
     }
     func setKeyboardVisible(_ visible: Bool) { keyboardVisible = visible; policy.keyboardChanged(visible: visible); updateAppearance() }
-    func beginShortcuts() { policy.openShortcuts(); if keyboardVisible { onKeyboard?(true) }; rowHost.isHidden = true }
+    func beginShortcuts() {
+        policy.openShortcuts()
+        if keyboardVisible { onKeyboard?(true) }
+        updateAppearance()
+    }
     func endShortcuts() {
         policy.dismissShortcuts()
         if policy.state == .keyboard { onKeyboard?(false) }
@@ -268,18 +278,24 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     @objc private func toggleKeyboard() { onKeyboard?(keyboardVisible) }
     @objc private func showShortcuts() { onShortcuts?() }
+
+    var keyboardControlFrame: CGRect { keyboardGroup.frame }
+    var keyRowControlFrame: CGRect { keyRowGroup.frame }
+    var shortcutsControlFrame: CGRect { shortcutsGroup.frame }
+    var isKeyboardControlVisible: Bool { !keyboardGroup.isHidden }
+    var isKeyRowControlVisible: Bool { !keyRowGroup.isHidden }
+    var isShortcutsControlVisible: Bool { !shortcutsGroup.isHidden }
+
     private func updateAppearance() {
         keyboardButton.setImage(UIImage(systemName: keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"), for: .normal)
         keyboardButton.accessibilityLabel = keyboardVisible ? "Hide keyboard" : "Show keyboard"
         let expanded = policy.state == .keyboard
-        heightConstraint.constant = expanded ? 96 : 48
         keyboardButton.isHidden = !expanded
+        keyboardGroup.isHidden = !expanded
         keyRow?.setKeyboardVisible(expanded)
-        NSLayoutConstraint.deactivate(expanded ? compactVerticalConstraints : expandedVerticalConstraints)
-        NSLayoutConstraint.activate(expanded ? expandedVerticalConstraints : compactVerticalConstraints)
         compactRowLeadingConstraint.isActive = !expanded
         expandedRowLeadingConstraint.isActive = expanded
-        rowHost.isHidden = policy.state == .shortcuts
+        keyRowGroup.isHidden = policy.state == .shortcuts
     }
 }
 
@@ -360,18 +376,22 @@ private struct ShortcutPanelContent: View {
             if shortcuts.isEmpty {
                 ContentUnavailableView("No shortcuts", systemImage: "bolt", description: Text("Add commands in Settings to run them here."))
             } else {
-                ForEach(shortcuts) { shortcut in
+                ForEach(Array(shortcuts.enumerated()), id: \.element.id) { index, shortcut in
                     Button { run(shortcut) } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
-                            Text(shortcut.command.isEmpty ? "No command" : shortcut.command)
-                                .font(.caption.monospaced())
+                                .foregroundStyle(.primary)
+                            Text(shortcut.command)
+                                .font(.system(.caption, design: .monospaced))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
+                                .truncationMode(.tail)
                         }
                     }
                     .disabled(shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("shortcut-row-\(shortcut.id.uuidString)")
+                    .listRowSeparator(.hidden)
+                    if index < shortcuts.count - 1 { Divider().listRowInsets(EdgeInsets()) }
                 }
             }
             Section {

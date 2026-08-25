@@ -52,6 +52,36 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         }
         XCTAssertEqual(sent, [Data("\u{1b}[B".utf8), Data("\u{1b}[A".utf8), Data("\r".utf8)])
     }
+
+    func testBottomControlsDoNotOverlapAtCompactIPhoneOrRegularIPadWidths() {
+        for width: CGFloat in [320, 834] {
+            let controls = TerminalBottomControls()
+            controls.frame = CGRect(x: 0, y: 0, width: width, height: 48)
+            controls.layoutIfNeeded()
+
+            XCTAssertFalse(controls.keyRowControlFrame.intersects(controls.shortcutsControlFrame))
+            XCTAssertFalse(controls.isKeyboardControlVisible)
+            XCTAssertTrue(controls.isKeyRowControlVisible)
+            XCTAssertTrue(controls.isShortcutsControlVisible)
+
+            controls.setKeyboardVisible(true)
+            controls.layoutIfNeeded()
+            XCTAssertFalse(controls.keyboardControlFrame.intersects(controls.keyRowControlFrame))
+            XCTAssertFalse(controls.keyRowControlFrame.intersects(controls.shortcutsControlFrame))
+            XCTAssertTrue(controls.isKeyboardControlVisible)
+        }
+    }
+
+    func testBottomControlsHideTheKeyRowWhileShortcutsArePresented() {
+        let controls = TerminalBottomControls()
+        controls.frame = CGRect(x: 0, y: 0, width: 320, height: 48)
+        controls.setKeyboardVisible(true)
+        controls.beginShortcuts()
+
+        XCTAssertFalse(controls.isKeyRowControlVisible)
+        XCTAssertFalse(controls.isKeyboardControlVisible)
+        XCTAssertTrue(controls.isShortcutsControlVisible)
+    }
 }
 
 private extension UIView {
