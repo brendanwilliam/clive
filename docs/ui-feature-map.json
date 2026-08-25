@@ -2525,6 +2525,17 @@
         ".github/workflows/verify.yml"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzzzzz-develop-compatibility-gate",
+      "reason": "Reusable pull-request compatibility checks and terminal UI-test synchronization change CI coverage and test automation without changing mapped component relationships.",
+      "paths": [
+        ".github/workflows/compatibility.yml",
+        ".github/workflows/verify-develop.yml",
+        ".github/workflows/verify.yml",
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }

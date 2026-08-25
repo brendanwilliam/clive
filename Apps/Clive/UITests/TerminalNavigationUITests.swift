@@ -10,6 +10,7 @@ final class TerminalNavigationUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["--ui-testing"]
         app.launch()
+        showFirstTerminalDetail()
     }
 
     override func tearDownWithError() throws {
@@ -34,7 +35,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     func testTerminalSidebarShowsTheSelectedTerminal() {
-        terminalDrawerButton.tap()
+        openTerminalDrawer()
         XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 4))
         XCTAssertEqual(drawerRow(firstID).value as? String, "Selected")
     }
@@ -93,19 +94,19 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         keyboard.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        terminalDrawerButton.tap()
+        openTerminalDrawer()
         drawerRow(secondID).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
         XCTAssertTrue(waitForSelection(of: terminalSurface(secondID)))
     }
 
     func testDrawerRowSelectionOutsideMenu() {
-        terminalDrawerButton.tap()
+        openTerminalDrawer()
         drawerRow(secondID).coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
         XCTAssertEqual(terminalSurface(secondID).value as? String, "Selected")
     }
 
     func testConnectionDetailsContainSafeTrustAndReplayMessaging() {
-        terminalDrawerButton.tap()
+        openTerminalDrawer()
         app.buttons["drawer-settings-button"].tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 2))
         XCTAssertTrue(text(containing: "Open Terminals").exists)
@@ -117,7 +118,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     func testDrawerUsesNativeRenameDisconnectAndDeleteSwipeActions() {
-        terminalDrawerButton.tap()
+        openTerminalDrawer()
         drawerRow(firstID).swipeLeft()
         XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Disconnect"].exists)
@@ -134,7 +135,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     func testDrawerShowsConnectedAndDisconnectedTerminalsTogether() {
-        terminalDrawerButton.tap()
+        openTerminalDrawer()
         XCTAssertTrue(app.images["terminal-status-\(firstID)"].exists)
         XCTAssertTrue(app.images["catalog-terminal-status-00000000-0000-0000-0000-000000000003"].exists)
         XCTAssertTrue(app.staticTexts["Detached shell"].exists)
@@ -142,7 +143,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     func testDeleteAllPermanentlyEndsLocalCliveTerminals() {
-        terminalDrawerButton.tap()
+        openTerminalDrawer()
         app.buttons["Terminal actions"].tap()
         app.buttons["Delete All"].tap()
         XCTAssertTrue(app.staticTexts["Delete all terminals?"].waitForExistence(timeout: 2))
@@ -194,6 +195,21 @@ final class TerminalNavigationUITests: XCTestCase {
         app.buttons["terminals-button"]
     }
 
+    private func showFirstTerminalDetail() {
+        let first = terminalSurface(firstID)
+        if first.waitForExistence(timeout: 2) { return }
+
+        let firstRow = drawerRow(firstID)
+        XCTAssertTrue(firstRow.waitForExistence(timeout: 3))
+        firstRow.tap()
+        XCTAssertTrue(first.waitForExistence(timeout: 3))
+    }
+
+    private func openTerminalDrawer() {
+        XCTAssertTrue(terminalDrawerButton.waitForExistence(timeout: 3))
+        terminalDrawerButton.tap()
+        XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 3))
+    }
     private func waitForSelection(of terminal: XCUIElement, timeout: TimeInterval = 4) -> Bool {
         let predicate = NSPredicate(format: "value == %@", "Selected")
         return XCTWaiter.wait(
