@@ -23,12 +23,18 @@ struct WorkspaceView: View {
     @State private var renameText = ""
     @State private var deleteTarget: WorkspaceSession?
     @State private var showingClearAllConfirmation = false
+    @State private var showingDeleteDisconnectedConfirmation = false
+    @State private var showingDisconnectAndDeleteConnectedConfirmation = false
     @State private var showingDisconnectConfirmation = false
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .detailOnly
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .detail
     @State private var sidebarOverlayVisible = false
 
     var body: some View {
+        presentedWorkspace
+    }
+
+    private var mainNavigation: some View {
         Group {
             if horizontalSizeClass == .compact {
                 compactNavigation
@@ -45,13 +51,14 @@ struct WorkspaceView: View {
                 .navigationSplitViewStyle(.prominentDetail)
             }
         }
+    }
+
+    private var observedNavigation: some View {
+        mainNavigation
         .task {
-            coordinator.start()
-            ExternalLaunchRequestStore().consumePending()
-            await coordinator.sceneDidBecomeActive()
-            presentConnectionSetupGuideIfNeeded()
+            await startWorkspace()
         }
-        .onOpenURL { url in if let action = ExternalLaunchURL.action(for: url) { coordinator.handleExternalLaunch(action) } }
+        .onOpenURL(perform: handleOpenURL)
         .onReceive(NotificationCenter.default.publisher(for: .externalTerminalLaunchRequested)) { _ in coordinator.handleExternalLaunch() }
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
         .onChange(of: coordinator.presentedScreen) { _, screen in
@@ -72,6 +79,10 @@ struct WorkspaceView: View {
             else if coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
             else if ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
         }
+    }
+
+    private var presentedWorkspace: some View {
+        observedNavigation
         .sheet(isPresented: settingsBinding) {
             SettingsView(coordinator: coordinator, opensShortcutSettings: coordinator.presentedScreen == .shortcutSettings)
                 .presentationDetents([.large])
@@ -107,6 +118,18 @@ struct WorkspaceView: View {
         } message: {
             Text("This permanently ends every Clive terminal currently open from this iPhone.")
         }
+        .alert("Delete all disconnected terminals?", isPresented: $showingDeleteDisconnectedConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete All", role: .destructive) { Task { await coordinator.deleteDisconnectedVisibleSessions() } }
+        } message: {
+            Text("This permanently ends the disconnected terminals shown in the drawer.")
+        }
+        .alert("Disconnect and delete all connected terminals?", isPresented: $showingDisconnectAndDeleteConnectedConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Disconnect and Delete All", role: .destructive) { Task { await coordinator.disconnectAndDeleteConnectedSessions() } }
+        } message: {
+            Text("This disconnects this iPhone and permanently ends the connected terminals shown in the drawer.")
+        }
         .alert("Disconnect and unpair?", isPresented: $showingDisconnectConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Disconnect", role: .destructive) { Task { await coordinator.disconnectCurrentMac() } }
@@ -139,10 +162,21 @@ struct WorkspaceView: View {
                         .shadow(color: .black.opacity(0.28), radius: 18, x: 6)
                         .transition(.move(edge: .leading))
                         .zIndex(2)
-                        .ignoresSafeArea(.container, edges: .vertical)
                 }
             }
         }
+    }
+
+    private func handleOpenURL(_ url: URL) {
+        guard let action = ExternalLaunchURL.action(for: url) else { return }
+        coordinator.handleExternalLaunch(action)
+    }
+
+    private func startWorkspace() async {
+        coordinator.start()
+        ExternalLaunchRequestStore().consumePending()
+        await coordinator.sceneDidBecomeActive()
+        presentConnectionSetupGuideIfNeeded()
     }
 
     private var navigation: some View {
@@ -259,25 +293,30 @@ struct WorkspaceView: View {
     private var terminalSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             List {
-                Section("Connected") {
-                    let sessions = coordinator.sessions.filter { ConnectionPresentation.status(for: $0.state) == .connected }
-                    if sessions.isEmpty {
-                        Text("No connected terminals").foregroundStyle(.secondary)
+                Section {
+                    if connectedSessions.isEmpty {
+                        emptyDrawerSection("No connected terminals")
                     } else {
-                        ForEach(sessions) { session in
+                        ForEach(connectedSessions) { session in
                             terminalRow(session)
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
                         }
                     }
+                } header: {
+                    drawerSectionHeader("Connected") {
+                        Button("Disconnect and Delete All", systemImage: "network.slash", role: .destructive) {
+                            showingDisconnectAndDeleteConnectedConfirmation = true
+                        }
+                        .disabled(connectedSessions.isEmpty)
+                    }
                 }
-                Section("Disconnected") {
-                    let sessions = coordinator.sessions.filter { ConnectionPresentation.status(for: $0.state) != .connected }
-                    if sessions.isEmpty && coordinator.unrepresentedCatalogSessions.isEmpty {
-                        Text("No disconnected terminals").foregroundStyle(.secondary)
+                Section {
+                    if disconnectedSessions.isEmpty && coordinator.unrepresentedCatalogSessions.isEmpty {
+                        emptyDrawerSection("No disconnected terminals")
                     } else {
-                        ForEach(sessions) { session in
+                        ForEach(disconnectedSessions) { session in
                             terminalRow(session)
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
@@ -289,6 +328,13 @@ struct WorkspaceView: View {
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
                         }
+                    }
+                } header: {
+                    drawerSectionHeader("Disconnected") {
+                        Button("Delete All", systemImage: "trash", role: .destructive) {
+                            showingDeleteDisconnectedConfirmation = true
+                        }
+                        .disabled(disconnectedSessions.isEmpty && coordinator.unrepresentedCatalogSessions.isEmpty)
                     }
                 }
             }
@@ -332,10 +378,43 @@ struct WorkspaceView: View {
                 }
             }
         }
-        .safeAreaPadding(.top, 6)
-        .safeAreaPadding(.bottom, 4)
+        .safeAreaPadding(.top, 12)
+        .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea(.container, edges: .vertical))
+    }
+
+    private var connectedSessions: [WorkspaceSession] {
+        coordinator.sessions.filter { ConnectionPresentation.status(for: $0.state) == .connected }
+    }
+
+    private var disconnectedSessions: [WorkspaceSession] {
+        coordinator.sessions.filter { ConnectionPresentation.status(for: $0.state) != .connected }
+    }
+
+    private func drawerSectionHeader<Content: View>(
+        _ title: String,
+        @ViewBuilder actions: () -> Content
+    ) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Menu(content: actions) {
+                Image(systemName: "ellipsis")
+                    .frame(width: 44, height: 32)
+            }
+            .accessibilityLabel("\(title) actions")
+        }
+        .textCase(nil)
+    }
+
+    private func emptyDrawerSection(_ title: String) -> some View {
+        Text(title)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
     }
 
     private func terminalRow(_ session: WorkspaceSession) -> some View {
