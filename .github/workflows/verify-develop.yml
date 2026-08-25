@@ -42,3 +42,6 @@ jobs:
 
       - name: Run Swift package tests
         run: swift test
+
+  compatibility:
+    uses: ./.github/workflows/compatibility.yml

@@ -478,7 +478,7 @@
         "Terminal list",
         "Session drawer"
       ],
-      "presentation": "Adaptive native sidebar listing terminals and terminal-management actions.",
+      "presentation": "Adaptive native sidebar listing terminals and terminal-management actions, opened from the Terminal drawer control when the detail is visible.",
       "repetition": "Rows repeat for open and resumable detached Terminals.",
       "related_components": [
         "ios.workspace.terminal-pager",
@@ -504,6 +504,7 @@
           "Apps/Clive/App/SessionCatalogClient.swift"
         ],
         "accessibility_ids": [
+          "terminals-button",
           "terminal-row-<session-id>",
           "terminal-status-<session-id>",
           "reconnect-terminal-<session-id>",

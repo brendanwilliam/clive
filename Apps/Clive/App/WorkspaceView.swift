@@ -139,6 +139,7 @@ struct WorkspaceView: View {
         .buttonStyle(.plain)
         .contentShape(.rect)
         .accessibilityLabel("Terminals")
+        .accessibilityIdentifier("terminals-button")
         .accessibilityValue("\(coordinator.sessions.count) open")
     }
 
