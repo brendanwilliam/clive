@@ -478,7 +478,7 @@
         "Terminal list",
         "Session drawer"
       ],
-      "presentation": "Adaptive native sidebar listing terminals and terminal-management actions; compact launches begin on the selected Terminal detail and open this sidebar from the Terminal drawer control.",
+      "presentation": "Adaptive native sidebar listing terminals and terminal-management actions; compact launches begin on the selected Terminal detail, open this sidebar from the Terminal drawer control, and return to the selected Terminal detail after row selection.",
       "repetition": "Rows repeat for open and resumable detached Terminals.",
       "related_components": [
         "ios.workspace.terminal-pager",
@@ -1640,10 +1640,14 @@
           "Apps/Clive/App/AppPreferences.swift",
           "Apps/Clive/App/PairedMacStore.swift"
         ],
-        "accessibility_ids": [],
+        "accessibility_ids": [
+          "connection-authentication-value",
+          "connection-transport-value"
+        ],
         "localization": [],
         "tests": [
-          "Apps/Clive/Tests/AppPreferencesTests.swift"
+          "Apps/Clive/Tests/AppPreferencesTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
         ],
         "fixtures": [],
         "assets": [],

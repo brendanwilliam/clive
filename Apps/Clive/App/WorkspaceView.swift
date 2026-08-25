@@ -13,9 +13,13 @@ struct WorkspaceView: View {
     @State private var showingClearAllConfirmation = false
     @State private var showingDisconnectConfirmation = false
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .detailOnly
+    @State private var preferredCompactColumn: NavigationSplitViewColumn = .detail
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+        NavigationSplitView(
+            columnVisibility: $sidebarVisibility,
+            preferredCompactColumn: $preferredCompactColumn
+        ) {
             terminalSidebar
                 .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 380)
         } detail: {
@@ -33,6 +37,7 @@ struct WorkspaceView: View {
         .onChange(of: coordinator.presentedScreen) { _, screen in
             guard screen == .terminalList else { return }
             sidebarVisibility = .all
+            preferredCompactColumn = .sidebar
             coordinator.dismissPresentedScreen()
         }
         .onChange(of: coordinator.state) { _, state in
@@ -127,7 +132,10 @@ struct WorkspaceView: View {
     }
 
     private var terminalButton: some View {
-        Button { sidebarVisibility = .all } label: {
+        Button {
+            sidebarVisibility = .all
+            preferredCompactColumn = .sidebar
+        } label: {
             HStack(spacing: 3) {
                 Image(systemName: "chevron.left")
                 Text("\(coordinator.sessions.count)").monospacedDigit()
@@ -274,6 +282,8 @@ struct WorkspaceView: View {
     private func terminalRow(_ session: WorkspaceSession) -> some View {
         Button {
             coordinator.selectSession(session.id)
+            sidebarVisibility = .detailOnly
+            preferredCompactColumn = .detail
             coordinator.dismissPresentedScreen()
         } label: {
             HStack(spacing: 12) {
@@ -384,8 +394,14 @@ struct WorkspaceView: View {
                         if let warning = connectionPresentation.replayWarning { Text(warning).foregroundStyle(.orange) }
                     }
                     Section("Security") {
-                        LabeledContent("Transport", value: "TLS 1.3")
-                        LabeledContent("Authentication", value: "Mutual authentication")
+                        LabeledContent("Transport") {
+                            Text("TLS 1.3")
+                                .accessibilityIdentifier("connection-transport-value")
+                        }
+                        LabeledContent("Authentication") {
+                            Text("Mutual authentication")
+                                .accessibilityIdentifier("connection-authentication-value")
+                        }
                         LabeledContent("Certificate pin", value: connectionPresentation.certificatePin)
                         Text("The stored fingerprint below is verification information, not a secret. Clive never displays private keys, pairing secrets, identities, rendezvous tokens, or raw certificates.")
                             .font(.caption).foregroundStyle(.secondary)
