@@ -249,7 +249,7 @@
       "aliases": [
         "Shortcuts button"
       ],
-      "presentation": "Lower-right persistent control that hides keyboard controls and opens the selected Terminal's shortcut pop-up.",
+      "presentation": "Leading persistent Liquid Glass control that opens the selected Terminal's shortcut pop-up and hides keyboard controls.",
       "repetition": null,
       "related_components": [
         "ios.shortcuts.sheet"
@@ -289,7 +289,7 @@
       "aliases": [
         "New shell button"
       ],
-      "presentation": "Creates and selects a new Terminal on the current Connection.",
+      "presentation": "White Liquid Glass control that creates and selects a new Terminal on the current Connection.",
       "repetition": null,
       "related_components": [
         "ios.workspace.terminal-pager"
@@ -375,7 +375,7 @@
       "aliases": [
         "Terminal keyboard row"
       ],
-      "presentation": "Persistent bottom control bar anchored to the Terminal keyboard layout guide. Semantic system-material groups keep the 44-point keyboard, key-row, and shortcuts controls distinct at compact iPhone and regular iPad widths; shortcut presentation hides the keyboard and key-row controls, then restores the prior keyboard state when dismissed.",
+      "presentation": "Persistent Liquid Glass bottom control bar anchored to the Terminal keyboard layout guide. Shortcuts is leading, the keyboard dismissal control is trailing, and the compact key row shrinks to the trailing edge; shortcut presentation hides the keyboard and key-row controls, then restores the prior keyboard state when dismissed.",
       "repetition": null,
       "related_components": [
         "ios.workspace.terminal-keyboard",
@@ -396,7 +396,8 @@
         ],
         "models_services_protocols": [],
         "accessibility_ids": [
-          "terminal-keyboard-button"
+          "terminal-keyboard-button",
+          "terminal-shortcuts-button"
         ],
         "localization": [],
         "tests": [
@@ -539,7 +540,7 @@
       "aliases": [
         "Terminal keyboard accessory"
       ],
-      "presentation": "Single terminal key toolbar that reduces to centered Down, Up, and Enter keys when the software keyboard is hidden and expands to the symbol-based Esc, Tab, modifier, arrow, and punctuation row when the keyboard is shown.",
+      "presentation": "Liquid Glass terminal key toolbar that shrinks to trailing Down, Up, and primary blue Enter keys when the software keyboard is hidden, and expands to the symbol-based Esc, Tab, modifier, arrow, and punctuation row when the keyboard is shown.",
       "repetition": "Key controls repeat from fixed key definitions.",
       "related_components": [
         "ios.workspace.terminal-pager",
@@ -547,7 +548,8 @@
       ],
       "states": [
         "keyboard-visible",
-        "modifier-active"
+        "modifier-active",
+        "compact-enter-primary"
       ],
       "resources": {
         "views": [
@@ -624,7 +626,9 @@
           "Apps/Clive/App/SessionClient.swift",
           "Sources/CliveCore/Protocol.swift"
         ],
-        "accessibility_ids": [],
+        "accessibility_ids": [
+          "settings-back-button"
+        ],
         "localization": [],
         "tests": [
           "Apps/Clive/Tests/WorkspaceRestorationTests.swift"
@@ -699,7 +703,7 @@
       "aliases": [
         "Connection settings"
       ],
-      "presentation": "Large bottom sheet reached from the Workspace connection status or drawer footer; its Shortcut Management destination can return to the general Settings screen.",
+      "presentation": "Large swipe-to-dismiss bottom sheet reached from the Workspace connection status or drawer footer. It uses an iOS Settings-style navigation bar with a leading Back button and centered current-setting title; its Shortcut Management destination can return to the general Settings screen.",
       "repetition": null,
       "related_components": [
         "ios.workspace.root",
@@ -724,7 +728,9 @@
           "Apps/Clive/App/AppPreferences.swift",
           "Apps/Clive/App/PairedMacStore.swift"
         ],
-        "accessibility_ids": [],
+        "accessibility_ids": [
+          "settings-back-button"
+        ],
         "localization": [],
         "tests": [
           "Apps/Clive/Tests/AppPreferencesTests.swift",
@@ -734,7 +740,8 @@
         "assets": [],
         "previews": [],
         "documentation": [
-          "docs/cellular-connectivity.md"
+          "docs/cellular-connectivity.md",
+          "docs/human-interface-guidelines.md"
         ]
       }
     },
@@ -801,7 +808,7 @@
         "CLI shortcuts",
         "Saved commands"
       ],
-      "presentation": "Settings navigation destination with reorder, add, delete, title, and command editing; when opened directly from the Terminal shortcut pop-up, it provides a Settings back action.",
+      "presentation": "Settings-style navigation destination with a centered current-setting title, leading Back action, reorder, add, delete, title, and command editing; when opened directly from the Terminal shortcut pop-up, it provides a Settings back action.",
       "repetition": "One navigation row per saved shortcut.",
       "related_components": [
         "ios.shortcuts.sheet",

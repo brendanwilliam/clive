@@ -2,6 +2,17 @@ import CliveCore
 import SwiftUI
 import UIKit
 
+private extension View {
+    @ViewBuilder
+    func cliveGlassBackground<S: Shape>(in shape: S) -> some View {
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular, in: shape)
+        } else {
+            background(.thinMaterial, in: shape)
+        }
+    }
+}
+
 struct WorkspaceView: View {
     @Bindable var coordinator: WorkspaceCoordinator
     @Environment(\.scenePhase) private var scenePhase
@@ -176,7 +187,6 @@ struct WorkspaceView: View {
                 ToolbarItem(placement: .principal) { terminalTitleButton }
                 ToolbarItem(placement: .topBarTrailing) { terminalActions }
             }
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
     }
@@ -205,9 +215,9 @@ struct WorkspaceView: View {
     private var terminalActions: some View {
         Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus.rectangle.on.rectangle").frame(width: 38, height: 34) }
             .accessibilityLabel("New Terminal").accessibilityIdentifier("new-terminal-button")
-        .foregroundStyle(.tint)
+        .foregroundStyle(.white)
         .buttonStyle(.plain)
-        .background(.thinMaterial, in: Capsule())
+        .cliveGlassBackground(in: Capsule())
     }
 
     private func dismissKeyboard() {
@@ -299,7 +309,6 @@ struct WorkspaceView: View {
                     .disabled(coordinator.openSessionCount == 0)
                 }
             }
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             if let current = coordinator.selectedMac {
                 Divider()
@@ -666,10 +675,13 @@ private struct SettingsView: View {
                 }
         }
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Back", systemImage: "chevron.left") { dismiss() }
+                    .accessibilityIdentifier("settings-back-button")
+            }
         }
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
     }
 }
@@ -695,10 +707,11 @@ private struct ShortcutManagementView: View {
         .listStyle(.plain)
         .listRowBackground(Color.clear)
         .navigationTitle("Shortcuts")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let onBackToSettings {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Settings", action: onBackToSettings)
+                    Button("Settings", systemImage: "chevron.left", action: onBackToSettings)
                         .accessibilityIdentifier("shortcut-settings-back-button")
                 }
             }
@@ -713,7 +726,6 @@ private struct ShortcutManagementView: View {
                 .foregroundStyle(.tint)
             }
         }
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
     }
 }
@@ -728,6 +740,7 @@ private struct ShortcutEditorView: View {
                 .font(.body.monospaced())
         }
         .navigationTitle("Edit Shortcut")
+        .navigationBarTitleDisplayMode(.inline)
     }
     private func shortcutBinding(_ id: UUID, _ keyPath: WritableKeyPath<CLIShortcut, String>) -> Binding<String> {
         Binding(
@@ -789,7 +802,6 @@ private struct SetupGuideView: View {
         }
         .navigationTitle("Setup Guide")
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done", action: dismiss) } }
-        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .accessibilityIdentifier("setup-guide-screen")
     }

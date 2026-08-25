@@ -25,6 +25,10 @@ When an agentic workflow UI is added or materially changed, review it for:
   a request for input or a failure, and offer the next safe action.
 - **Platform conventions.** Prefer native iOS and macOS components, navigation, menus,
   alerts, and terminology. Platform terminology wins when it conflicts with this guide.
+- **Liquid Glass.** Use Apple's Liquid Glass materials and controls for Clive's iOS and
+  macOS navigation chrome, toolbars, sheets, and interactive controls on supported OS
+  versions. Keep content legible and visually separate from the glass; use the closest
+  native material fallback on older deployment targets rather than imitating the effect.
 - **Accessibility.** Give workflow controls and status the same clear terminology in
   visible text and accessibility labels; do not rely on color, animation, or position alone
   to communicate a state.

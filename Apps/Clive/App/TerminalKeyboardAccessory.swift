@@ -84,6 +84,7 @@ final class TerminalKeyboardAccessory: UIView {
             button.accessibilityIdentifier = identifier
             button.accessibilityLabel = label
             button.accessibilityValue = input
+            button.isPrimary = identifier == "enter" && !expanded
             button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
             button.isSelected = activeModifiers.contains(where: { $0.rawValue == identifier })
             button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
@@ -112,6 +113,7 @@ final class TerminalKeyboardAccessory: UIView {
 }
 
 final class TerminalKeyButton: UIButton {
+    var isPrimary = false { didSet { updateAppearance() } }
     override var isHighlighted: Bool { didSet { updateAppearance() } }
     override var isSelected: Bool { didSet { updateAppearance() } }
 
@@ -133,10 +135,10 @@ final class TerminalKeyButton: UIButton {
     }
 
     private func updateAppearance() {
-        backgroundColor = isHighlighted || isSelected ? .systemFill : .clear
+        backgroundColor = isPrimary ? .systemBlue : (isHighlighted || isSelected ? .systemFill : .clear)
         // Terminal keys are utility controls. Reserve the app tint for the
         // selected modifier state instead of coloring the entire key row.
-        let titleColor: UIColor = isSelected ? .tintColor : .label
+        let titleColor: UIColor = isPrimary ? .white : (isSelected ? .tintColor : .label)
         tintColor = titleColor
         setTitleColor(titleColor, for: .normal)
     }

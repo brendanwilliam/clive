@@ -62,19 +62,19 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertEqual(app.buttons["terminal-keyboard-button"].label, "Hide keyboard")
     }
 
-    func testKeyboardShowsFixedDownUpEnterToolbar() {
+    func testKeyboardShowsFixedToolbarAndDismissedEnterKey() {
         terminalSurface(firstID).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         let down = app.buttons["down"]
         let up = app.buttons["up"]
-        let enter = app.buttons["enter"]
         XCTAssertTrue(down.exists)
         XCTAssertTrue(up.exists)
-        XCTAssertTrue(enter.exists)
         XCTAssertLessThan(down.frame.minX, up.frame.minX)
-        XCTAssertLessThan(up.frame.minX, enter.frame.minX)
         XCTAssertTrue(app.buttons["escape"].exists)
         XCTAssertTrue(app.buttons["shift"].exists)
+
+        app.buttons["terminal-keyboard-button"].tap()
+        XCTAssertTrue(app.buttons["enter"].waitForExistence(timeout: 2))
     }
 
     func testHeaderExposesOnlyNewTerminalAction() {
@@ -192,13 +192,13 @@ final class TerminalNavigationUITests: XCTestCase {
         app.buttons["terminal-shortcuts-button"].tap()
         XCTAssertTrue(app.buttons["manage-shortcuts-button"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.navigationBars["Shortcuts"].exists)
-        XCTAssertFalse(app.buttons["Done"].exists)
+        XCTAssertFalse(app.buttons["settings-back-button"].exists)
         app.buttons["manage-shortcuts-button"].tap()
         XCTAssertTrue(app.navigationBars["Shortcuts"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["shortcut-settings-back-button"].exists)
         app.buttons["shortcut-settings-back-button"].tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Done"].exists)
+        XCTAssertTrue(app.buttons["settings-back-button"].exists)
     }
 
     func testSetupGuideShowsMacInstallAndPairAction() {
