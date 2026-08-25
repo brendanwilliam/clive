@@ -738,7 +738,7 @@
       "id": "ios.settings.connection-details",
       "semantic_name": "Connection Details",
       "platform": "ios",
-      "kind": "sheet",
+      "kind": "screen",
       "parent": "ios.settings.root",
       "canonical_path": "Settings/Connection Details",
       "order": 5,
@@ -746,7 +746,7 @@
         "Security details",
         "Mac details"
       ],
-      "presentation": "Sheet showing static connection health, route, transport, authentication, and a stored fingerprint with copy action.",
+      "presentation": "Navigation destination showing connection health, route, replay status, transport, authentication, and a stored fingerprint with copy action.",
       "repetition": null,
       "related_components": [
         "ios.settings.root",
@@ -770,12 +770,12 @@
           "Apps/Clive/App/SessionClient.swift"
         ],
         "accessibility_ids": [
-          "connection-details-list",
-          "connection-details-sheet"
+          "connection-details-list"
         ],
         "localization": [],
         "tests": [
-          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift"
+          "Apps/Clive/Tests/WorkspaceNavigationPolicyTests.swift",
+          "Apps/Clive/UITests/TerminalNavigationUITests.swift"
         ],
         "fixtures": [],
         "assets": [],
