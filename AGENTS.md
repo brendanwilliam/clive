@@ -8,7 +8,10 @@ Clive is a native Swift project with shared packages and platform apps:
 - `Sources/CliveDaemon` contains the macOS daemon and `clive` command-line implementation.
 - `Apps/CliveMac` contains the macOS companion app, and `Apps/Clive` contains the iOS app.
 - `Tests/CliveCoreTests` and `Tests/CliveDaemonTests` contain Swift package tests. Keep new tests with the target whose behavior they cover.
-- `docs/architecture.md`, `docs/protocol.md`, and `docs/security.md` define product boundaries and non-negotiable behavior.
+- `docs/architecture.md`, `docs/protocol.md`, `docs/security.md`, and
+  `docs/human-interface-guidelines.md` define product boundaries and non-negotiable
+  behavior. Use `docs/apple-ui-kit-reference.md` for the corresponding native Apple UI
+  elements.
 
 Keep the root `README.md` as the project entry point. Do not commit Xcode `DerivedData/`, SwiftPM `.build/`, provisioning files, or local pairing state; these are ignored already.
 
