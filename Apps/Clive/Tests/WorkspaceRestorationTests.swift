@@ -34,6 +34,19 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertFalse(policy.permitsAccess(lastSuccessfulAuthentication: verified, now: verified.addingTimeInterval(-1)))
     }
 
+    func testFaceIDPresentationDoesNotSuspendLiveSessions() {
+        XCTAssertFalse(SceneTransitionPolicy.shouldSuspendLiveSessions(
+            isSceneActive: true,
+            hasCapturedForeground: false,
+            authenticationInFlight: true
+        ))
+        XCTAssertTrue(SceneTransitionPolicy.shouldSuspendLiveSessions(
+            isSceneActive: true,
+            hasCapturedForeground: false,
+            authenticationInFlight: false
+        ))
+    }
+
     func testWorkspaceRestorationContainsNoAuthenticationOrTerminalContent() throws {
         let sessionID = UUID()
         let snapshot = WorkspaceSnapshot(

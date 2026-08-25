@@ -18,7 +18,7 @@
       "aliases": [
         "Terminal workspace"
       ],
-      "presentation": "The iOS WindowGroup root reached at launch and by widget deep links.",
+      "presentation": "The iOS WindowGroup root reached at launch and by widget deep links. Biometric authentication keeps live Terminal transports intact across the temporary inactive scene transition caused by Face ID.",
       "repetition": null,
       "related_components": [
         "ios.workspace.header-row",

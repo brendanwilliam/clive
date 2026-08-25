@@ -140,6 +140,12 @@ struct AuthenticationGracePolicy: Equatable {
     }
 }
 
+enum SceneTransitionPolicy {
+    static func shouldSuspendLiveSessions(isSceneActive: Bool, hasCapturedForeground: Bool, authenticationInFlight: Bool) -> Bool {
+        isSceneActive && !hasCapturedForeground && !authenticationInFlight
+    }
+}
+
 @MainActor @Observable final class WorkspaceSession: Identifiable {
     var descriptor: SessionDescriptor
     nonisolated let id: UUID
@@ -714,7 +720,11 @@ struct LocalStateResetter {
     }
 
     func sceneWillLeaveForeground() {
-        guard isSceneActive, !hasCapturedForeground else { return }
+        guard SceneTransitionPolicy.shouldSuspendLiveSessions(
+            isSceneActive: isSceneActive,
+            hasCapturedForeground: hasCapturedForeground,
+            authenticationInFlight: authenticationInFlight
+        ) else { return }
         isSceneActive = false
         hasCapturedForeground = true
         if !sessions.isEmpty { saveCurrentDescriptors(); persist() }
