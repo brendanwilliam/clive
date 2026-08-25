@@ -2516,6 +2516,14 @@
         ".github/workflows/verify.yml"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzzzz-fix-ios-test-result-artifact-path",
+      "reason": "Correcting the CI result-bundle artifact path changes verification diagnostics only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        ".github/workflows/verify.yml"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
