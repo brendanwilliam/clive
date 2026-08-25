@@ -21,6 +21,7 @@ trap cleanup EXIT
 
 UPDATE_LOCAL_HELP=$("${ROOT_DIR}/scripts/update-local.sh" --help) || fail "update-local help failed"
 [[ ${UPDATE_LOCAL_HELP} == *"--signed-companion"* ]] || fail "update-local help omitted signed companion mode"
+[[ ${UPDATE_LOCAL_HELP} == *"--without-cellular"* ]] || fail "update-local help omitted standalone daemon mode"
 if "${ROOT_DIR}/scripts/update-local.sh" --invalid-option >/dev/null 2>&1; then
     fail "update-local accepted an invalid option"
 fi

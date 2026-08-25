@@ -18,23 +18,25 @@ REFRESH_LABEL=com.clive.development-refresh
 REFRESH_SERVICE=${LAUNCH_DOMAIN}/${REFRESH_LABEL}
 REFRESH_PLIST=${RUN_DIR}/${REFRESH_LABEL}.plist
 REFRESH_LOG=${RUN_DIR}/refresh.log
-SIGNED_COMPANION=false
+SIGNED_COMPANION=true
 WORKER=false
 
 usage() {
     cat <<'EOF'
-Usage: ./scripts/update-local.sh [--signed-companion]
+Usage: ./scripts/update-local.sh [--without-cellular]
 
-Rebuild and install the iPhone app after replacing the local Mac owner.
-By default, starts the standalone development daemon. --signed-companion
-builds and launches the locally signed CliveMac.app, including its CloudKit
-entitlement, for cellular testing.
+Rebuild and install the iPhone app after replacing the local Mac owner. By
+default, builds and launches the locally signed CliveMac.app, including its
+CloudKit entitlement for cellular testing. --without-cellular starts the
+standalone development daemon instead. --signed-companion remains an explicit
+compatibility alias for the default mode.
 EOF
 }
 
 while (( $# > 0 )); do
     case $1 in
     --signed-companion) SIGNED_COMPANION=true ;;
+    --without-cellular|--no-cellular) SIGNED_COMPANION=false ;;
     --worker) WORKER=true ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 64 ;;
@@ -53,9 +55,9 @@ if [[ ${CLIVE_MANAGED_TERMINAL:-} == 1 && ${WORKER} == false ]]; then
     plutil -create xml1 "${REFRESH_PLIST}"
     plutil -insert Label -string "${REFRESH_LABEL}" "${REFRESH_PLIST}"
     if [[ ${SIGNED_COMPANION} == true ]]; then
-        plutil -insert ProgramArguments -json "[\"${0:A}\",\"--worker\",\"--signed-companion\"]" "${REFRESH_PLIST}"
-    else
         plutil -insert ProgramArguments -json "[\"${0:A}\",\"--worker\"]" "${REFRESH_PLIST}"
+    else
+        plutil -insert ProgramArguments -json "[\"${0:A}\",\"--worker\",\"--without-cellular\"]" "${REFRESH_PLIST}"
     fi
     plutil -insert RunAtLoad -bool true "${REFRESH_PLIST}"
     plutil -insert ProcessType -string Background "${REFRESH_PLIST}"
