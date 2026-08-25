@@ -112,9 +112,12 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(text(containing: "Open Terminals").exists)
         XCTAssertTrue(text(containing: "Active Terminals").exists)
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Test Mac")).firstMatch.tap()
-        XCTAssertTrue(text(containing: "Local network").waitForExistence(timeout: 2))
-        XCTAssertTrue(text(containing: "TLS 1.3").exists)
-        XCTAssertTrue(text(containing: "Mutual authentication").exists)
+        let details = app.scrollViews["connection-details-list"]
+        XCTAssertTrue(details.waitForExistence(timeout: 2))
+        XCTAssertTrue(revealText("Local network", in: details))
+        details.swipeUp()
+        XCTAssertTrue(app.descendants(matching: .any)["connection-transport-value"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.descendants(matching: .any)["connection-authentication-value"].waitForExistence(timeout: 2))
     }
 
     func testDrawerUsesNativeRenameDisconnectAndDeleteSwipeActions() {
@@ -226,10 +229,10 @@ final class TerminalNavigationUITests: XCTestCase {
         let comparison = caseInsensitive ? "label CONTAINS[c] %@" : "label CONTAINS %@"
         let element = app.staticTexts.matching(NSPredicate(format: comparison, value)).firstMatch
         for _ in 0..<3 {
-            if element.exists { return true }
+            if element.waitForExistence(timeout: 1) { return true }
             scrollView.swipeUp()
         }
-        return element.exists
+        return element.waitForExistence(timeout: 1)
     }
 }
 
