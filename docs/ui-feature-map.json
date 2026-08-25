@@ -2500,6 +2500,14 @@
         "scripts/verify-local.sh"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzz-gh-auth-startup-preflight",
+      "reason": "GitHub authentication preflight guidance changes contributor workflow only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        "AGENTS.md"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }

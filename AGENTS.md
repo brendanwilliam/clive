@@ -32,6 +32,13 @@ Focused tests belong in the development loop. After those pass, use `clive-local
 
 Before opening a pull request, update `docs/ui-feature-map.json` for every component-impacting change. For a change with no component impact, append one immutable `no-component-impact` review record whose paths cover the full pull-request diff except the map itself. Run `python3 scripts/feature-map.py validate` and `python3 scripts/feature-map.py check-change --base <develop-base>` locally.
 
+## Workflow Rules
+- At the start of any task that may use GitHub, run `gh auth status`.
+- Check `gh auth status` before reporting any CLI or API issues.
+- Make all changes on a feature branch based on `develop`
+- Do not commit directly to `develop` or `main`
+- Make sure to merge `develop` into your feature branch before starting work, running tests, or preparing PRs.
+
 ## Build, Test, and Development Commands
 
 Run focused `swift test --filter <test-or-suite>` checks while developing. Run `./scripts/verify-local.sh` for the authoritative quick compatibility check: it executes `swift test` and builds both app targets. Use `./scripts/verify-local.sh --signed` only when local signing readiness matters. `./scripts/test-macos-integration.sh` covers localhost TLS/PTY behavior, and `./scripts/build-pkg.sh` builds the macOS installer.
@@ -48,9 +55,11 @@ Add automated tests with each behavioral change. Test names should describe the 
 
 Never weaken security controls, platform constraints, or assertions merely to make a test pass. Diagnose the mismatch and preserve the documented requirements.
 
-## GitHub Auth & Commit/Pull Request Guidelines
+## Commit & Pull Request Guidelines
 
-Before every `gh` command that inspects or changes GitHub state, run `gh auth status` and resolve any authentication failure first. This applies to all GitHub CLI operations, including issues, pull requests, repository state, releases, workflow runs, and API requests. If any `gh` command fails, run `gh auth status` again before retrying it or issuing another GitHub CLI command.
+Before every `gh` command that inspects or changes GitHub state, run `gh auth status` and resolve any authentication failure first. This applies to all GitHub CLI operations, including issues, pull requests, repository state, releases, workflow runs, and API requests.
+
+If any `gh` command fails, run `gh auth status` again before retrying it or issuing another GitHub CLI command.
 
 Create every working branch for an issue and include its issue number in the branch name, using the format `<issue-number>-<short-description>` (for example, `123-improve-pairing-recovery`). Do not begin implementation without an associated issue, except for emergency operational recovery explicitly authorized by the repository owner.
 
