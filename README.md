@@ -63,12 +63,18 @@ The macOS companion owns resumable shells. Closing a window or briefly losing tr
 git clone https://github.com/brendanwilliam/clive.git
 cd clive
 brew install xcodegen
-./scripts/verify-local.sh
-./scripts/test-macos-integration.sh
+swift test
 swift run clive status
 ```
 
-`verify-local.sh` runs shared Swift tests plus macOS and iOS tests/builds. Pass `--signed` only when checking local signing readiness. To open the iOS project, run `cd Apps/Clive && xcodegen generate`, then open `Clive.xcodeproj`. Local bundle identifiers and signing settings belong in an ignored `Local.xcconfig`; see the example files in each app's `Config` directory.
+For the normal development loop, use focused Swift tests and targeted builds; no
+simulator is required. Before preparing a pull request, run
+`./scripts/verify-local.sh`, which runs shared Swift tests plus macOS and iOS
+tests/builds. Pass `--signed` only when checking local signing readiness. The
+localhost TLS/PTY integration test is likewise a pre-PR or release check. To open the
+iOS project, run `cd Apps/Clive && xcodegen generate`, then open `Clive.xcodeproj`.
+Local bundle identifiers and signing settings belong in an ignored `Local.xcconfig`;
+see the example files in each app's `Config` directory.
 
 For the quickest physical-device development loop, connect and unlock an iPhone, configure `Apps/Clive/Config/Local.xcconfig`, and run `./scripts/update-local.sh`. It rebuilds and runs the daemon as a supervised per-user `launchd` job, builds the iOS app, then installs and launches it on the connected phone. `./scripts/update-local.sh --signed-companion` instead builds, locally signs, and launches the macOS companion, preserving the CloudKit entitlement required for cellular testing. This mode also requires `Apps/CliveMac/Config/Local.xcconfig` to use the same signing team and CloudKit container as the iOS configuration. Both refresh modes replace the current Mac owner and end its active terminal sessions. When launched from a Clive terminal, the script automatically hands the rebuild to `launchd` before restarting the owner, because that restart closes the terminal that initiated it. Progress is written to `/private/tmp/clive-device-run/refresh.log`; the app reconnects when the deployment finishes. Set `CLIVE_IOS_DESTINATION_ID` when more than one physical iOS device is connected.
 
