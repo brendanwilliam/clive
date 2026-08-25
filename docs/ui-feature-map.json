@@ -248,7 +248,7 @@
       "aliases": [
         "Shortcuts button"
       ],
-      "presentation": "Lower-right persistent control that hides keyboard controls and opens the selected Terminal's Shortcuts panel.",
+      "presentation": "Lower-right persistent control that hides keyboard controls and opens the selected Terminal's shortcut pop-up.",
       "repetition": null,
       "related_components": [
         "ios.shortcuts.sheet"
@@ -504,7 +504,6 @@
           "Apps/Clive/App/SessionCatalogClient.swift"
         ],
         "accessibility_ids": [
-          "terminals-button",
           "terminal-row-<session-id>",
           "terminal-status-<session-id>",
           "reconnect-terminal-<session-id>",
@@ -898,7 +897,7 @@
       "aliases": [
         "Saved commands"
       ],
-      "presentation": "Keyboard-area panel used to launch a saved shortcut or jump to Settings management.",
+      "presentation": "Keyboard-area pop-up used to launch a saved shortcut or jump directly to shortcut Settings.",
       "repetition": "One row per saved shortcut.",
       "related_components": [
         "ios.workspace.root",

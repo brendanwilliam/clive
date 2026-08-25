@@ -191,8 +191,10 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         app.buttons["terminal-shortcuts-button"].tap()
         XCTAssertTrue(app.buttons["manage-shortcuts-button"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.navigationBars["Shortcuts"].exists)
+        XCTAssertFalse(app.buttons["Done"].exists)
         app.buttons["manage-shortcuts-button"].tap()
-        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.navigationBars["Shortcuts"].waitForExistence(timeout: 3))
     }
 
     func testSetupGuideShowsMacInstallAndPairAction() {
@@ -214,7 +216,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     private var terminalDrawerButton: XCUIElement {
-        app.buttons["terminals-button"]
+        app.navigationBars.buttons.firstMatch
     }
 
     private func showFirstTerminalDetail() {

@@ -343,7 +343,7 @@ struct LocalStateResetter {
 
 @MainActor @Observable final class WorkspaceCoordinator {
     enum State: Equatable { case locked, authenticating, active, authenticationCancelled, unsupportedLocalState, failed(String) }
-    enum PresentedScreen: Equatable { case terminalList, settings }
+    enum PresentedScreen: Equatable { case terminalList, settings, shortcutSettings }
     enum Recovery: Equatable { case unavailableMac(String), noPairedMac, disconnected }
 
     let macs = PairedMacsModel()
@@ -502,6 +502,7 @@ struct LocalStateResetter {
     }
 
     func showSettings() { presentedScreen = .settings }
+    func showShortcutSettings() { presentedScreen = .shortcutSettings }
     func showConnections() { showTerminalList() }
 
     func shouldPresentConnectionSetupGuide() -> Bool {

@@ -27,6 +27,9 @@ struct TerminalSurfaceView: UIViewRepresentable {
         let container = TerminalSurfaceContainer()
         let terminal = container.terminal
         terminal.terminalDelegate = context.coordinator
+        // SwiftTerm installs its own TerminalAccessory by default. Clive owns the
+        // terminal key toolbar, so do not stack SwiftTerm's accessory above it.
+        terminal.inputAccessoryView = nil
         terminal.linkReporting = .implicit
         terminal.linkHighlightMode = .hoverWithModifier
         terminal.accessibilityIdentifier = accessibilityIdentifier
@@ -309,7 +312,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
                     DispatchQueue.main.async { self.manage() }
                 }
             },
-            dismiss: { [weak self] in self?.dismiss(animated: true) }
         )
         let host = UIHostingController(rootView: content)
         addChild(host)
@@ -345,33 +347,30 @@ private struct ShortcutPanelContent: View {
     let shortcuts: [CLIShortcut]
     let run: (CLIShortcut) -> Void
     let manage: () -> Void
-    let dismiss: () -> Void
 
     var body: some View {
-        NavigationStack {
-            List {
-                if shortcuts.isEmpty {
-                    ContentUnavailableView("No shortcuts", systemImage: "bolt", description: Text("Add commands in Settings to run them here."))
-                } else {
-                    ForEach(shortcuts) { shortcut in
-                        Button { run(shortcut) } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
-                                Text(shortcut.command.isEmpty ? "No command" : shortcut.command)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
+        List {
+            if shortcuts.isEmpty {
+                ContentUnavailableView("No shortcuts", systemImage: "bolt", description: Text("Add commands in Settings to run them here."))
+            } else {
+                ForEach(shortcuts) { shortcut in
+                    Button { run(shortcut) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
+                            Text(shortcut.command.isEmpty ? "No command" : shortcut.command)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
-                        .disabled(shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityIdentifier("shortcut-row-\(shortcut.id.uuidString)")
                     }
+                    .disabled(shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("shortcut-row-\(shortcut.id.uuidString)")
                 }
-                Button("Manage in Settings", systemImage: "gearshape", action: manage)
+            }
+            Section {
+                Button("Settings", systemImage: "gearshape", action: manage)
                     .accessibilityIdentifier("manage-shortcuts-button")
             }
-            .navigationTitle("Shortcuts")
-            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Done", action: dismiss) } }
         }
         .accessibilityIdentifier("shortcuts-panel")
     }

@@ -49,7 +49,7 @@ struct WorkspaceView: View {
             else if ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
         }
         .fullScreenCover(isPresented: settingsBinding) {
-            SettingsView(coordinator: coordinator)
+            SettingsView(coordinator: coordinator, opensShortcutSettings: coordinator.presentedScreen == .shortcutSettings)
         }
         .fullScreenCover(isPresented: $showingSetupGuide) {
             NavigationStack {
@@ -122,33 +122,12 @@ struct WorkspaceView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { terminalButton }
                 ToolbarItem(placement: .principal) { terminalTitleButton }
                 ToolbarItem(placement: .topBarTrailing) { terminalActions }
             }
             .toolbarBackground(Color.black.opacity(0.18), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
-    }
-
-    private var terminalButton: some View {
-        Button {
-            sidebarVisibility = .all
-            preferredCompactColumn = .sidebar
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "rectangle.stack")
-                Text("\(coordinator.sessions.count)").monospacedDigit()
-            }
-            .font(.body.weight(.semibold))
-            .foregroundStyle(Color.accentColor)
-            .frame(minWidth: 44, minHeight: 44)
-        }
-        .buttonStyle(.plain)
-        .contentShape(.rect)
-        .accessibilityLabel("Terminals")
-        .accessibilityIdentifier("terminals-button")
-        .accessibilityValue("\(coordinator.sessions.count) open")
     }
 
     private var terminalTitleButton: some View {
@@ -202,7 +181,7 @@ struct WorkspaceView: View {
                             openDrawer: { coordinator.showTerminalList() },
                             selectAdjacentTerminal: selectAdjacentTerminal,
                             runShortcut: coordinator.runShortcut,
-                            manageShortcuts: { coordinator.showSettings() }
+                            manageShortcuts: { coordinator.showShortcutSettings() }
                         )
                         .id(session.id)
                         sessionOverlay(session)
@@ -218,38 +197,53 @@ struct WorkspaceView: View {
     private var terminalSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             List {
-                Section {
-                    ForEach(coordinator.sessions) { session in
-                        terminalRow(session)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+                Section("Connected") {
+                    let sessions = coordinator.sessions.filter { ConnectionPresentation.status(for: $0.state) == .connected }
+                    if sessions.isEmpty {
+                        Text("No connected terminals").foregroundStyle(.secondary)
+                    } else {
+                        ForEach(sessions) { session in
+                            terminalRow(session)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+                        }
                     }
-                    ForEach(coordinator.unrepresentedCatalogSessions) { session in
-                        catalogSessionRow(session)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+                }
+                Section("Disconnected") {
+                    let sessions = coordinator.sessions.filter { ConnectionPresentation.status(for: $0.state) != .connected }
+                    if sessions.isEmpty && coordinator.unrepresentedCatalogSessions.isEmpty {
+                        Text("No disconnected terminals").foregroundStyle(.secondary)
+                    } else {
+                        ForEach(sessions) { session in
+                            terminalRow(session)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+                        }
+                        ForEach(coordinator.unrepresentedCatalogSessions) { session in
+                            catalogSessionRow(session)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+                        }
                     }
-                } header: {
-                    HStack {
-                        Text("Terminals")
-                        Spacer()
-                        Menu {
-                            Button("Disconnect All", systemImage: "network.slash") { coordinator.disconnectAll() }
-                            Button("Delete All", systemImage: "trash", role: .destructive) { showingClearAllConfirmation = true }
-                        } label: { Image(systemName: "ellipsis").frame(width: 44, height: 32) }
-                        .accessibilityLabel("Terminal actions")
-                        .disabled(coordinator.openSessionCount == 0)
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(nil)
                 }
             }
             .listStyle(.plain)
             .listRowSpacing(DrawerRowRevealPolicy.rowSpacing)
             .scrollContentBackground(.hidden)
+            .navigationTitle("Terminals")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Disconnect All", systemImage: "network.slash") { coordinator.disconnectAll() }
+                        Button("Delete All", systemImage: "trash", role: .destructive) { showingClearAllConfirmation = true }
+                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 32) }
+                    .accessibilityLabel("Terminal actions")
+                    .disabled(coordinator.openSessionCount == 0)
+                }
+            }
             if let current = coordinator.selectedMac {
                 Divider()
                 HStack(spacing: 12) {
@@ -402,7 +396,12 @@ struct WorkspaceView: View {
     private var deleteBinding: Binding<Bool> { Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }) }
     private var disconnectErrorBinding: Binding<Bool> { Binding(get: { coordinator.disconnectError != nil }, set: { if !$0 { coordinator.disconnectError = nil } }) }
     private var deleteAllErrorBinding: Binding<Bool> { Binding(get: { coordinator.deleteAllError != nil }, set: { if !$0 { coordinator.deleteAllError = nil } }) }
-    private var settingsBinding: Binding<Bool> { Binding(get: { coordinator.presentedScreen == .settings }, set: { if !$0 { coordinator.dismissPresentedScreen() } }) }
+    private var settingsBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.presentedScreen == .settings || coordinator.presentedScreen == .shortcutSettings },
+            set: { if !$0 { coordinator.dismissPresentedScreen() } }
+        )
+    }
 
     private func presentConnectionSetupGuideIfNeeded() {
         guard coordinator.state == .active else { return }
@@ -508,6 +507,7 @@ private struct TerminalTitleControl: UIViewRepresentable {
 
 private struct SettingsView: View {
     @Bindable var coordinator: WorkspaceCoordinator
+    let opensShortcutSettings: Bool
     @Environment(\.dismiss) private var dismiss
     @State private var showingScanner = false
 
@@ -515,7 +515,34 @@ private struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            if opensShortcutSettings {
+                ShortcutManagementView(preferences: preferences)
+            } else {
+                settingsList
+            }
+        }
+        .fullScreenCover(isPresented: $showingScanner) {
+            PairingScannerView(
+                onTicket: { ticket in
+                    showingScanner = false
+                    Task {
+                        await coordinator.macs.pair(ticket)
+                        if coordinator.macs.state == .idle, !coordinator.macs.devices.isEmpty {
+                            coordinator.pairingDidSucceed()
+                        }
+                    }
+                },
+                onError: { error in
+                    showingScanner = false
+                    coordinator.macs.state = .failed(error.localizedDescription)
+                }
+            )
+            .ignoresSafeArea()
+        }
+    }
+
+    private var settingsList: some View {
+        List {
                 if let connection = coordinator.selectedMac {
                     Section("Current Connection") {
                         NavigationLink {
@@ -564,29 +591,10 @@ private struct SettingsView: View {
                         )
                     }
                 }
-            }
-            .navigationTitle("Settings")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
-            }
         }
-        .fullScreenCover(isPresented: $showingScanner) {
-            PairingScannerView(
-                onTicket: { ticket in
-                    showingScanner = false
-                    Task {
-                        await coordinator.macs.pair(ticket)
-                        if coordinator.macs.state == .idle, !coordinator.macs.devices.isEmpty {
-                            coordinator.pairingDidSucceed()
-                        }
-                    }
-                },
-                onError: { error in
-                    showingScanner = false
-                    coordinator.macs.state = .failed(error.localizedDescription)
-                }
-            )
-            .ignoresSafeArea()
+        .navigationTitle("Settings")
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
         }
     }
 }
