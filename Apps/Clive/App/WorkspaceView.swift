@@ -368,9 +368,6 @@ struct WorkspaceView: View {
                             Spacer(minLength: 8)
                         }
                     }.buttonStyle(.plain).accessibilityIdentifier("drawer-settings-button")
-                    Button { navigate { coordinator.addShell(); coordinator.dismissPresentedScreen() } } label: {
-                        Image(systemName: "plus.rectangle.on.rectangle").font(.title3).frame(width: 44, height: 44)
-                    }.accessibilityLabel("New Terminal")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -381,7 +378,7 @@ struct WorkspaceView: View {
                 }
             }
         }
-        .safeAreaPadding(.top, 12)
+        .safeAreaPadding(.top, 16)
         .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .secondarySystemBackground))
