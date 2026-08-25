@@ -12,7 +12,7 @@ struct WorkspaceView: View {
     @State private var deleteTarget: WorkspaceSession?
     @State private var showingClearAllConfirmation = false
     @State private var showingDisconnectConfirmation = false
-    @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
+    @State private var sidebarVisibility: NavigationSplitViewVisibility = .detailOnly
 
     var body: some View {
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
@@ -139,6 +139,7 @@ struct WorkspaceView: View {
         .buttonStyle(.plain)
         .contentShape(.rect)
         .accessibilityLabel("Terminals")
+        .accessibilityIdentifier("terminals-button")
         .accessibilityValue("\(coordinator.sessions.count) open")
     }
 
