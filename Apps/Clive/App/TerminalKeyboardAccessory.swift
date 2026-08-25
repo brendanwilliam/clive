@@ -94,7 +94,7 @@ final class TerminalKeyButton: UIButton {
 
     private func updateAppearance() {
         backgroundColor = isHighlighted ? .systemFill : .clear
-        tintColor = .label
-        setTitleColor(.label, for: .normal)
+        tintColor = .tintColor
+        setTitleColor(.tintColor, for: .normal)
     }
 }

@@ -137,7 +137,7 @@ struct WorkspaceView: View {
             preferredCompactColumn = .sidebar
         } label: {
             HStack(spacing: 3) {
-                Image(systemName: "chevron.left")
+                Image(systemName: "rectangle.stack")
                 Text("\(coordinator.sessions.count)").monospacedDigit()
             }
             .font(.body.weight(.semibold))
@@ -175,6 +175,7 @@ struct WorkspaceView: View {
     private var terminalActions: some View {
         Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus.rectangle.on.rectangle").frame(width: 38, height: 34) }
             .accessibilityLabel("New Terminal").accessibilityIdentifier("new-terminal-button")
+        .foregroundStyle(Color.accentColor)
         .buttonStyle(.plain)
         .background(.thinMaterial, in: Capsule())
     }

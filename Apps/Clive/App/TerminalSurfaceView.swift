@@ -139,11 +139,14 @@ struct TerminalSurfaceView: UIViewRepresentable {
         controls.translatesAutoresizingMaskIntoConstraints = false
         addSubview(terminal)
         addSubview(controls)
+        let focusGesture = UITapGestureRecognizer(target: self, action: #selector(focusTerminal))
+        focusGesture.cancelsTouchesInView = false
+        terminal.addGestureRecognizer(focusGesture)
         NSLayoutConstraint.activate([
             terminal.topAnchor.constraint(equalTo: topAnchor), terminal.leadingAnchor.constraint(equalTo: leadingAnchor), terminal.trailingAnchor.constraint(equalTo: trailingAnchor),
             terminal.bottomAnchor.constraint(equalTo: controls.topAnchor),
             controls.leadingAnchor.constraint(equalTo: leadingAnchor), controls.trailingAnchor.constraint(equalTo: trailingAnchor),
-            controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor), controls.heightAnchor.constraint(equalToConstant: 48),
+            controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor), controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
         ])
         controls.onKeyboard = { [weak self] shown in shown ? self?.onKeyboardDismissRequested?() : self?.onKeyboardRequested?() }
         controls.onShortcuts = { [weak self] in self?.onShortcutsRequested?() }
@@ -151,6 +154,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func focusTerminal() {
+        _ = terminal.becomeFirstResponder()
+    }
 
     func installKeyRow(_ row: TerminalKeyboardAccessory) { controls.installKeyRow(row) }
 
@@ -198,6 +205,9 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private var keyRow: TerminalKeyboardAccessory?
     private var keyboardVisible = false
     private var policy = TerminalInputControlPolicy()
+    private var heightConstraint: NSLayoutConstraint!
+    private var compactVerticalConstraints: [NSLayoutConstraint] = []
+    private var expandedVerticalConstraints: [NSLayoutConstraint] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -211,12 +221,28 @@ struct TerminalSurfaceView: UIViewRepresentable {
         shortcutButton.translatesAutoresizingMaskIntoConstraints = false
         rowHost.translatesAutoresizingMaskIntoConstraints = false
         addSubview(keyboardButton); addSubview(rowHost); addSubview(shortcutButton)
+        heightConstraint = heightAnchor.constraint(equalToConstant: 48)
         NSLayoutConstraint.activate([
-            keyboardButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), keyboardButton.centerYAnchor.constraint(equalTo: centerYAnchor), keyboardButton.widthAnchor.constraint(equalToConstant: 44), keyboardButton.heightAnchor.constraint(equalToConstant: 44),
-            shortcutButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), shortcutButton.centerYAnchor.constraint(equalTo: centerYAnchor), shortcutButton.widthAnchor.constraint(equalToConstant: 44), shortcutButton.heightAnchor.constraint(equalToConstant: 44),
-            rowHost.leadingAnchor.constraint(equalTo: keyboardButton.trailingAnchor, constant: 4), rowHost.trailingAnchor.constraint(equalTo: shortcutButton.leadingAnchor, constant: -4), rowHost.topAnchor.constraint(equalTo: topAnchor, constant: 4), rowHost.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            keyboardButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), keyboardButton.widthAnchor.constraint(equalToConstant: 44), keyboardButton.heightAnchor.constraint(equalToConstant: 44),
+            shortcutButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), shortcutButton.widthAnchor.constraint(equalToConstant: 44), shortcutButton.heightAnchor.constraint(equalToConstant: 44),
+            rowHost.leadingAnchor.constraint(equalTo: keyboardButton.trailingAnchor, constant: 4), rowHost.trailingAnchor.constraint(equalTo: shortcutButton.leadingAnchor, constant: -4),
+            heightConstraint,
         ])
+        compactVerticalConstraints = [
+            keyboardButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            shortcutButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rowHost.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rowHost.heightAnchor.constraint(equalToConstant: 40),
+        ]
+        expandedVerticalConstraints = [
+            keyboardButton.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            shortcutButton.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+            rowHost.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            rowHost.heightAnchor.constraint(equalToConstant: 44),
+        ]
         shortcutButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
+        keyboardButton.tintColor = .tintColor
+        shortcutButton.tintColor = .tintColor
         updateAppearance()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -238,7 +264,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private func updateAppearance() {
         keyboardButton.setImage(UIImage(systemName: keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"), for: .normal)
         keyboardButton.accessibilityLabel = keyboardVisible ? "Hide keyboard" : "Show keyboard"
-        rowHost.isHidden = policy.state != .keyboard
+        let expanded = policy.state == .keyboard
+        heightConstraint.constant = expanded ? 96 : 48
+        NSLayoutConstraint.deactivate(expanded ? compactVerticalConstraints : expandedVerticalConstraints)
+        NSLayoutConstraint.activate(expanded ? expandedVerticalConstraints : compactVerticalConstraints)
+        rowHost.isHidden = policy.state == .shortcuts
     }
 }
 

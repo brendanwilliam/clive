@@ -45,11 +45,20 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(first.waitForExistence(timeout: 3))
         let keyboard = app.buttons["terminal-keyboard-button"]
         XCTAssertEqual(keyboard.label, "Show keyboard")
+        XCTAssertTrue(app.buttons["down"].exists)
+        XCTAssertTrue(app.buttons["up"].exists)
+        XCTAssertTrue(app.buttons["enter"].exists)
         keyboard.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         XCTAssertEqual(keyboard.label, "Hide keyboard")
         keyboard.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+    }
+
+    func testTappingTerminalShowsKeyboard() {
+        terminalSurface(firstID).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertEqual(app.buttons["terminal-keyboard-button"].label, "Hide keyboard")
     }
 
     func testKeyboardShowsFixedDownUpEnterToolbar() {

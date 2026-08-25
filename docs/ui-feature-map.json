@@ -374,7 +374,7 @@
       "aliases": [
         "Terminal keyboard row"
       ],
-      "presentation": "Persistent bottom control bar anchored to the Terminal keyboard layout guide.",
+      "presentation": "Persistent bottom control bar anchored to the Terminal keyboard layout guide; the Down, Up, and Enter key row remains visible, while keyboard and shortcut actions move above it when the software keyboard is shown.",
       "repetition": null,
       "related_components": [
         "ios.workspace.terminal-keyboard"
@@ -536,7 +536,7 @@
       "aliases": [
         "Terminal keyboard accessory"
       ],
-      "presentation": "Fixed Down, Up, and Enter toolbar visible only while the software keyboard is shown.",
+      "presentation": "Persistent Down, Up, and Enter toolbar centered between the keyboard and shortcut actions; keyboard and shortcut actions occupy a row above it while the software keyboard is shown.",
       "repetition": "Key controls repeat from fixed key definitions.",
       "related_components": [
         "ios.workspace.terminal-pager",
@@ -566,7 +566,8 @@
           "left",
           "down",
           "up",
-          "right"
+          "right",
+          "enter"
         ],
         "localization": [],
         "tests": [
