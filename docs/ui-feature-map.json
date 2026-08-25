@@ -2508,6 +2508,14 @@
         "AGENTS.md"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzzz-retain-ios-test-results",
+      "reason": "Failed iOS verification result-bundle retention changes CI diagnostics only and does not change mapped user interface components or resource relationships.",
+      "paths": [
+        ".github/workflows/verify.yml"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
