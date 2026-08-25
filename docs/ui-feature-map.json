@@ -2540,6 +2540,14 @@
         "Apps/Clive/UITests/TerminalNavigationUITests.swift"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzzzzzz-connection-details-list-query",
+      "reason": "The Connection details UI test now queries its stable list identifier independent of the accessibility element type used by each iOS simulator.",
+      "paths": [
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
