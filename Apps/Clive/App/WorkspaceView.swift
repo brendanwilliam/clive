@@ -5,6 +5,7 @@ import UIKit
 struct WorkspaceView: View {
     @Bindable var coordinator: WorkspaceCoordinator
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingScanner = false
     @State private var showingSetupGuide = false
     @State private var renameTarget: WorkspaceSession?
@@ -14,16 +15,24 @@ struct WorkspaceView: View {
     @State private var showingDisconnectConfirmation = false
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .detailOnly
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .detail
+    @State private var sidebarOverlayVisible = false
 
     var body: some View {
-        NavigationSplitView(
-            columnVisibility: $sidebarVisibility,
-            preferredCompactColumn: $preferredCompactColumn
-        ) {
-            terminalSidebar
-                .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 380)
-        } detail: {
-            navigation
+        Group {
+            if horizontalSizeClass == .compact {
+                compactNavigation
+            } else {
+                NavigationSplitView(
+                    columnVisibility: $sidebarVisibility,
+                    preferredCompactColumn: $preferredCompactColumn
+                ) {
+                    terminalSidebar
+                        .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 380)
+                } detail: {
+                    navigation
+                }
+                .navigationSplitViewStyle(.prominentDetail)
+            }
         }
         .task {
             coordinator.start()
@@ -36,8 +45,12 @@ struct WorkspaceView: View {
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
         .onChange(of: coordinator.presentedScreen) { _, screen in
             guard screen == .terminalList else { return }
-            sidebarVisibility = .all
-            preferredCompactColumn = .sidebar
+            if horizontalSizeClass == .compact {
+                sidebarOverlayVisible = true
+            } else {
+                sidebarVisibility = .all
+                preferredCompactColumn = .sidebar
+            }
             coordinator.dismissPresentedScreen()
         }
         .onChange(of: coordinator.state) { _, state in
@@ -95,6 +108,28 @@ struct WorkspaceView: View {
         } message: { Text(coordinator.deleteAllError ?? "Try again.") }
     }
 
+    private var compactNavigation: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                navigation
+                if sidebarOverlayVisible {
+                    Color.black.opacity(0.28)
+                        .ignoresSafeArea()
+                        .contentShape(.rect)
+                        .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = false } }
+                        .zIndex(1)
+                    terminalSidebar
+                        .frame(width: min(320, proxy.size.width * 0.84))
+                        .background(Color(uiColor: .secondarySystemBackground))
+                        .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
+                        .shadow(color: .black.opacity(0.28), radius: 18, x: 6)
+                        .transition(.move(edge: .leading))
+                        .zIndex(2)
+                }
+            }
+        }
+    }
+
     private var navigation: some View {
         NavigationStack {
             Group {
@@ -122,6 +157,18 @@ struct WorkspaceView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if horizontalSizeClass == .compact {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = true }
+                        } label: {
+                            Image(systemName: "sidebar.leading")
+                        }
+                        .foregroundStyle(.primary)
+                        .accessibilityLabel("Terminals")
+                        .accessibilityIdentifier("terminal-sidebar-button")
+                    }
+                }
                 ToolbarItem(placement: .principal) { terminalTitleButton }
                 ToolbarItem(placement: .topBarTrailing) { terminalActions }
             }
@@ -277,8 +324,12 @@ struct WorkspaceView: View {
     private func terminalRow(_ session: WorkspaceSession) -> some View {
         Button {
             coordinator.selectSession(session.id)
-            sidebarVisibility = .detailOnly
-            preferredCompactColumn = .detail
+            if horizontalSizeClass == .compact {
+                withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = false }
+            } else {
+                sidebarVisibility = .detailOnly
+                preferredCompactColumn = .detail
+            }
             coordinator.dismissPresentedScreen()
         } label: {
             HStack(spacing: 12) {
@@ -303,7 +354,7 @@ struct WorkspaceView: View {
                     .tint(.green)
             }
             Button("Rename", systemImage: "pencil") { beginRename(session) }
-                .tint(.blue)
+                .tint(.secondary)
         }
         .padding(.horizontal, 12)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
@@ -491,6 +542,8 @@ private struct TerminalTitleControl: UIViewRepresentable {
     func updateUIView(_ button: UIButton, context: Context) {
         context.coordinator.rename = rename
         button.setTitle(title, for: .normal)
+        // The title identifies the current terminal; it is not a primary action.
+        button.setTitleColor(.label, for: .normal)
         button.isEnabled = isEnabled
     }
 

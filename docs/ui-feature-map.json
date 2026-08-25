@@ -53,7 +53,8 @@
         "accessibility_ids": [
           "connection-details-button",
           "shortcuts-button",
-          "new-terminal-button"
+          "new-terminal-button",
+          "terminal-sidebar-button"
         ],
         "localization": [],
         "tests": [

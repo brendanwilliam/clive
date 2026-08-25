@@ -209,6 +209,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private var keyboardVisible = false
     private var policy = TerminalInputControlPolicy()
     private var heightConstraint: NSLayoutConstraint!
+    private var compactRowLeadingConstraint: NSLayoutConstraint!
+    private var expandedRowLeadingConstraint: NSLayoutConstraint!
     private var compactVerticalConstraints: [NSLayoutConstraint] = []
     private var expandedVerticalConstraints: [NSLayoutConstraint] = []
 
@@ -228,9 +230,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
         NSLayoutConstraint.activate([
             keyboardButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), keyboardButton.widthAnchor.constraint(equalToConstant: 44), keyboardButton.heightAnchor.constraint(equalToConstant: 44),
             shortcutButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), shortcutButton.widthAnchor.constraint(equalToConstant: 44), shortcutButton.heightAnchor.constraint(equalToConstant: 44),
-            rowHost.leadingAnchor.constraint(equalTo: keyboardButton.trailingAnchor, constant: 4), rowHost.trailingAnchor.constraint(equalTo: shortcutButton.leadingAnchor, constant: -4),
+            rowHost.trailingAnchor.constraint(equalTo: shortcutButton.leadingAnchor, constant: -4),
             heightConstraint,
         ])
+        compactRowLeadingConstraint = rowHost.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8)
+        expandedRowLeadingConstraint = rowHost.leadingAnchor.constraint(equalTo: keyboardButton.trailingAnchor, constant: 4)
         compactVerticalConstraints = [
             keyboardButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             shortcutButton.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -244,7 +248,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             rowHost.heightAnchor.constraint(equalToConstant: 44),
         ]
         shortcutButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
-        keyboardButton.tintColor = .tintColor
+        keyboardButton.tintColor = .label
         shortcutButton.tintColor = .tintColor
         updateAppearance()
     }
@@ -269,9 +273,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyboardButton.accessibilityLabel = keyboardVisible ? "Hide keyboard" : "Show keyboard"
         let expanded = policy.state == .keyboard
         heightConstraint.constant = expanded ? 96 : 48
+        keyboardButton.isHidden = !expanded
         keyRow?.setKeyboardVisible(expanded)
         NSLayoutConstraint.deactivate(expanded ? compactVerticalConstraints : expandedVerticalConstraints)
         NSLayoutConstraint.activate(expanded ? expandedVerticalConstraints : compactVerticalConstraints)
+        compactRowLeadingConstraint.isActive = !expanded
+        expandedRowLeadingConstraint.isActive = expanded
         rowHost.isHidden = policy.state == .shortcuts
     }
 }

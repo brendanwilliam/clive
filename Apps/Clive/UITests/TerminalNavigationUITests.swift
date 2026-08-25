@@ -44,12 +44,13 @@ final class TerminalNavigationUITests: XCTestCase {
         let first = terminalSurface(firstID)
         XCTAssertTrue(first.waitForExistence(timeout: 3))
         let keyboard = app.buttons["terminal-keyboard-button"]
-        XCTAssertEqual(keyboard.label, "Show keyboard")
+        XCTAssertFalse(keyboard.exists)
         XCTAssertTrue(app.buttons["down"].exists)
         XCTAssertTrue(app.buttons["up"].exists)
         XCTAssertTrue(app.buttons["enter"].exists)
-        keyboard.tap()
+        first.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
         XCTAssertEqual(keyboard.label, "Hide keyboard")
         keyboard.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
@@ -62,7 +63,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     func testKeyboardShowsFixedDownUpEnterToolbar() {
-        app.buttons["terminal-keyboard-button"].tap()
+        terminalSurface(firstID).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         let down = app.buttons["down"]
         let up = app.buttons["up"]
@@ -99,9 +100,10 @@ final class TerminalNavigationUITests: XCTestCase {
 
     func testKeyboardDismissalThenPagingRemainAvailable() {
         let first = terminalSurface(firstID)
-        let keyboard = app.buttons["terminal-keyboard-button"]
-        keyboard.tap()
+        first.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        let keyboard = app.buttons["terminal-keyboard-button"]
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
         keyboard.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         openTerminalDrawer()
@@ -174,8 +176,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     func testShortcutsOpenFromBottomControlRunAndRestoreKeyboardState() {
-        let keyboard = app.buttons["terminal-keyboard-button"]
-        keyboard.tap()
+        terminalSurface(firstID).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         app.buttons["terminal-shortcuts-button"].tap()
         let shortcut = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Status")).firstMatch
@@ -186,8 +187,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     func testShortcutPanelManageOpensSettingsAfterKeyboardWasVisible() {
-        let keyboard = app.buttons["terminal-keyboard-button"]
-        keyboard.tap()
+        terminalSurface(firstID).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         app.buttons["terminal-shortcuts-button"].tap()
         XCTAssertTrue(app.buttons["manage-shortcuts-button"].waitForExistence(timeout: 2))
@@ -216,7 +216,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     private var terminalDrawerButton: XCUIElement {
-        app.navigationBars.buttons.firstMatch
+        app.buttons["terminal-sidebar-button"]
     }
 
     private func showFirstTerminalDetail() {

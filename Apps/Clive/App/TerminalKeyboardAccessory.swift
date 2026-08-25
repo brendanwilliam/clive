@@ -134,7 +134,10 @@ final class TerminalKeyButton: UIButton {
 
     private func updateAppearance() {
         backgroundColor = isHighlighted || isSelected ? .systemFill : .clear
-        tintColor = .tintColor
-        setTitleColor(.tintColor, for: .normal)
+        // Terminal keys are utility controls. Reserve the app tint for the
+        // selected modifier state instead of coloring the entire key row blue.
+        let titleColor: UIColor = isSelected ? .tintColor : .label
+        tintColor = titleColor
+        setTitleColor(titleColor, for: .normal)
     }
 }
