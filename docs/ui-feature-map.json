@@ -478,7 +478,7 @@
         "Terminal list",
         "Session drawer"
       ],
-      "presentation": "Adaptive native sidebar listing terminals and terminal-management actions, opened from the Terminal drawer control when the detail is visible.",
+      "presentation": "Adaptive native sidebar listing terminals and terminal-management actions; compact launches begin on the selected Terminal detail and open this sidebar from the Terminal drawer control.",
       "repetition": "Rows repeat for open and resumable detached Terminals.",
       "related_components": [
         "ios.workspace.terminal-pager",
@@ -2523,6 +2523,17 @@
       "reason": "Correcting the CI result-bundle artifact path changes verification diagnostics only and does not change mapped user interface components or resource relationships.",
       "paths": [
         ".github/workflows/verify.yml"
+      ],
+      "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-24-zzzzzzzzzz-develop-compatibility-gate",
+      "reason": "Reusable pull-request compatibility checks and terminal UI-test synchronization change CI coverage and test automation without changing mapped component relationships.",
+      "paths": [
+        ".github/workflows/compatibility.yml",
+        ".github/workflows/verify-develop.yml",
+        ".github/workflows/verify.yml",
+        "Apps/Clive/UITests/TerminalNavigationUITests.swift"
       ],
       "result": "no-component-impact"
     }

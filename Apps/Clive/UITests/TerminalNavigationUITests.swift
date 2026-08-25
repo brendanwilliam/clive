@@ -210,7 +210,6 @@ final class TerminalNavigationUITests: XCTestCase {
         terminalDrawerButton.tap()
         XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 3))
     }
-
     private func waitForSelection(of terminal: XCUIElement, timeout: TimeInterval = 4) -> Bool {
         let predicate = NSPredicate(format: "value == %@", "Selected")
         return XCTWaiter.wait(
