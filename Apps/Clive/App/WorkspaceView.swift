@@ -213,11 +213,8 @@ struct WorkspaceView: View {
     }
 
     private var terminalActions: some View {
-        Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus.rectangle.on.rectangle").frame(width: 38, height: 34) }
+        Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus.rectangle.on.rectangle") }
             .accessibilityLabel("New Terminal").accessibilityIdentifier("new-terminal-button")
-        .foregroundStyle(.white)
-        .buttonStyle(.plain)
-        .cliveGlassBackground(in: Capsule())
     }
 
     private func dismissKeyboard() {

@@ -30,6 +30,10 @@ final class TerminalKeyboardAccessory: UIView {
     private let send: (Data) -> Void
     private let scrollView = UIScrollView()
     private let row = UIStackView()
+    private let compactStack = UIStackView()
+    private let directionsGroup = UIVisualEffectView(effect: nil)
+    private let directionsStack = UIStackView()
+    private let enterButton = TerminalKeyButton(type: .system)
     private var expanded = false
     private var activeModifiers = Set<Modifier>()
 
@@ -43,8 +47,36 @@ final class TerminalKeyboardAccessory: UIView {
         row.translatesAutoresizingMaskIntoConstraints = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        compactStack.axis = .vertical
+        compactStack.spacing = 8
+        compactStack.translatesAutoresizingMaskIntoConstraints = false
+        directionsStack.axis = .vertical
+        directionsStack.distribution = .fillEqually
+        directionsStack.translatesAutoresizingMaskIntoConstraints = false
+        directionsGroup.translatesAutoresizingMaskIntoConstraints = false
+        directionsGroup.layer.cornerRadius = 22
+        directionsGroup.layer.cornerCurve = .continuous
+        directionsGroup.clipsToBounds = true
+        if #available(iOS 26.0, *) {
+            let effect = UIGlassEffect(style: .regular)
+            effect.isInteractive = true
+            directionsGroup.effect = effect
+        } else {
+            directionsGroup.effect = UIBlurEffect(style: .systemMaterial)
+        }
+        enterButton.isPrimary = true
+        enterButton.accessibilityIdentifier = "enter"
+        enterButton.accessibilityLabel = "Enter"
+        enterButton.accessibilityValue = "\r"
+        enterButton.setTitle("↵", for: .normal)
+        enterButton.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17), maximumPointSize: 24)
+        enterButton.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
         addSubview(scrollView)
+        addSubview(compactStack)
         scrollView.addSubview(row)
+        compactStack.addArrangedSubview(directionsGroup)
+        compactStack.addArrangedSubview(enterButton)
+        directionsGroup.contentView.addSubview(directionsStack)
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor), scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor), scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -53,6 +85,16 @@ final class TerminalKeyboardAccessory: UIView {
             row.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
             row.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
             row.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
+            compactStack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            compactStack.topAnchor.constraint(equalTo: topAnchor),
+            compactStack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            compactStack.widthAnchor.constraint(equalToConstant: 44),
+            directionsGroup.heightAnchor.constraint(equalToConstant: 88),
+            enterButton.heightAnchor.constraint(equalToConstant: 44),
+            directionsStack.leadingAnchor.constraint(equalTo: directionsGroup.contentView.leadingAnchor),
+            directionsStack.trailingAnchor.constraint(equalTo: directionsGroup.contentView.trailingAnchor),
+            directionsStack.topAnchor.constraint(equalTo: directionsGroup.contentView.topAnchor),
+            directionsStack.bottomAnchor.constraint(equalTo: directionsGroup.contentView.bottomAnchor),
         ])
         rebuildRow()
     }
@@ -67,6 +109,18 @@ final class TerminalKeyboardAccessory: UIView {
 
     private func rebuildRow() {
         row.arrangedSubviews.forEach { row.removeArrangedSubview($0); $0.removeFromSuperview() }
+        directionsStack.arrangedSubviews.forEach { directionsStack.removeArrangedSubview($0); $0.removeFromSuperview() }
+        scrollView.isHidden = !expanded
+        compactStack.isHidden = expanded
+        guard expanded else {
+            [
+                ("↑", "up", "Up", "\u{1b}[A"),
+                ("↓", "down", "Down", "\u{1b}[B"),
+            ].forEach { title, identifier, label, input in
+                directionsStack.addArrangedSubview(makeButton(title: title, identifier: identifier, label: label, input: input))
+            }
+            return
+        }
         let keys: [(String, String, String, String?)] = expanded
             ? [("Esc", "escape", "Escape", "\u{1b}"), ("⇥", "tab", "Tab", "\t"),
                ("⇧", "shift", "Shift", nil), ("⌃", "control", "Control", nil),
@@ -77,19 +131,24 @@ final class TerminalKeyboardAccessory: UIView {
                ("@", "at", "At sign", "@"), ("$", "dollar", "Dollar", "$")]
             : [("↓", "down", "Down", "\u{1b}[B"), ("↑", "up", "Up", "\u{1b}[A"), ("↵", "enter", "Enter", "\r")]
         for (title, identifier, label, input) in keys {
-            let button = TerminalKeyButton(type: .system)
-            button.setTitle(title, for: .normal)
-            button.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17), maximumPointSize: 24)
-            button.titleLabel?.adjustsFontForContentSizeCategory = true
-            button.accessibilityIdentifier = identifier
-            button.accessibilityLabel = label
-            button.accessibilityValue = input
-            button.isPrimary = identifier == "enter" && !expanded
+            let button = makeButton(title: title, identifier: identifier, label: label, input: input)
             button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
             button.isSelected = activeModifiers.contains(where: { $0.rawValue == identifier })
             button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
             row.addArrangedSubview(button)
         }
+    }
+
+    private func makeButton(title: String, identifier: String, label: String, input: String?) -> TerminalKeyButton {
+        let button = TerminalKeyButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17), maximumPointSize: 24)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.accessibilityIdentifier = identifier
+        button.accessibilityLabel = label
+        button.accessibilityValue = input
+        button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
+        return button
     }
 
     @objc private func pressed(_ sender: UIButton) {
@@ -135,10 +194,10 @@ final class TerminalKeyButton: UIButton {
     }
 
     private func updateAppearance() {
-        backgroundColor = isPrimary ? .systemBlue : (isHighlighted || isSelected ? .systemFill : .clear)
+        backgroundColor = isPrimary ? .white : (isHighlighted || isSelected ? .systemFill : .clear)
         // Terminal keys are utility controls. Reserve the app tint for the
         // selected modifier state instead of coloring the entire key row.
-        let titleColor: UIColor = isPrimary ? .white : (isSelected ? .tintColor : .label)
+        let titleColor: UIColor = isPrimary ? .black : (isSelected ? .tintColor : .label)
         tintColor = titleColor
         setTitleColor(titleColor, for: .normal)
     }

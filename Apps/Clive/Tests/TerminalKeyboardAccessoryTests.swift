@@ -25,7 +25,7 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertEqual(policy.state, .compact)
     }
 
-    func testToolbarStartsWithOnlyDownUpAndEnter() throws {
+    func testToolbarStartsWithVerticallyStackedDownUpAndSeparateEnter() throws {
         let accessory = TerminalKeyboardAccessory(send: { _ in })
         for identifier in ["down", "up", "enter"] {
             XCTAssertNotNil(accessory.descendant(withIdentifier: identifier))
@@ -64,9 +64,10 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
             XCTAssertFalse(controls.isKeyboardControlVisible)
             XCTAssertTrue(controls.isKeyRowControlVisible)
             XCTAssertTrue(controls.isShortcutsControlVisible)
+            XCTAssertGreaterThan(controls.keyRowControlFrame.width, 0)
             XCTAssertLessThan(controls.shortcutsControlFrame.maxX, controls.keyRowControlFrame.minX)
             XCTAssertEqual(controls.keyRowControlFrame.maxX, controls.frame.width - 8, accuracy: 0.5)
-            XCTAssertEqual((accessoryButton(in: controls, identifier: "enter") as? TerminalKeyButton)?.backgroundColor, .systemBlue)
+            XCTAssertEqual((accessoryButton(in: controls, identifier: "enter") as? TerminalKeyButton)?.backgroundColor, .white)
 
             controls.setKeyboardVisible(true)
             controls.layoutIfNeeded()
@@ -74,6 +75,7 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
             XCTAssertFalse(controls.keyboardControlFrame.intersects(controls.keyRowControlFrame))
             XCTAssertFalse(controls.keyRowControlFrame.intersects(controls.shortcutsControlFrame))
             XCTAssertTrue(controls.isKeyboardControlVisible)
+            XCTAssertGreaterThan(controls.keyRowControlFrame.width, 0)
             XCTAssertLessThan(controls.shortcutsControlFrame.maxX, controls.keyRowControlFrame.minX)
             XCTAssertLessThan(controls.keyRowControlFrame.maxX, controls.keyboardControlFrame.minX)
         }

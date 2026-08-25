@@ -208,6 +208,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private let keyRowGroup = UIVisualEffectView(effect: nil)
     private let shortcutsGroup = UIVisualEffectView(effect: nil)
     private let rowHost = UIView()
+    private var compactKeyRowTrailing: NSLayoutConstraint!
+    private var compactKeyRowWidth: NSLayoutConstraint!
+    private var expandedKeyRowLeading: NSLayoutConstraint!
+    private var expandedKeyRowTrailing: NSLayoutConstraint!
+    private var controlsHeight: NSLayoutConstraint!
+    private var keyRowHeight: NSLayoutConstraint!
     private var keyRow: TerminalKeyboardAccessory?
     private var keyboardVisible = false
     private var policy = TerminalInputControlPolicy()
@@ -217,7 +223,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         backgroundColor = .clear
         [keyboardGroup, keyRowGroup, shortcutsGroup].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
-            $0.layer.cornerRadius = 14
+            $0.layer.cornerRadius = 22
             $0.layer.cornerCurve = .continuous
             $0.clipsToBounds = true
             addSubview($0)
@@ -234,16 +240,23 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyRowGroup.contentView.addSubview(rowHost)
         shortcutsGroup.contentView.addSubview(shortcutButton)
         NSLayoutConstraint.activate([
-            shortcutsGroup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), shortcutsGroup.widthAnchor.constraint(equalToConstant: 44), shortcutsGroup.heightAnchor.constraint(equalToConstant: 44), shortcutsGroup.centerYAnchor.constraint(equalTo: centerYAnchor),
-            keyboardGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), keyboardGroup.widthAnchor.constraint(equalToConstant: 44), keyboardGroup.heightAnchor.constraint(equalToConstant: 44), keyboardGroup.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(equalToConstant: 48),
+            shortcutsGroup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), shortcutsGroup.widthAnchor.constraint(equalToConstant: 44), shortcutsGroup.heightAnchor.constraint(equalToConstant: 44), shortcutsGroup.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            keyboardGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), keyboardGroup.widthAnchor.constraint(equalToConstant: 44), keyboardGroup.heightAnchor.constraint(equalToConstant: 44), keyboardGroup.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
             keyboardButton.leadingAnchor.constraint(equalTo: keyboardGroup.contentView.leadingAnchor), keyboardButton.trailingAnchor.constraint(equalTo: keyboardGroup.contentView.trailingAnchor), keyboardButton.topAnchor.constraint(equalTo: keyboardGroup.contentView.topAnchor), keyboardButton.bottomAnchor.constraint(equalTo: keyboardGroup.contentView.bottomAnchor),
             shortcutButton.leadingAnchor.constraint(equalTo: shortcutsGroup.contentView.leadingAnchor), shortcutButton.trailingAnchor.constraint(equalTo: shortcutsGroup.contentView.trailingAnchor), shortcutButton.topAnchor.constraint(equalTo: shortcutsGroup.contentView.topAnchor), shortcutButton.bottomAnchor.constraint(equalTo: shortcutsGroup.contentView.bottomAnchor),
             rowHost.leadingAnchor.constraint(equalTo: keyRowGroup.contentView.leadingAnchor), rowHost.trailingAnchor.constraint(equalTo: keyRowGroup.contentView.trailingAnchor), rowHost.topAnchor.constraint(equalTo: keyRowGroup.contentView.topAnchor), rowHost.bottomAnchor.constraint(equalTo: keyRowGroup.contentView.bottomAnchor),
         ])
+        compactKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8)
+        compactKeyRowWidth = keyRowGroup.widthAnchor.constraint(equalToConstant: 44)
+        expandedKeyRowLeading = keyRowGroup.leadingAnchor.constraint(equalTo: shortcutsGroup.trailingAnchor, constant: 4)
+        expandedKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: keyboardGroup.leadingAnchor, constant: -4)
+        controlsHeight = heightAnchor.constraint(equalToConstant: 144)
+        keyRowHeight = keyRowGroup.heightAnchor.constraint(equalToConstant: 140)
         NSLayoutConstraint.activate([
-            keyRowGroup.centerYAnchor.constraint(equalTo: centerYAnchor),
-            keyRowGroup.heightAnchor.constraint(equalToConstant: 40),
+            keyRowGroup.centerYAnchor.constraint(equalTo: centerYAnchor), keyRowHeight,
+            compactKeyRowTrailing,
+            compactKeyRowWidth,
+            controlsHeight,
         ])
         shortcutButton.setImage(UIImage(systemName: "bolt.fill"), for: .normal)
         keyboardButton.tintColor = .white
@@ -287,33 +300,31 @@ struct TerminalSurfaceView: UIViewRepresentable {
     var isKeyRowControlVisible: Bool { !keyRowGroup.isHidden }
     var isShortcutsControlVisible: Bool { !shortcutsGroup.isHidden }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        layoutKeyRow()
-    }
-
-    private func layoutKeyRow() {
-        let keyRowLeading = policy.state == .keyboard ? shortcutsGroup.frame.maxX + 4 : 0
-        let keyRowTrailing = policy.state == .keyboard ? keyboardGroup.frame.minX - 4 : bounds.width - 8
-        let keyRowWidth = max(0, keyRowTrailing - keyRowLeading)
-        keyRowGroup.frame = CGRect(
-            x: policy.state == .keyboard ? keyRowLeading : keyRowTrailing - min(136, keyRowWidth),
-            y: keyRowGroup.frame.minY,
-            width: min(136, keyRowWidth),
-            height: keyRowGroup.frame.height
-        )
-    }
-
     private func updateAppearance() {
         keyboardButton.setImage(UIImage(systemName: keyboardVisible ? "keyboard.chevron.compact.down" : "keyboard"), for: .normal)
         keyboardButton.accessibilityLabel = keyboardVisible ? "Hide keyboard" : "Show keyboard"
         let expanded = policy.state == .keyboard
+        let compact = policy.state == .compact
         keyboardButton.isHidden = !expanded
         keyboardGroup.isHidden = !expanded
         keyRow?.setKeyboardVisible(expanded)
         keyRowGroup.isHidden = policy.state == .shortcuts
+        controlsHeight.constant = compact ? 144 : 48
+        keyRowHeight.constant = compact ? 140 : 44
+        compactKeyRowWidth.isActive = compact
+        compactKeyRowTrailing.isActive = !expanded
+        expandedKeyRowLeading.isActive = expanded
+        expandedKeyRowTrailing.isActive = expanded
+        if compact {
+            keyRowGroup.effect = nil
+        } else if #available(iOS 26.0, *) {
+            let effect = UIGlassEffect(style: .regular)
+            effect.isInteractive = true
+            keyRowGroup.effect = effect
+        } else {
+            keyRowGroup.effect = UIBlurEffect(style: .systemMaterial)
+        }
         layoutIfNeeded()
-        layoutKeyRow()
     }
 }
 
