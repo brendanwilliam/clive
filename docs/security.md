@@ -21,7 +21,7 @@ Automatic router configuration is owner-approved, TCP-only, limited to the confi
 - Pairing QR codes are single-use, short-lived, and require a local Mac-user confirmation.
 - The iOS app requires biometrics on initial launch and before initiating or resuming a connection when more than five minutes have elapsed since the last successful in-process verification. The grace period is not persisted or extended by foreground events.
 - Backgrounding hides terminal content immediately, clears transient previews, and detaches transports without sending close or terminate. Until biometric authorization succeeds, foreground restoration sends no catalog or terminal traffic.
-- The five-minute biometric grace and 30-minute detached-PTY retention are independent. Authentication never renews retention, and an unavailable stable server session ID must never cause implicit shell creation.
+- The five-minute biometric grace and 90-minute detached-PTY retention are independent. Authentication never renews retention, and an unavailable stable server session ID must never cause implicit shell creation.
 - Certificate pinning binds each saved Mac and iPhone to the pairing established over the QR flow.
 - A terminal session has one active attachment. Only a reconnect from the same endpoint may replace it; a different endpoint is rejected.
 - The macOS service is foreground and user-scoped; it never runs as root and never elevates privileges.
@@ -32,7 +32,7 @@ Automatic router configuration is owner-approved, TCP-only, limited to the confi
 
 ## Explicit limitations
 
-Physical access to an unlocked iPhone or Mac user session remains a risk. V1 has no account recovery and no relay; losing a phone requires revocation from the Mac. The service must warn before binding to non-private networks and must provide a configuration option to disable LAN advertising entirely.
+Physical access to an unlocked iPhone or Mac user session remains a risk. V1 has no account recovery and no relay; losing a phone requires revocation from the Mac. The relay design and launch boundary are documented in [`relay-architecture-and-threat-model.md`](relay-architecture-and-threat-model.md). The service must warn before binding to non-private networks and must provide a configuration option to disable LAN advertising entirely.
 
 The macOS identity password and encrypted identity share the same user-scoped directory, so filesystem access as that macOS user can recover the identity. This prototype does not claim protection from compromise of the invoking user account.
 

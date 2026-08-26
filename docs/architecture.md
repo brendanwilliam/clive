@@ -17,6 +17,9 @@ Both clients are native Swift applications. Shared protocol, cryptography, frami
 Connectivity route selection follows the transport-independent contract in
 [`connectivity-architecture.md`](connectivity-architecture.md). Route changes
 reattach to the existing stable session and never create a replacement PTY.
+An encrypted relay is a designed fallback extension described in
+[`relay-architecture-and-threat-model.md`](relay-architecture-and-threat-model.md);
+it is unavailable in V1 and is not an authorization or terminal-data endpoint.
 
 ## Connection flow
 
