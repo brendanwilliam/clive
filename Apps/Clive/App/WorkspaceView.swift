@@ -15,7 +15,7 @@ private extension View {
     @ViewBuilder
     func cliveClearGlassBackground<S: Shape>(in shape: S) -> some View {
         if #available(iOS 26.0, *) {
-            glassEffect(.clear, in: shape)
+            glassEffect(.regular, in: shape)
         } else {
             background(.ultraThinMaterial, in: shape)
         }
