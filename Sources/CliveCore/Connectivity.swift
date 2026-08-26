@@ -64,7 +64,13 @@ public struct RouteCandidate: Codable, Equatable, Identifiable, Sendable {
     }
 
     public func isUsable(at now: Date) -> Bool {
-        availability && authorization == .authorized && health == .healthy && (expiresAt == nil || now < expiresAt!)
+        guard availability, authorization == .authorized, health == .healthy else { return false }
+        if let expiresAt, now >= expiresAt { return false }
+        if let lastVerifiedAt,
+           now.timeIntervalSince(lastVerifiedAt) > ConnectivityRouteStateMachine.candidateStaleness {
+            return false
+        }
+        return true
     }
 
     public func state(at now: Date, selected: Bool = false) -> RouteState {
@@ -86,6 +92,31 @@ public enum RouteSelectionDecision: Equatable, Sendable {
     case lostSelection
 }
 
+/// Bounded exponential retry timing for route-provider probes and connections.
+public struct RouteRetryPolicy: Equatable, Sendable {
+    public let baseDelay: TimeInterval
+    public let maximumDelay: TimeInterval
+
+    public init(
+        baseDelay: TimeInterval = ConnectivityRouteStateMachine.retryBaseDelay,
+        maximumDelay: TimeInterval = ConnectivityRouteStateMachine.retryMaximumDelay
+    ) {
+        self.baseDelay = max(0, baseDelay)
+        self.maximumDelay = max(self.baseDelay, maximumDelay)
+    }
+
+    public func delay(forAttempt attempt: Int) -> TimeInterval {
+        guard attempt > 1, baseDelay < maximumDelay else { return baseDelay }
+        var delay = baseDelay
+        var currentAttempt = 1
+        while currentAttempt < attempt, delay < maximumDelay {
+            delay = min(maximumDelay, delay * 2)
+            currentAttempt += 1
+        }
+        return delay
+    }
+}
+
 /// Deterministic route selection. Network probing is performed by providers; this
 /// type only applies ranking, debounce, hysteresis, and selection transitions.
 public struct ConnectivityRouteStateMachine: Sendable {
@@ -103,7 +134,12 @@ public struct ConnectivityRouteStateMachine: Sendable {
     }
 
     public mutating func evaluate(_ candidates: [RouteCandidate], at now: Date) -> RouteSelectionDecision {
-        let usable = candidates.filter { $0.isUsable(at: now) }.sorted { $0.kind < $1.kind }
+        let usable = candidates
+            .filter { $0.isUsable(at: now) }
+            .sorted {
+                if $0.kind != $1.kind { return $0.kind < $1.kind }
+                return $0.id.uuidString < $1.id.uuidString
+            }
 
         guard let selectedRouteID else {
             pendingRouteID = nil

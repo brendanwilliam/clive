@@ -37,6 +37,52 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     #expect(unauthorized.state(at: now) == .unavailable)
 }
 
+@Test func staleHealthyRoutesAreUnavailable() {
+    let now = Date(timeIntervalSince1970: 100)
+    let stale = RouteCandidate(
+        kind: .lan,
+        host: "mac.local",
+        port: 64236,
+        lastVerifiedAt: now.addingTimeInterval(-ConnectivityRouteStateMachine.candidateStaleness - 1),
+        health: .healthy
+    )
+
+    #expect(!stale.isUsable(at: now))
+    #expect(stale.state(at: now) == .unavailable)
+}
+
+@Test func retryPolicyUsesBoundedExponentialBackoff() {
+    let policy = RouteRetryPolicy(baseDelay: 1, maximumDelay: 5)
+
+    #expect(policy.delay(forAttempt: 0) == 1)
+    #expect(policy.delay(forAttempt: 1) == 1)
+    #expect(policy.delay(forAttempt: 2) == 2)
+    #expect(policy.delay(forAttempt: 3) == 4)
+    #expect(policy.delay(forAttempt: 4) == 5)
+    #expect(policy.delay(forAttempt: 100) == 5)
+}
+
+@Test func equalPriorityRoutesAreSelectedDeterministically() {
+    let now = Date(timeIntervalSince1970: 100)
+    let first = RouteCandidate(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+        kind: .lan,
+        host: "first.local",
+        port: 64236,
+        health: .healthy
+    )
+    let second = RouteCandidate(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+        kind: .lan,
+        host: "second.local",
+        port: 64236,
+        health: .healthy
+    )
+    var selector = ConnectivityRouteStateMachine()
+
+    #expect(selector.evaluate([second, first], at: now) == .selected(first))
+}
+
 @Test func companionStartupReturnsWithoutLaunchingWhenDaemonIsAvailable() throws {
     var launches = 0
     let result = try CompanionStartupPolicy.run(

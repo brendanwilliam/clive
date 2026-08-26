@@ -13,13 +13,16 @@ provision VPN credentials. Relay is an extension point and is not enabled in V1.
 
 Each candidate exposes `unavailable`, `available`, `selected`, or `failed` as its
 external state. Probe and drain details remain internal. A candidate is usable
-only when it is available, authorized, healthy, and not expired.
+only when it is available, authorized, healthy, and not expired. When a provider
+supplies `lastVerifiedAt`, the candidate becomes unusable after 30 seconds
+without a fresh verification. Candidates with equal route priority are ordered
+by their stable candidate ID so selection is deterministic.
 
 The selector immediately fails over when the selected route becomes unusable. A
 higher-priority healthy route must remain available for five seconds before a
 handoff, preventing brief Wi-Fi/VPN changes from flapping the connection. Route
-providers own probing and retry scheduling; the selector supplies bounded retry
-constants for consistent behavior.
+providers own probing and retry scheduling; the shared retry policy uses bounded
+exponential backoff from one second to a maximum of 60 seconds.
 
 ## Handoff invariants
 
