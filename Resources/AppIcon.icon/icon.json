@@ -15,10 +15,10 @@
           "image-name" : "clive-wink.svg",
           "name" : "clive-wink",
           "position" : {
-            "scale" : 2.08,
+            "scale" : 1.57,
             "translation-in-points" : [
-              195,
-              5
+              251,
+              3
             ]
           }
         }

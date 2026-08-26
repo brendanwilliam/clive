@@ -1,11 +1,19 @@
 ---
 name: clive-local-verify
-description: Verify and restore local compatibility across CliveCore, the macOS companion, and the iOS app after code or configuration changes. Use when checking a change locally, preparing a PR, or diagnosing why one Clive platform no longer builds; do not use to publish releases.
+description: Verify local compatibility across CliveCore, the macOS companion, and the iOS app when preparing a PR or diagnosing a platform build failure. Do not use for every development edit or to publish releases.
 ---
 
 # Clive Local Verify
 
-Run `./scripts/verify-local.sh` from the repository root. It generates the ignored iOS Xcode project with XcodeGen when absent, then executes the shared Swift tests and unsigned Debug builds for macOS and generic iOS in parallel, reusing DerivedData under `/private/tmp/clive-local-verify`. Use `--signed` only when the user wants local signing or physical-device readiness and the machine's development configuration is available.
+Use this skill for pre-PR compatibility verification or when diagnosing a platform
+build failure, not as a per-edit development requirement. During normal development,
+prefer focused tests and targeted builds that do not boot a simulator. For the full
+check, run `./scripts/verify-local.sh` from the repository root. It generates the
+ignored iOS Xcode project with XcodeGen when absent, then executes the shared Swift
+tests and unsigned Debug builds for macOS and generic iOS in parallel, reusing
+DerivedData under `/private/tmp/clive-local-verify`. Use `--signed` only when the user
+wants local signing or physical-device readiness and the machine's development
+configuration is available.
 
 The same script is the source of truth for `.github/workflows/verify.yml` and the coordinated release preflight. Keep platform checks in the script rather than duplicating them in workflow YAML.
 

@@ -58,11 +58,12 @@ python3 scripts/feature-map.py query Terminal
 python3 scripts/feature-map.py query ios.workspace.new-terminal-button
 ```
 
-For a component-impacting change, update its hierarchy, relationships, states, and every
-resource category in `docs/ui-feature-map.json`. Preserve existing IDs when labels or
-layout change. For a change with no component impact, append one immutable
-`no-component-impact` review whose sorted paths cover the complete pull-request diff
-except the map itself.
+When preparing a pull request into `develop`, update the hierarchy, relationships, states,
+and every resource category in `docs/ui-feature-map.json` for component-impacting changes.
+The final pull-request diff is the source of truth, so intermediate commits do not need
+separate map edits. Preserve existing IDs when labels or layout change. For a pull request
+with no component impact, append one immutable `no-component-impact` review whose sorted
+paths cover the complete pull-request diff except the map itself.
 
 Validation executes the versioned JSON Schema, checks hierarchy and ordering invariants,
 and verifies every repository-relative resource path. Validate the result locally against

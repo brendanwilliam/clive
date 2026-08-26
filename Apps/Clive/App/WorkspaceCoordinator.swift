@@ -140,6 +140,12 @@ struct AuthenticationGracePolicy: Equatable {
     }
 }
 
+enum SceneTransitionPolicy {
+    static func shouldSuspendLiveSessions(isSceneActive: Bool, hasCapturedForeground: Bool, authenticationInFlight: Bool) -> Bool {
+        isSceneActive && !hasCapturedForeground && !authenticationInFlight
+    }
+}
+
 @MainActor @Observable final class WorkspaceSession: Identifiable {
     var descriptor: SessionDescriptor
     nonisolated let id: UUID
@@ -343,7 +349,7 @@ struct LocalStateResetter {
 
 @MainActor @Observable final class WorkspaceCoordinator {
     enum State: Equatable { case locked, authenticating, active, authenticationCancelled, unsupportedLocalState, failed(String) }
-    enum PresentedScreen: Equatable { case terminalList, settings }
+    enum PresentedScreen: Equatable { case terminalList, settings, shortcutSettings }
     enum Recovery: Equatable { case unavailableMac(String), noPairedMac, disconnected }
 
     let macs = PairedMacsModel()
@@ -502,6 +508,7 @@ struct LocalStateResetter {
     }
 
     func showSettings() { presentedScreen = .settings }
+    func showShortcutSettings() { presentedScreen = .shortcutSettings }
     func showConnections() { showTerminalList() }
 
     func shouldPresentConnectionSetupGuide() -> Bool {
@@ -607,15 +614,51 @@ struct LocalStateResetter {
 
     func deleteAllVisibleSessions() async {
         guard !isDeletingAllVisibleSessions else { return }
-        let visibleIDs = Array(Set(catalogSessions.map(\.id)).union(sessions.compactMap(\.descriptor.serverSessionID)))
+        await deleteVisibleSessions(
+            sessionIDs: Set(catalogSessions.map(\.id)).union(sessions.compactMap(\.descriptor.serverSessionID)),
+            localSessions: sessions
+        )
+    }
+
+    func deleteDisconnectedVisibleSessions() async {
+        let localSessions = sessions.filter { ConnectionPresentation.status(for: $0.state) != .connected }
+        let catalogSessions = unrepresentedCatalogSessions
+        await deleteVisibleSessions(
+            sessionIDs: Set(catalogSessions.map(\.id)).union(localSessions.compactMap(\.descriptor.serverSessionID)),
+            localSessions: localSessions
+        )
+    }
+
+    func disconnectAndDeleteConnectedSessions() async {
+        let localSessions = sessions.filter { ConnectionPresentation.status(for: $0.state) == .connected }
+        localSessions.forEach { $0.disconnect() }
+        await deleteVisibleSessions(
+            sessionIDs: Set(localSessions.compactMap(\.descriptor.serverSessionID)),
+            localSessions: localSessions
+        )
+    }
+
+    private func deleteVisibleSessions(sessionIDs: Set<UUID>, localSessions: [WorkspaceSession]) async {
+        guard !isDeletingAllVisibleSessions else { return }
+        guard !localSessions.isEmpty || !sessionIDs.isEmpty else { return }
+        let visibleIDs = Array(sessionIDs)
         isDeletingAllVisibleSessions = true; deleteAllError = nil
         defer { isDeletingAllVisibleSessions = false }
 #if DEBUG
-        if isUITestFixture { sessions.forEach { $0.terminate() }; sessions.removeAll(); catalogSessions.removeAll(); selectSession(nil); return }
+        if isUITestFixture {
+            localSessions.forEach { $0.terminate() }
+            sessions.removeAll { session in localSessions.contains { $0.id == session.id } }
+            catalogSessions.removeAll { sessionIDs.contains($0.id) }
+            if localSessions.contains(where: { $0.id == selectedSessionID }) { selectSession(sessions.first?.id) }
+            return
+        }
 #endif
         if visibleIDs.isEmpty {
-            sessions.forEach { $0.terminate() }; sessions.removeAll(); selectSession(nil)
-            saveCurrentDescriptors(); persist(); clearDestination()
+            localSessions.forEach { $0.terminate() }
+            sessions.removeAll { session in localSessions.contains { $0.id == session.id } }
+            if localSessions.contains(where: { $0.id == selectedSessionID }) { selectSession(sessions.first?.id) }
+            saveCurrentDescriptors(); persist()
+            if sessions.isEmpty { clearDestination() }
             return
         }
         let result: Result<[UUID], Error> = await withCheckedContinuation { continuation in
@@ -623,9 +666,12 @@ struct LocalStateResetter {
         }
         switch result {
         case .success(let terminated) where Set(terminated) == Set(visibleIDs):
-            sessions.filter { $0.descriptor.serverSessionID == nil }.forEach { $0.terminate() }
-            sessions.removeAll(); catalogSessions.removeAll(); selectSession(nil)
-            saveCurrentDescriptors(); persist(); clearDestination()
+            localSessions.forEach { $0.terminate() }
+            sessions.removeAll { session in localSessions.contains { $0.id == session.id } }
+            catalogSessions.removeAll { sessionIDs.contains($0.id) }
+            if localSessions.contains(where: { $0.id == selectedSessionID }) { selectSession(sessions.first?.id) }
+            saveCurrentDescriptors(); persist()
+            if sessions.isEmpty { clearDestination() }
         case .success(let terminated):
             deleteAllError = "Deleted \(terminated.count) of \(visibleIDs.count) terminals. Refresh and try again."
         case .failure:
@@ -674,7 +720,11 @@ struct LocalStateResetter {
     }
 
     func sceneWillLeaveForeground() {
-        guard isSceneActive, !hasCapturedForeground else { return }
+        guard SceneTransitionPolicy.shouldSuspendLiveSessions(
+            isSceneActive: isSceneActive,
+            hasCapturedForeground: hasCapturedForeground,
+            authenticationInFlight: authenticationInFlight
+        ) else { return }
         isSceneActive = false
         hasCapturedForeground = true
         if !sessions.isEmpty { saveCurrentDescriptors(); persist() }
