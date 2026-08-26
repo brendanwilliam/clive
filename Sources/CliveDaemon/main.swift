@@ -195,25 +195,47 @@ struct CliveDaemon {
     }
 
     private static func runPairingClient() throws {
-        let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
-        try channel.send(ControlRequest(command: .pair))
+        let channel: ControlChannel
+        do {
+            channel = try CompanionStartupPolicy.run(
+                companionIsInstalled: FileManager.default.fileExists(atPath: "/Applications/Clive.app"),
+                launch: launchCompanionApp,
+                request: {
+                    let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
+                    try channel.send(ControlRequest(command: .pair))
+                    return channel
+                },
+                isUnavailable: { $0 is ControlSocketError }
+            )
+        } catch {
+            throw CommandError.remote("Clive is not running. Install the companion or run `clive start`, then retry `clive pair`.")
+        }
+
+        signal(SIGINT, SIG_IGN)
+        let interrupt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global(qos: .userInitiated))
+        interrupt.setEventHandler {
+            guard let cancel = try? ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL) else { return }
+            try? cancel.send(ControlRequest(command: .cancelPairing)); _ = try? cancel.readResponse()
+        }
+        interrupt.resume()
+        defer { interrupt.cancel(); signal(SIGINT, SIG_DFL) }
+
         while true {
             let response = try channel.readResponse()
-            guard response.success else { throw CommandError.remote(response.message ?? "Pairing failed.") }
+            guard response.success else { throw CommandError.remote(response.message ?? "Pairing failed. Run `clive pair` to try again.") }
             switch response.kind {
             case .pairingTicket:
-                guard let ticket = response.pairingTicket else { throw ControlSocketError.malformedMessage }
-                print("Scan this pairing code within five minutes:")
+                guard let ticket = response.pairingTicket, let link = try? PairingLink.makeURL(for: ticket) else { throw ControlSocketError.malformedMessage }
+                print("Scan this secure pairing code with the iPhone Camera app within five minutes:")
                 print("Pairing endpoint: \(ticket.endpoint):\(ticket.port)")
-                print(try TerminalQRCode.render(payload: PairingPayload.encode(ticket)))
-                print("Waiting for the iPhone. After scanning, approve the device below.")
+                print(try TerminalQRCode.render(payload: link.absoluteString))
+                print("Ctrl-C cancels this code. After scanning, approve the device below.")
             case .pairingPrompt:
                 guard let prompt = response.pairingPrompt else { throw ControlSocketError.malformedMessage }
-                print("Pair \(prompt.displayName) (\(prompt.deviceID))?")
+                print("Approve pairing for \(prompt.displayName) (\(prompt.deviceID))?")
                 print("Certificate: \(prompt.certificateFingerprint)")
                 print("Approve [y/N]: ", terminator: "")
-                let approved = readLine()?.lowercased() == "y"
-                try channel.send(ControlRequest(command: .approvePairing, approved: approved))
+                try channel.send(ControlRequest(command: .approvePairing, approved: readLine()?.lowercased() == "y"))
             case .result:
                 if let message = response.message { print(message) }
                 return

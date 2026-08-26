@@ -106,10 +106,10 @@ Agreed behavior:
 
 Implementation tasks:
 
-- [ ] Refine `clive pair` output and terminal QR rendering.
-- [ ] Add daemon activation and actionable failure handling.
-- [ ] Remove menu-bar pairing/configuration actions, retaining status only.
-- [ ] Add approval, cancellation, retry, and secret-redaction tests.
+- [x] Refine `clive pair` output and terminal QR rendering.
+- [x] Add daemon activation and actionable failure handling.
+- [x] Remove menu-bar pairing/configuration actions, retaining status only.
+- [x] Add approval, cancellation, retry, and secret-redaction tests.
 
 ### 4. QR security lifecycle — #159
 
