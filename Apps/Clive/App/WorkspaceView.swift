@@ -1006,11 +1006,16 @@ private struct SetupGuideView: View {
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     Text("2. Pair your Mac").font(.headline)
-                    Text("Choose Pair iPhone in Clive on the Mac. It shows a secure, short-lived pairing code. Scan that code here, then approve this iPhone on the Mac.")
+                    Text("In Terminal on the Mac, run `clive pair`. It shows a secure, short-lived pairing code. Scan that code here, then approve this iPhone on the Mac.")
                         .foregroundStyle(.secondary)
                     Button("Pair a Mac", systemImage: "qrcode.viewfinder", action: pairMac)
                         .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("setup-guide-pair-mac-button")
+                }
+                if let pairingTimestamp = pairedMacs.lastPairingTimestamp {
+                    Label("Paired successfully at \(pairingTimestamp.formatted(date: .abbreviated, time: .shortened))", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .accessibilityIdentifier("pairing-success-confirmation")
                 }
                 if case .failed(let message) = pairedMacs.state {
                     VStack(alignment: .leading, spacing: 8) {

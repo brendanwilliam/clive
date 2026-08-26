@@ -287,6 +287,13 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     try await secret.consume(secret: "secret")
 }
 
+@Test func invalidatedPairingSecretRejectsLaterRequests() async throws {
+    let ticket = PairingTicket(endpoint: "127.0.0.1", port: 4444, expiresAt: .now.addingTimeInterval(60), oneTimeSecret: "secret", daemonCertificateFingerprint: "abc")
+    let secret = PairingSecret(ticket: ticket)
+    await secret.invalidate()
+    await #expect(throws: PairingError.consumed) { try await secret.verify(secret: "secret") }
+}
+
 @Test func validPairingRequestDoesNotConsumeSecretBeforeApproval() async throws {
     let ticket = PairingTicket(endpoint: "127.0.0.1", port: 4444, expiresAt: Date.now.addingTimeInterval(60), oneTimeSecret: "secret", daemonCertificateFingerprint: "abc")
     let secret = PairingSecret(ticket: ticket)
@@ -309,7 +316,10 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     let secret = PairingSecret(ticket: ticket)
     let coordinator = PairingCoordinator(secret: secret, trustStore: store, macID: "mac-a", displayName: "Mac", serviceID: "service-a", macCertificate: Data([9])) { _ in true }
     let request = PairingRequest(oneTimeSecret: "secret", deviceID: "phone-a", deviceName: "Phone", certificate: Data([1, 2]))
-    #expect(try await coordinator.accept(request) == PairingAcceptance(macID: "mac-a", displayName: "Mac", serviceID: "service-a", certificate: Data([9])))
+    let acceptance = try await coordinator.accept(request)
+    #expect(acceptance.macID == "mac-a")
+    #expect(acceptance.pairingEventID != nil)
+    #expect(acceptance.pairingTimestamp != nil)
     #expect(await store.device(id: "phone-a")?.certificateFingerprint == Fingerprint.sha256(of: Data([1, 2])))
     await #expect(throws: PairingError.consumed) { try await coordinator.accept(request) }
 }

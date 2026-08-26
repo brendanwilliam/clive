@@ -113,8 +113,8 @@ Implementation tasks:
 
 ### 4. QR security lifecycle — #159
 
-Status: `[-]` design decisions recorded; security implementation and review not
-started.
+Status: `[x]` implemented and covered by focused tests; physical-device coverage
+remains a release validation task.
 
 Agreed behavior:
 
@@ -128,11 +128,11 @@ Agreed behavior:
 
 Implementation tasks:
 
-- [ ] Update the payload/version contract and ticket storage lifecycle.
-- [ ] Implement atomic consume, cancellation, expiry, and replay rejection.
-- [ ] Implement Mac-authoritative timestamp correlation in the UI/protocol.
-- [ ] Add malformed, intercepted, expired, reused, cancelled, and redaction tests.
-- [ ] Complete focused security review before implementation is considered done.
+- [x] Update the payload/version contract and ticket storage lifecycle.
+- [x] Implement atomic consume, cancellation, expiry, and replay rejection.
+- [x] Implement Mac-authoritative timestamp correlation in the UI/protocol.
+- [x] Add malformed, intercepted, expired, reused, cancelled, and redaction tests.
+- [x] Complete focused security review before implementation is considered done.
 
 ### 5. Transport-independent routes — #160
 

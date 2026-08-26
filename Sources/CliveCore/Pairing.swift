@@ -52,13 +52,18 @@ public struct PairingAcceptance: Codable, Equatable, Sendable {
     public let serviceID: String
     public let certificate: Data
     public let rendezvousCapability: RendezvousCapability?
+    /// Non-secret correlation data shown by the Mac and iPhone after approval.
+    public let pairingEventID: UUID?
+    public let pairingTimestamp: Date?
 
-    public init(macID: String, displayName: String, serviceID: String, certificate: Data, rendezvousCapability: RendezvousCapability? = nil) {
+    public init(macID: String, displayName: String, serviceID: String, certificate: Data, rendezvousCapability: RendezvousCapability? = nil, pairingEventID: UUID? = nil, pairingTimestamp: Date? = nil) {
         self.macID = macID
         self.displayName = displayName
         self.serviceID = serviceID
         self.certificate = certificate
         self.rendezvousCapability = rendezvousCapability
+        self.pairingEventID = pairingEventID
+        self.pairingTimestamp = pairingTimestamp
     }
 }
 
@@ -174,10 +179,11 @@ public actor PairingCoordinator {
     private let serviceID: String
     private let rendezvousCapability: RendezvousCapability?
     private let approval: @Sendable (PairingRequest) async -> Bool
+    private let onScan: @Sendable (PairingRequest, Date) async -> Void
     private let didPair: @Sendable () async -> Void
     private var requestInProgress = false
 
-    public init(secret: PairingSecret, trustStore: TrustStore, macID: String, displayName: String, serviceID: String, macCertificate: Data, rendezvousCapability: RendezvousCapability? = nil, approval: @escaping @Sendable (PairingRequest) async -> Bool, didPair: @escaping @Sendable () async -> Void = {}) {
+    public init(secret: PairingSecret, trustStore: TrustStore, macID: String, displayName: String, serviceID: String, macCertificate: Data, rendezvousCapability: RendezvousCapability? = nil, approval: @escaping @Sendable (PairingRequest) async -> Bool, didPair: @escaping @Sendable () async -> Void = {}, onScan: @escaping @Sendable (PairingRequest, Date) async -> Void = { _, _ in }) {
         self.secret = secret
         self.trustStore = trustStore
         self.macID = macID
@@ -186,6 +192,7 @@ public actor PairingCoordinator {
         self.serviceID = serviceID
         self.rendezvousCapability = rendezvousCapability
         self.approval = approval
+        self.onScan = onScan
         self.didPair = didPair
     }
 
@@ -193,14 +200,25 @@ public actor PairingCoordinator {
         guard !requestInProgress else { throw PairingError.consumed }
         requestInProgress = true
         defer { requestInProgress = false }
-        try await secret.validate(request: request, now: now)
-        guard await approval(request) else { throw PairingError.rejected }
+        do { try await secret.validate(request: request, now: now) } catch {
+            await secret.invalidate()
+            throw error
+        }
+        await onScan(request, now)
+        guard await approval(request) else {
+            await secret.invalidate()
+            throw PairingError.rejected
+        }
+        // Consume before persisting trust so a persistence failure can never leave
+        // a reusable ticket or a partially authorized pairing.
+        try await secret.consume(secret: request.oneTimeSecret, now: now)
         let device = PairedDevice(id: request.deviceID, displayName: request.deviceName, certificateFingerprint: Fingerprint.sha256(of: request.certificate), createdAt: now, certificate: request.certificate, rendezvousCapability: request.rendezvousCapability)
         try await trustStore.upsert(device)
-        try await secret.consume(secret: request.oneTimeSecret, now: now)
         await didPair()
-        return PairingAcceptance(macID: macID, displayName: displayName, serviceID: serviceID, certificate: macCertificate, rendezvousCapability: rendezvousCapability)
+        return PairingAcceptance(macID: macID, displayName: displayName, serviceID: serviceID, certificate: macCertificate, rendezvousCapability: rendezvousCapability, pairingEventID: UUID(), pairingTimestamp: now)
     }
+
+    public func invalidate() async { await secret.invalidate() }
 }
 
 public actor PairingSecret {
@@ -228,6 +246,8 @@ public actor PairingSecret {
         guard !consumed else { throw PairingError.consumed }
         guard secret == ticket.oneTimeSecret else { throw PairingError.secretMismatch }
     }
+
+    public func invalidate() { consumed = true }
 }
 
 public enum ProtocolPayloadError: Error, Equatable, Sendable {
@@ -273,12 +293,15 @@ public struct PairedMac: Codable, Equatable, Identifiable, Sendable {
     public let remoteEndpoint: RemoteEndpoint?
     public let certificate: Data?
     public let rendezvousCapability: RendezvousCapability?
+    public let pairingEventID: UUID?
+    public let pairingTimestamp: Date?
 
-    public init(id: String, displayName: String, serviceID: String, certificateFingerprint: String, createdAt: Date, remoteEndpoint: RemoteEndpoint? = nil, certificate: Data? = nil, rendezvousCapability: RendezvousCapability? = nil) {
+    public init(id: String, displayName: String, serviceID: String, certificateFingerprint: String, createdAt: Date, remoteEndpoint: RemoteEndpoint? = nil, certificate: Data? = nil, rendezvousCapability: RendezvousCapability? = nil, pairingEventID: UUID? = nil, pairingTimestamp: Date? = nil) {
         self.id = id; self.displayName = displayName; self.serviceID = serviceID
         self.certificateFingerprint = certificateFingerprint; self.createdAt = createdAt
         self.remoteEndpoint = remoteEndpoint
         self.certificate = certificate; self.rendezvousCapability = rendezvousCapability
+        self.pairingEventID = pairingEventID; self.pairingTimestamp = pairingTimestamp
     }
 }
 
