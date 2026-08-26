@@ -43,7 +43,7 @@ struct WorkspaceView: View {
                     columnVisibility: $sidebarVisibility,
                     preferredCompactColumn: $preferredCompactColumn
                 ) {
-                    terminalSidebar
+                    terminalSidebar()
                         .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 380)
                 } detail: {
                     navigation
@@ -63,8 +63,9 @@ struct WorkspaceView: View {
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
         .onChange(of: coordinator.presentedScreen) { _, screen in
             guard screen == .terminalList else { return }
+            dismissKeyboard()
             if horizontalSizeClass == .compact {
-                sidebarOverlayVisible = true
+                withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = true }
             } else {
                 sidebarVisibility = .all
                 preferredCompactColumn = .sidebar
@@ -154,7 +155,7 @@ struct WorkspaceView: View {
                         .contentShape(.rect)
                         .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = false } }
                         .zIndex(1)
-                    terminalSidebar
+                    terminalSidebar(showsDismissButton: true)
                         .frame(width: min(320, proxy.size.width * 0.84))
                         .frame(maxHeight: .infinity, alignment: .top)
                         .background(Color(uiColor: .secondarySystemBackground))
@@ -211,17 +212,15 @@ struct WorkspaceView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        dismissKeyboard()
-                        if horizontalSizeClass == .compact {
-                            withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = true }
-                        } else {
-                            sidebarVisibility = .all
-                            preferredCompactColumn = .sidebar
-                        }
+                        toggleSidebar()
                     } label: {
                         Image(systemName: "sidebar.leading")
+                            .foregroundStyle(sidebarIsVisible ? .black : .primary)
+                            .padding(6)
+                            .background(sidebarIsVisible ? Color.white : .clear, in: .rect(cornerRadius: 8))
                     }
                     .accessibilityLabel("Terminals")
+                    .accessibilityValue(sidebarIsVisible ? "Open" : "Closed")
                     .accessibilityIdentifier("terminal-sidebar-button")
                 }
                 ToolbarItem(placement: .principal) { terminalTitleButton }
@@ -261,6 +260,27 @@ struct WorkspaceView: View {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
+    private var sidebarIsVisible: Bool {
+        horizontalSizeClass == .compact ? sidebarOverlayVisible : sidebarVisibility != .detailOnly
+    }
+
+    private func toggleSidebar() {
+        dismissKeyboard()
+        if horizontalSizeClass == .compact {
+            withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible.toggle() }
+        } else {
+            withAnimation(.easeOut(duration: 0.2)) {
+                if sidebarIsVisible {
+                    sidebarVisibility = .detailOnly
+                    preferredCompactColumn = .detail
+                } else {
+                    sidebarVisibility = .all
+                    preferredCompactColumn = .sidebar
+                }
+            }
+        }
+    }
+
     private var workspace: some View {
         VStack(spacing: 0) {
             if let recovery = coordinator.recovery { recoveryView(recovery) }
@@ -296,8 +316,27 @@ struct WorkspaceView: View {
         }
     }
 
-    private var terminalSidebar: some View {
+    private func terminalSidebar(showsDismissButton: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            if showsDismissButton {
+                HStack {
+                    Text("Terminals")
+                        .font(.headline)
+                    Spacer()
+                    Button {
+                        toggleSidebar()
+                    } label: {
+                        Image(systemName: "sidebar.leading")
+                            .foregroundStyle(.black)
+                            .frame(width: 32, height: 32)
+                            .background(Color.white, in: .rect(cornerRadius: 8))
+                    }
+                    .accessibilityLabel("Close terminals")
+                    .accessibilityIdentifier("terminal-sidebar-close-button")
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
             List {
                 Section {
                     if connectedSessions.isEmpty {
