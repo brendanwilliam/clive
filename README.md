@@ -52,7 +52,7 @@ Clive for iPhone is available through the public [TestFlight invitation](https:/
 
 1. Open `/Applications/Clive.app` on the Mac.
 2. In Terminal, run `clive pair`. If the companion is installed but not running, the command starts it automatically and waits for the control socket.
-3. In the iOS app, choose **Pair a Mac**, scan the separately labeled secure **Pair this iPhone** code, and approve the displayed device fingerprint on the Mac. That code is single-use and expires after five minutes.
+3. In the iOS app, choose **Pair a Mac**, scan the separately labeled secure **Pair this iPhone** code, and approve the displayed device fingerprint on the Mac. That code is single-use and expires after one minute.
 4. Select the paired Mac and open a terminal.
 
 Press Ctrl-C during `clive pair` to invalidate the pending code. If the daemon
@@ -60,7 +60,25 @@ cannot be started, the command reports the recovery action without exposing the
 pairing ticket or other secrets. Pairing and macOS configuration are CLI-owned;
 the menu bar companion reports status and active terminals.
 
-The macOS companion owns resumable shells. Closing a window or briefly losing transport detaches a session; stopping Clive, revoking the device, closing the terminal, shell exit, or the 30-minute detached-session expiry ends it.
+The macOS companion owns resumable shells. Closing a window or briefly losing transport detaches a session; stopping Clive, revoking the device, closing the terminal, shell exit, or the 90-minute detached-session expiry ends it.
+
+Connectivity prefers LAN, then an available private VPN, direct WAN/cellular, and
+finally the disabled-by-default relay extension. A route change authenticates the
+new path and resumes the same session; it does not create a replacement shell.
+See the [connectivity architecture](docs/connectivity-architecture.md) and
+[connectivity verification](docs/connectivity-verification.md) for the V1 boundary
+and release-blocking checks.
+
+To start Codex in a managed, resumable terminal, run:
+
+```sh
+clive codex [codex arguments...]
+clive codex resume [codex resume arguments...]
+```
+
+The wrapper uses the daemon's controlled environment and never logs Codex
+arguments or terminal content. A resume command starts Codex in a new
+Clive-managed PTY; Clive does not adopt an existing terminal emulator session.
 
 ## Build from source
 
@@ -116,6 +134,7 @@ Please use the [bug form](https://github.com/brendanwilliam/clive/issues/new?tem
 - [Roadmap](docs/roadmap.md)
 - [Changelog](CHANGELOG.md)
 - [Releases and versioning](docs/releases.md)
+- [V1 release readiness](docs/release-readiness.md)
 - [Privacy](PRIVACY.md)
 - [Governance](GOVERNANCE.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
