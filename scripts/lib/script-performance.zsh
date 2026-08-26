@@ -2,7 +2,7 @@ zmodload zsh/datetime
 
 CLIVE_SCRIPT_PERFORMANCE_NAME=$1
 CLIVE_SCRIPT_PERFORMANCE_STARTED_AT=${EPOCHREALTIME}
-CLIVE_SCRIPT_PERFORMANCE_FILE=${CLIVE_SCRIPT_PERFORMANCE_FILE:-${HOME}/Library/Application Support/Clive/Development/script-runs.tsv}
+CLIVE_SCRIPT_PERFORMANCE_FILE=${CLIVE_SCRIPT_PERFORMANCE_FILE:-${${(%):-%x}:A:h:h}/script-runs.tsv}
 
 clive_record_script_performance() {
     local exit_code=$1

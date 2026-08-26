@@ -75,7 +75,7 @@ preparation, or platform diagnosis. Pass `--signed` only when checking local sig
 readiness. To open the iOS project, run `cd Apps/Clive && xcodegen generate`, then open `Clive.xcodeproj`.
 Use `./scripts/script-performance.sh` to see each development script's total runs,
 average duration, failed runs, and five most recent durations. Samples stay local in
-`~/Library/Application Support/Clive/Development/script-runs.tsv`.
+`scripts/script-runs.tsv`, which is gitignored and therefore remains local.
 Local bundle identifiers and signing settings belong in an ignored `Local.xcconfig`;
 see the example files in each app's `Config` directory.
 

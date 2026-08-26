@@ -22,3 +22,4 @@ Apps/Clive/Config/Local.xcconfig
 Apps/CliveMac/Config/Local.xcconfig
 Apps/Clive/Clive.xcodeproj/
 Apps/CliveMac/CliveMac.xcodeproj/project.xcworkspace/
+scripts/script-runs.tsv

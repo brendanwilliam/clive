@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 
-METRICS_FILE=${CLIVE_SCRIPT_PERFORMANCE_FILE:-${HOME}/Library/Application Support/Clive/Development/script-runs.tsv}
+METRICS_FILE=${CLIVE_SCRIPT_PERFORMANCE_FILE:-${0:A:h}/script-runs.tsv}
 
 if [[ ! -f ${METRICS_FILE} ]]; then
     echo "No script performance samples have been recorded yet."
