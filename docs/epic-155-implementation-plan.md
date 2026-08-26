@@ -85,9 +85,9 @@ Agreed behavior:
 Implementation tasks:
 
 - [ ] Define link version and routing states.
-- [ ] Implement installed-app and missing-app universal-link handling.
-- [ ] Implement safe pending-ticket resume after installation.
-- [ ] Add scanner cancellation and URL-routing tests.
+- [x] Implement installed-app and missing-app universal-link handling.
+- [x] Implement safe pending-ticket resume after installation.
+- [x] Add scanner cancellation and URL-routing tests.
 - [ ] Add physical-device coverage for Camera and TestFlight paths.
 
 ### 3. CLI installation and pairing — #158

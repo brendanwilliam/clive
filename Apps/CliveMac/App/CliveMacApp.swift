@@ -456,11 +456,11 @@ private struct PairingWindow: View {
                     Button("Approve") { model.approvePairing(true) }
                         .keyboardShortcut(.defaultAction)
                 }
-            } else if let ticket = model.pairingTicket, let payload = try? PairingPayload.encode(ticket), let image = qrImage(payload) {
+            } else if let ticket = model.pairingTicket, let link = try? PairingLink.makeURL(for: ticket), let image = qrImage(link.absoluteString) {
                 Image(nsImage: image).interpolation(.none).resizable().scaledToFit().frame(width: 280, height: 280).padding(8).background(.green.opacity(0.12), in: .rect(cornerRadius: 16))
                 Label("Pair this iPhone", systemImage: "lock.shield").font(.headline)
                     .accessibilityIdentifier("secure-pairing-qr-label")
-                Text("Scan this one-attempt code in Clive for iPhone. It expires \(ticket.expiresAt, style: .relative).")
+                Text("Scan this one-attempt code with the iPhone Camera app. It opens Clive and expires \(ticket.expiresAt, style: .relative).")
                     .multilineTextAlignment(.center).foregroundStyle(.secondary)
             } else if model.isPairing { ProgressView("Creating secure pairing code…") }
             if let message = model.pairingMessage { Text(message).foregroundStyle(.secondary) }

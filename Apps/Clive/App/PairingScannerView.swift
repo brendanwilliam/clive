@@ -18,9 +18,10 @@ enum PairingTicketValidator {
 struct PairingScannerView: UIViewControllerRepresentable {
     let onTicket: (PairingTicket) -> Void
     let onError: (Error) -> Void
+    let onCancel: () -> Void
 
     func makeUIViewController(context: Context) -> ScannerController {
-        let controller = ScannerController(); controller.delegate = context.coordinator; return controller
+        let controller = ScannerController(); controller.delegate = context.coordinator; controller.onCancel = onCancel; return controller
     }
     func updateUIViewController(_ uiViewController: ScannerController, context: Context) {}
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -31,7 +32,13 @@ struct PairingScannerView: UIViewControllerRepresentable {
         func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
             guard !consumed, let code = metadataObjects.compactMap({ ($0 as? AVMetadataMachineReadableCodeObject)?.stringValue }).first else { return }
             do {
-                let ticket = try PairingPayload.decode(code); try PairingTicketValidator.validate(ticket); consumed = true
+                let ticket: PairingTicket
+                if let url = URL(string: code), case .pairing(let linkTicket) = PairingLink.route(url) {
+                    ticket = linkTicket
+                } else {
+                    ticket = try PairingPayload.decode(code)
+                }
+                try PairingTicketValidator.validate(ticket); consumed = true
                 parent.onTicket(ticket)
             } catch { parent.onError(error) }
         }
@@ -40,6 +47,7 @@ struct PairingScannerView: UIViewControllerRepresentable {
 
 final class ScannerController: UIViewController {
     weak var delegate: AVCaptureMetadataOutputObjectsDelegate?
+    var onCancel: (() -> Void)?
     private let session = AVCaptureSession()
     override func viewDidLoad() {
         super.viewDidLoad(); view.backgroundColor = .black
@@ -49,6 +57,12 @@ final class ScannerController: UIViewController {
         output.setMetadataObjectsDelegate(delegate, queue: .main); output.metadataObjectTypes = [.qr]
         let layer = AVCaptureVideoPreviewLayer(session: session); layer.videoGravity = .resizeAspectFill; layer.frame = view.bounds
         view.layer.addSublayer(layer); let captureSession = session
+        let cancel = UIButton(type: .system)
+        cancel.setTitle("Cancel", for: .normal); cancel.setTitleColor(.white, for: .normal)
+        cancel.accessibilityIdentifier = "pairing-scanner-cancel"
+        cancel.addAction(UIAction { [weak self] _ in self?.onCancel?() }, for: .touchUpInside)
+        cancel.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(cancel)
+        NSLayoutConstraint.activate([cancel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16), cancel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)])
         DispatchQueue.global(qos: .userInitiated).async { captureSession.startRunning() }
     }
     override func viewDidDisappear(_ animated: Bool) { super.viewDidDisappear(animated); session.stopRunning() }
