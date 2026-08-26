@@ -281,7 +281,8 @@ attachments without changing the V1 safety boundary.
 
 ### #164 End-to-end verification
 
-Status: `[-]` verification policy recorded; tests not started.
+Status: `[-]` automated coverage matrix and release-validation split recorded;
+physical-device execution remains pending.
 
 - Automated tests cover framing, state transitions, retries, races, fencing,
   replay, expiry, revocation, disablement, and relay absence.
@@ -290,6 +291,8 @@ Status: `[-]` verification policy recorded; tests not started.
   and Mac/iPhone handoff in both directions.
 - Failures are classified as blocking, known limitation, environmental failure,
   or deferred. Supported V1 failures block release.
+
+Verification record: [`connectivity-verification.md`](connectivity-verification.md).
 
 ### #165 Documentation and release readiness
 
@@ -331,7 +334,7 @@ Update this table as work lands. Link the implementation PR or commit in the
 | #166 Codex launcher | Design recorded | — |
 | #167 Existing-run handoff | Design recorded | — |
 | #168 Durable runs | Deferred | — |
-| #164 Verification | Design recorded | — |
+| #164 Verification | Automated matrix recorded; physical validation pending | [`connectivity-verification.md`](connectivity-verification.md) |
 | #165 Docs/release | Design recorded | — |
 
 ## V1 exclusions
