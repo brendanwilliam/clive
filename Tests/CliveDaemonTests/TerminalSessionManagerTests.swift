@@ -39,6 +39,7 @@ final class TerminalSessionManagerTests: XCTestCase {
 
         XCTAssertTrue(superseded.value)
         XCTAssertEqual(resumed.disposition, .resumed)
+        XCTAssertGreaterThan(resumed.generation, 1)
         XCTAssertEqual(manager.descriptors(deviceID: "phone").first?.attachmentCount, 1)
         XCTAssertEqual(process.writes, [Data("current".utf8)])
         XCTAssertEqual(process.terminateCount, 0)
