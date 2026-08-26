@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR=${0:A:h:h}
 IOS_DIR=${ROOT_DIR}/Apps/Clive
-BUILD_DIR=${CLIVE_REBUILD_DIR:-/private/tmp/clive-local-rebuild}
+BUILD_DIR=${CLIVE_REBUILD_DIR:-${ROOT_DIR}/scripts/outputs/rebuild-local}
 source "${ROOT_DIR}/scripts/lib/script-performance.zsh" "rebuild-local:${1:-unknown}"
 trap 'exit_code=$?; clive_record_script_performance ${exit_code}' EXIT
 

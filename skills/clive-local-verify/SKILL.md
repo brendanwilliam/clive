@@ -12,7 +12,7 @@ not boot a simulator. For the full
 check, run `./scripts/verify-local.sh` from the repository root. It generates the
 ignored iOS Xcode project with XcodeGen when absent, then executes the shared Swift
 tests and unsigned Debug builds for macOS and generic iOS in parallel, reusing
-DerivedData under `/private/tmp/clive-local-verify`. Use `--signed` only when the user
+DerivedData and logs under `scripts/outputs/local-verify`. Use `--signed` only when the user
 wants local signing or physical-device readiness and the machine's development
 configuration is available.
 
@@ -20,7 +20,7 @@ The same script is the source of truth for `.github/workflows/verify.yml` and th
 
 ## On failure
 
-Read the named log under `/private/tmp/clive-local-verify/logs`. Determine whether the failure is introduced by the current change, stale generated Xcode project state, unavailable dependencies, or local signing/provisioning.
+Read the named log under `scripts/outputs/local-verify/logs`. Determine whether the failure is introduced by the current change, stale generated Xcode project state, unavailable dependencies, or local signing/provisioning.
 
 - For source or checked-in configuration incompatibility caused by the current task, make the smallest scoped correction and rerun the complete script.
 - If `project.yml` changed, regenerate the affected Xcode project with XcodeGen, review the generated diff, and rerun verification.

@@ -2,10 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR=${0:A:h:h}
-LOG_PATH=${CLIVE_FAST_CHECK_LOG:-/private/tmp/clive-fast-check.log}
+LOG_PATH=${CLIVE_FAST_CHECK_LOG:-${ROOT_DIR}/scripts/outputs/check-fast.log}
 BASE_REF=${1:-}
 source "${ROOT_DIR}/scripts/lib/script-performance.zsh" check-fast
 trap 'exit_code=$?; clive_record_script_performance ${exit_code}' EXIT
+mkdir -p "${LOG_PATH:h}"
 
 echo "Checking whitespace…"
 if [[ -n ${BASE_REF} ]]; then

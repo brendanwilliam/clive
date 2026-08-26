@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR=${0:A:h:h}
-VERIFY_DIR=${CLIVE_VERIFY_DIR:-/private/tmp/clive-local-verify}
+VERIFY_DIR=${CLIVE_VERIFY_DIR:-${ROOT_DIR}/scripts/outputs/local-verify}
 LOG_DIR=${VERIFY_DIR}/logs
 DAEMON_LIFECYCLE_LOG=${CLIVE_VERIFY_DAEMON_LOG:-${LOG_DIR}/daemon-lifecycle.log}
 DAEMON_SERVICE="gui/$(id -u)/com.clive.development-daemon"
