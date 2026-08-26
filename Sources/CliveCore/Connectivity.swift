@@ -85,6 +85,38 @@ public protocol RouteProvider: Sendable {
     func candidates() async -> [RouteCandidate]
 }
 
+/// The stable session boundary shared by every route implementation. Discovery
+/// chooses a candidate; this interface owns no route-specific policy.
+public protocol RouteConnection: Sendable {
+    func authenticate() async throws
+    func attach(serverSessionID: UUID, lastReceivedOffset: UInt64, initialSize: TerminalSize) async throws -> SessionOpened
+    func sendInput(_ data: Data) async throws
+    func resize(_ size: TerminalSize) async throws
+    func receiveOutput() async throws -> TerminalOutputChunk
+    func close() async
+}
+
+/// A route adapter only establishes a connection. Session attachment and
+/// terminal traffic remain identical across LAN, VPN, WAN, and relay routes.
+public protocol RouteAdapter: Sendable {
+    var kind: RouteKind { get }
+    func connect(to candidate: RouteCandidate) async throws -> any RouteConnection
+}
+
+/// Collects provider snapshots without allowing one discovery failure to be
+/// confused with failure of an already-established session.
+public actor RouteCatalog {
+    private let providers: [any RouteProvider]
+
+    public init(providers: [any RouteProvider]) { self.providers = providers }
+
+    public func refresh() async -> [RouteCandidate] {
+        var result: [RouteCandidate] = []
+        for provider in providers { result.append(contentsOf: await provider.candidates()) }
+        return result
+    }
+}
+
 public enum RouteSelectionDecision: Equatable, Sendable {
     case noChange
     case selected(RouteCandidate)

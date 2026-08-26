@@ -149,10 +149,10 @@ Agreed behavior:
 
 Implementation tasks:
 
-- [ ] Add the common route adapter interface.
+- [x] Add the common route adapter interface.
 - [ ] Adapt LAN and existing direct WAN/cellular paths to the interface.
 - [ ] Add opportunistic private VPN discovery and optional endpoint configuration.
-- [ ] Add route candidate refresh and health reporting.
+- [x] Add route candidate refresh and health reporting.
 - [ ] Add focused route-selection and fallback tests.
 
 ### 6. Loss-safe reattachment — #161
