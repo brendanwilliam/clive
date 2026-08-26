@@ -63,7 +63,6 @@ struct WorkspaceView: View {
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
         .onChange(of: coordinator.presentedScreen) { _, screen in
             guard screen == .terminalList else { return }
-            dismissKeyboard()
             if horizontalSizeClass == .compact {
                 withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = true }
             } else {
@@ -279,7 +278,6 @@ struct WorkspaceView: View {
     }
 
     private func toggleSidebar() {
-        dismissKeyboard()
         if horizontalSizeClass == .compact {
             withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible.toggle() }
         } else {
@@ -314,7 +312,7 @@ struct WorkspaceView: View {
                             accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
                             isSelected: true,
                             shortcuts: coordinator.preferences.value.shortcuts,
-                            openDrawer: { dismissKeyboard(); coordinator.showTerminalList() },
+                            openDrawer: { coordinator.showTerminalList() },
                             selectAdjacentTerminal: selectAdjacentTerminal,
                             runShortcut: coordinator.runShortcut,
                             manageShortcuts: { coordinator.showShortcutSettings() }

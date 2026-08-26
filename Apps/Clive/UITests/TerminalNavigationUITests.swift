@@ -40,13 +40,13 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertEqual(drawerRow(firstID).value as? String, "Selected")
     }
 
-    func testOpeningTerminalSidebarDismissesKeyboardAndToggleClosesIt() {
+    func testOpeningTerminalSidebarKeepsKeyboardVisibleAndToggleClosesIt() {
         terminalSurface(firstID).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
 
         openTerminalDrawer()
 
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         let closeButton = app.buttons["terminal-sidebar-button"]
         XCTAssertTrue(closeButton.waitForExistence(timeout: 2))
         XCTAssertGreaterThan(closeButton.frame.minY, 44)
