@@ -48,12 +48,17 @@ If Homebrew is unavailable, download `clive.pkg` and `clive.pkg.sha256` from [Gi
 shasum -a 256 -c clive.pkg.sha256
 ```
 
-Clive for iPhone is available through the public [TestFlight invitation](https://testflight.apple.com/join/SUcN1FkH). The macOS Connection Setup window includes a discovery QR for this link; it only opens TestFlight and is not a pairing code. Contributors and testers can also build it from source.
+Clive for iPhone is available through the public [TestFlight invitation](https://testflight.apple.com/join/SUcN1FkH). This invitation only installs the iPhone app; it is not a pairing code. Contributors and testers can also build it from source.
 
 1. Open `/Applications/Clive.app` on the Mac.
-2. Choose **Connection Setup** then **Pair iPhone** in the menu bar app. `clive pair` is the terminal-only fallback.
+2. In Terminal, run `clive pair`. If the companion is installed but not running, the command starts it automatically and waits for the control socket.
 3. In the iOS app, choose **Pair a Mac**, scan the separately labeled secure **Pair this iPhone** code, and approve the displayed device fingerprint on the Mac. That code is single-use and expires after five minutes.
 4. Select the paired Mac and open a terminal.
+
+Press Ctrl-C during `clive pair` to invalidate the pending code. If the daemon
+cannot be started, the command reports the recovery action without exposing the
+pairing ticket or other secrets. Pairing and macOS configuration are CLI-owned;
+the menu bar companion reports status and active terminals.
 
 The macOS companion owns resumable shells. Closing a window or briefly losing transport detaches a session; stopping Clive, revoking the device, closing the terminal, shell exit, or the 30-minute detached-session expiry ends it.
 

@@ -30,15 +30,7 @@ final class CompanionModel: ObservableObject {
     @Published var devices: [ControlDevice] = []
     @Published var sessionsByDevice: [String: [CliveCore.SessionDescriptor]] = [:]
     @Published var errorMessage: String?
-    @Published var pairingTicket: PairingTicket?
-    @Published var pairingPrompt: PairingPrompt?
-    @Published var pairingMessage: String?
-    @Published var isPairing = false
-    @Published var shouldDismissPairingWindow = false
     @Published var isConfiguringCellular = false
-    private var connectionSetupPolicy = ConnectionSetupAutoPresentationPolicy()
-    private var pairingChannel: ControlChannel?
-    private var submittedPairingDecision = false
     private var runtime: DaemonRuntime?
     private var observer: NSObjectProtocol?
 
@@ -111,60 +103,6 @@ final class CompanionModel: ObservableObject {
         Task { do { let response = try request(.init(command: .sessionEnd, deviceID: deviceID, sessionID: sessionID)); errorMessage = response.success ? nil : response.message; await refresh() } catch { errorMessage = error.localizedDescription } }
     }
 
-    func beginPairing() {
-        guard !isPairing else { return }
-        isPairing = true; pairingTicket = nil; pairingPrompt = nil; pairingMessage = nil
-        shouldDismissPairingWindow = false; submittedPairingDecision = false
-        Task.detached { [weak self] in
-            do {
-                let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
-                try channel.send(.init(command: .pair))
-                await MainActor.run { self?.pairingChannel = channel }
-                while true {
-                    let response = try channel.readResponse()
-                    await MainActor.run {
-                        guard let self else { return }
-                        switch response.kind {
-                        case .pairingTicket: self.pairingTicket = response.pairingTicket
-                        case .pairingPrompt: self.pairingPrompt = response.pairingPrompt
-                        case .result:
-                            self.pairingMessage = response.message
-                            self.isPairing = false; self.pairingChannel = nil
-                            self.pairingPrompt = nil
-                            self.shouldDismissPairingWindow = self.submittedPairingDecision || response.success || response.message == "Pairing ticket expired."
-                            Task { await self.refresh() }
-                        }
-                    }
-                    if response.kind == .result { return }
-                }
-            } catch {
-                await MainActor.run { self?.pairingMessage = error.localizedDescription; self?.isPairing = false; self?.pairingChannel = nil }
-            }
-        }
-    }
-
-    func approvePairing(_ approved: Bool) {
-        do {
-            guard let pairingChannel else { throw ControlSocketError.unavailable }
-            submittedPairingDecision = true
-            try pairingChannel.send(.init(command: .approvePairing, approved: approved)); pairingPrompt = nil
-        }
-        catch { pairingMessage = error.localizedDescription; isPairing = false }
-    }
-
-    func cancelPairing() {
-        guard isPairing else { return }
-        Task.detached { [weak self] in
-            do { let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL); try channel.send(.init(command: .cancelPairing)); _ = try channel.readResponse() }
-            catch { await MainActor.run { self?.pairingMessage = error.localizedDescription } }
-        }
-        pairingTicket = nil; pairingPrompt = nil
-    }
-
-    func consumeConnectionSetupAutoPresentation() -> Bool {
-        connectionSetupPolicy.shouldPresent(hasPairedIPhone: !devices.isEmpty)
-    }
-
     private func request(_ value: ControlRequest) throws -> ControlResponse {
         let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
         try channel.send(value); return try channel.readResponse()
@@ -194,17 +132,6 @@ struct CliveMacApp: App {
             Label("Clive", systemImage: model.status.enabled ? "network.badge.shield.half.filled" : "terminal")
         }
         .commandsRemoved()
-        WindowGroup("Connection Setup", id: "connection-setup") {
-            ConnectionSetupWindow(model: model)
-                .frame(minWidth: 460, minHeight: 580)
-        }
-        WindowGroup("Pair iPhone", id: "pair-iphone") {
-            PairingWindow(model: model)
-                .frame(minWidth: 390, minHeight: 500)
-        }
-        WindowGroup("Set Up Cellular Access", id: "cellular-setup") {
-            CellularSetupWindow(model: model).frame(minWidth: 520, minHeight: 460)
-        }
         Settings { EmptyView() }
     }
 
@@ -216,12 +143,10 @@ private struct PendingEnd { let sessionID: UUID; let deviceID: String }
 private struct MenuBarContent: View {
     @ObservedObject var model: CompanionModel
     @Binding var pendingEnd: PendingEnd?
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Group {
                 Text("Clive — CLI for iOS").font(.headline)
-                Toggle("Allow connection over cellular", isOn: Binding(get: { model.status.enabled }, set: { model.setCellular($0) }))
                 Text(stateLabel).foregroundStyle(.secondary)
                 Text("Active terminal I/O keeps idle system sleep off for up to 30 minutes. Display sleep and explicit Sleep are unaffected.").font(.caption).foregroundStyle(.secondary)
                 if let message = model.status.diagnostic ?? model.errorMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
@@ -241,13 +166,6 @@ private struct MenuBarContent: View {
                 } }
                 Divider()
                 Button("Refresh") { Task { await model.refresh() } }
-                Button("Connection Setup…") { openWindow(id: "connection-setup"); NSApp.activate(ignoringOtherApps: true) }
-                CellularSetupMenuButton(model: model)
-                PairMenuButton(model: model)
-                Button("Pair from Terminal…") {
-                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clive pair", forType: .string)
-                    model.errorMessage = "Copied ‘clive pair’. Run it in Terminal to approve the new iPhone."
-                }
                 Button("Copy Status Command") {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString("clive status", forType: .string)
                     model.errorMessage = "Copied ‘clive status’. Run it in Terminal for connection and recovery details."
@@ -257,17 +175,7 @@ private struct MenuBarContent: View {
         .task {
             while !Task.isCancelled {
                 await model.refresh()
-                if model.consumeConnectionSetupAutoPresentation() {
-                    openWindow(id: "connection-setup")
-                    NSApp.activate(ignoringOtherApps: true)
-                }
                 try? await Task.sleep(for: .seconds(10))
-            }
-        }
-        .onChange(of: model.devices.isEmpty) { _, _ in
-            if model.consumeConnectionSetupAutoPresentation() {
-                openWindow(id: "connection-setup")
-                NSApp.activate(ignoringOtherApps: true)
             }
         }
             .confirmationDialog("End this shared Terminal for every Attachment?", isPresented: Binding(get: { pendingEnd != nil }, set: { if !$0 { pendingEnd = nil } }), titleVisibility: .visible) {
@@ -368,19 +276,6 @@ private struct CellularSetupWindow: View {
     }
 }
 
-private struct PairMenuButton: View {
-    @ObservedObject var model: CompanionModel
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Button("Pair iPhone") {
-            model.beginPairing()
-            openWindow(id: "pair-iphone")
-            NSApp.activate(ignoringOtherApps: true)
-        }
-    }
-}
-
 private struct ConnectionSetupWindow: View {
     @ObservedObject var model: CompanionModel
     @Environment(\.openWindow) private var openWindow
@@ -413,67 +308,13 @@ private struct ConnectionSetupWindow: View {
                 }
 
                 Divider()
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("2. Pair iPhone").font(.headline)
-                    Text("Open Clive on the iPhone and choose Pair a Mac. Then create a secure pairing code here.")
-                        .foregroundStyle(.secondary)
-                    Button("Pair iPhone", systemImage: "lock.shield") {
-                        model.beginPairing()
-                        openWindow(id: "pair-iphone")
-                        NSApp.activate(ignoringOtherApps: true)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("connection-setup-pair-iphone-button")
-                }
-                Text("The next window displays the secure Pair this iPhone code. It is single-use and expires after five minutes.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("To pair an iPhone, run `clive pair` in Terminal. The command displays a single-use secure code, waits for the iPhone request, and asks for your approval before trust is saved.")
+                    .foregroundStyle(.secondary)
             }
             .padding(24)
         }
         .accessibilityIdentifier("connection-setup-window")
     }
-}
-
-private struct PairingWindow: View {
-    @ObservedObject var model: CompanionModel
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text("Pair iPhone").font(.title2.bold())
-            if let prompt = model.pairingPrompt {
-                Image(systemName: "iphone.gen3")
-                    .font(.system(size: 72))
-                    .foregroundStyle(.tint)
-                Text("Approve this iPhone").font(.headline)
-                Text("Pair (prompt.displayName)?")
-                Text("Certificate fingerprint\n\(prompt.certificateFingerprint)")
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-                    .multilineTextAlignment(.center)
-                HStack {
-                    Button("Reject") { model.approvePairing(false) }
-                    Button("Approve") { model.approvePairing(true) }
-                        .keyboardShortcut(.defaultAction)
-                }
-            } else if let ticket = model.pairingTicket, let link = try? PairingLink.makeURL(for: ticket), let image = qrImage(link.absoluteString) {
-                Image(nsImage: image).interpolation(.none).resizable().scaledToFit().frame(width: 280, height: 280).padding(8).background(.green.opacity(0.12), in: .rect(cornerRadius: 16))
-                Label("Pair this iPhone", systemImage: "lock.shield").font(.headline)
-                    .accessibilityIdentifier("secure-pairing-qr-label")
-                Text("Scan this one-attempt code with the iPhone Camera app. It opens Clive and expires \(ticket.expiresAt, style: .relative).")
-                    .multilineTextAlignment(.center).foregroundStyle(.secondary)
-            } else if model.isPairing { ProgressView("Creating secure pairing code…") }
-            if let message = model.pairingMessage { Text(message).foregroundStyle(.secondary) }
-            Spacer()
-            Button("Cancel") { model.cancelPairing(); dismiss() }
-        }
-        .padding(24)
-        .onChange(of: model.shouldDismissPairingWindow) { shouldDismiss in
-            if shouldDismiss { dismiss() }
-        }
-        .onDisappear { model.cancelPairing() }
-    }
-
 }
 
 private func qrImage(_ payload: String) -> NSImage? {
