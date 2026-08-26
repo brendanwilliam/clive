@@ -37,21 +37,15 @@ struct WorkspaceView: View {
     }
 
     private var mainNavigation: some View {
-        Group {
-            if horizontalSizeClass == .compact {
-                compactNavigation
-            } else {
-                NavigationSplitView(
-                    columnVisibility: $sidebarVisibility,
-                    preferredCompactColumn: $preferredCompactColumn
-                ) {
-                    terminalSidebar(showsDismissButton: true)
-                        .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 380)
-                } detail: {
-                    navigation
-                }
-                .navigationSplitViewStyle(.prominentDetail)
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                terminalHeader
+                    .padding(.horizontal, 16)
+                    .frame(height: 60)
+                terminalWorkspace
             }
+            .padding(.top, proxy.safeAreaInsets.top)
+            .ignoresSafeArea(.container, edges: .bottom)
         }
     }
 
@@ -145,8 +139,8 @@ struct WorkspaceView: View {
         } message: { Text(coordinator.deleteAllError ?? "Try again.") }
     }
 
-    private var compactNavigation: some View {
-        GeometryReader { proxy in
+    @ViewBuilder private var terminalWorkspace: some View {
+        if horizontalSizeClass == .compact {
             ZStack(alignment: .topLeading) {
                 navigation
                 if sidebarOverlayVisible {
@@ -155,27 +149,26 @@ struct WorkspaceView: View {
                         .contentShape(.rect)
                         .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = false } }
                         .zIndex(1)
-                    terminalSidebar(showsDismissButton: true)
-                        .padding(.top, proxy.safeAreaInsets.top)
-                        .frame(width: min(320, proxy.size.width * 0.84))
+                    terminalSidebar
+                        .frame(width: 320)
+                        .frame(maxWidth: 320)
+                        .containerRelativeFrame(.horizontal, count: 100, span: 84, spacing: 0)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .background(Color(uiColor: .secondarySystemBackground))
                         .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
-                        // The drawer background reaches the screen edges; its content
-                        // is explicitly offset below the status bar.
-                        .ignoresSafeArea(.container, edges: .vertical)
                         .shadow(color: .black.opacity(0.28), radius: 18, x: 6)
                         .transition(.move(edge: .leading))
                         .zIndex(2)
                 }
-                terminalSidebarButton
-                    .padding(.top, proxy.safeAreaInsets.top + 8)
-                    .padding(.leading, 16)
-                    // The navigation stack lays out this overlay below its own
-                    // top bar. Compensate for that inset so the control stays
-                    // in the same upper-leading position as the split view.
-                    .offset(y: -(proxy.safeAreaInsets.top + 20))
-                    .zIndex(3)
+            }
+        } else {
+            HStack(spacing: 0) {
+                if sidebarVisibility != .detailOnly {
+                    terminalSidebar
+                        .frame(minWidth: 260, idealWidth: 320, maxWidth: 380)
+                        .transition(.move(edge: .leading))
+                }
+                navigation
             }
         }
     }
@@ -216,22 +209,19 @@ struct WorkspaceView: View {
                     ContentUnavailableView("Connection failed", systemImage: "exclamationmark.triangle", description: Text(message))
                 }
             }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) { terminalTitleButton }
-                ToolbarItem(placement: .topBarTrailing) { terminalActions }
-            }
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 
-    private var terminalTitleButton: some View {
-        TerminalTitleControl(
-            title: coordinator.selectedSession?.descriptor.label ?? "No terminal",
-            isEnabled: coordinator.selectedSession != nil,
-            rename: { if let session = coordinator.selectedSession { beginRename(session) } }
-        )
+    private var terminalHeader: some View {
+        ZStack {
+            terminalTitleMenu
+            HStack {
+                terminalSidebarButton
+                Spacer()
+                terminalActions
+            }
+        }
     }
 
     private var connectionPresentation: ConnectionStatusPresentation {
@@ -249,11 +239,36 @@ struct WorkspaceView: View {
 
     private var terminalActions: some View {
         Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus") }
-            .accessibilityLabel("New Terminal").accessibilityIdentifier("new-terminal-button")
+            .frame(width: 44, height: 44)
+            .accessibilityLabel("New Terminal")
+            .accessibilityIdentifier("new-terminal-button")
+    }
+
+    private var terminalTitleMenu: some View {
+        Menu {
+            if let session = coordinator.selectedSession {
+                terminalSessionActions(for: session)
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Text(coordinator.selectedSession?.descriptor.label ?? "No terminal")
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+            }
+            .font(.subheadline)
+            .foregroundStyle(.primary)
+            .frame(minHeight: 44)
+            .frame(maxWidth: 240)
+        }
+        .disabled(coordinator.selectedSession == nil)
+        .accessibilityLabel("Terminal title")
+        .accessibilityIdentifier("terminal-title-button")
     }
 
     private func dismissKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        NotificationCenter.default.post(name: .terminalKeyboardDismissRequested, object: nil)
     }
 
     private func restoreKeyboard() {
@@ -297,7 +312,12 @@ struct WorkspaceView: View {
                     preferredCompactColumn = .detail
                 }
             }
-            if keyboardWasVisibleBeforeSidebar { restoreKeyboard() }
+            if keyboardWasVisibleBeforeSidebar {
+                keyboardWasVisibleBeforeSidebar = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                    restoreKeyboard()
+                }
+            }
             return
         }
 
@@ -352,22 +372,13 @@ struct WorkspaceView: View {
         }
     }
 
-    private func terminalSidebar(showsDismissButton: Bool = false) -> some View {
+    private var terminalSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if showsDismissButton {
-                VStack(alignment: .leading, spacing: 0) {
-                    if horizontalSizeClass != .compact {
-                        terminalSidebarButton
-                            .padding(.top, 8)
-                            .padding(.leading, 16)
-                    }
-                    Text("Terminals")
-                        .font(.largeTitle.weight(.bold))
-                        .padding(.top, horizontalSizeClass == .compact ? 64 : 8)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                }
-            }
+            Text("Terminals")
+                .font(.largeTitle.weight(.bold))
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
             List {
                 Section {
                     if connectedSessions.isEmpty {
@@ -380,14 +391,7 @@ struct WorkspaceView: View {
                                 .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
                         }
                     }
-                } header: {
-                    drawerSectionHeader("Connected") {
-                        Button("Disconnect and Delete All", systemImage: "network.slash", role: .destructive) {
-                            showingDisconnectAndDeleteConnectedConfirmation = true
-                        }
-                        .disabled(connectedSessions.isEmpty)
-                    }
-                }
+                } header: { drawerSectionHeader("Connected") }
                 Section {
                     if disconnectedSessions.isEmpty && coordinator.unrepresentedCatalogSessions.isEmpty {
                         emptyDrawerSection("No disconnected terminals")
@@ -405,32 +409,11 @@ struct WorkspaceView: View {
                                 .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
                         }
                     }
-                } header: {
-                    drawerSectionHeader("Disconnected") {
-                        Button("Delete All", systemImage: "trash", role: .destructive) {
-                            showingDeleteDisconnectedConfirmation = true
-                        }
-                        .disabled(disconnectedSessions.isEmpty && coordinator.unrepresentedCatalogSessions.isEmpty)
-                    }
-                }
+                } header: { drawerSectionHeader("Disconnected") }
             }
             .listStyle(.plain)
             .listRowSpacing(DrawerRowRevealPolicy.rowSpacing)
             .scrollContentBackground(.hidden)
-            .navigationTitle(showsDismissButton ? "" : "Terminals")
-            .toolbar {
-                if !showsDismissButton {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button("Disconnect All", systemImage: "network.slash") { coordinator.disconnectAll() }
-                            Button("Delete All", systemImage: "trash", role: .destructive) { showingClearAllConfirmation = true }
-                        } label: { Image(systemName: "ellipsis").frame(width: 44, height: 32) }
-                        .accessibilityLabel("Terminal actions")
-                        .disabled(coordinator.openSessionCount == 0)
-                    }
-                }
-            }
-            .toolbarBackground(.visible, for: .navigationBar)
             if let current = coordinator.selectedMac {
                 Divider()
                 HStack(spacing: 12) {
@@ -453,7 +436,6 @@ struct WorkspaceView: View {
                 }
             }
         }
-        .safeAreaPadding(.top, showsDismissButton ? 0 : 16)
         .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .secondarySystemBackground))
@@ -467,20 +449,8 @@ struct WorkspaceView: View {
         coordinator.sessions.filter { ConnectionPresentation.status(for: $0.state) != .connected }
     }
 
-    private func drawerSectionHeader<Content: View>(
-        _ title: String,
-        @ViewBuilder actions: () -> Content
-    ) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Menu(content: actions) {
-                Image(systemName: "ellipsis")
-                    .frame(width: 44, height: 32)
-            }
-            .accessibilityLabel("\(title) actions")
-        }
-        .textCase(nil)
+    private func drawerSectionHeader(_ title: String) -> some View {
+        Text(title).textCase(nil)
     }
 
     private func emptyDrawerSection(_ title: String) -> some View {
@@ -516,17 +486,9 @@ struct WorkspaceView: View {
         .accessibilityIdentifier("terminal-row-\(session.id.uuidString)")
         .accessibilityValue(session.id == coordinator.selectedSessionID ? "Selected" : "Not selected")
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
-            if ConnectionPresentation.status(for: session.state) == .connected {
-                Button("Disconnect", systemImage: "network.slash") { coordinator.disconnect(session) }
-                    .tint(.orange)
-            } else {
-                Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
-                    .tint(.green)
-            }
-            Button("Rename", systemImage: "pencil") { beginRename(session) }
-                .tint(.secondary)
+            terminalSessionSwipeActions(for: session)
         }
+        .contextMenu { terminalSessionActions(for: session) }
         .padding(.horizontal, 12)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
         .background(session.id == coordinator.selectedSessionID ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
@@ -552,11 +514,41 @@ struct WorkspaceView: View {
         .disabled(session.attachmentCount != 0)
         .accessibilityIdentifier("reconnect-terminal-\(session.id.uuidString)")
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
-                .tint(.green)
+            if session.attachmentCount == 0 {
+                Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
+                    .tint(.green)
+            }
+        }
+        .contextMenu {
+            if session.attachmentCount == 0 {
+                Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
+            }
         }
         .padding(.horizontal, 12)
         .frame(minHeight: DrawerRowRevealPolicy.minimumRowHeight)
+    }
+
+    @ViewBuilder private func terminalSessionActions(for session: WorkspaceSession) -> some View {
+        Button("Rename", systemImage: "pencil") { beginRename(session) }
+        if ConnectionPresentation.status(for: session.state) == .connected {
+            Button("Disconnect", systemImage: "network.slash") { coordinator.disconnect(session) }
+        } else {
+            Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
+        }
+        Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
+    }
+
+    @ViewBuilder private func terminalSessionSwipeActions(for session: WorkspaceSession) -> some View {
+        Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
+        if ConnectionPresentation.status(for: session.state) == .connected {
+            Button("Disconnect", systemImage: "network.slash") { coordinator.disconnect(session) }
+                .tint(.orange)
+        } else {
+            Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
+                .tint(.green)
+        }
+        Button("Rename", systemImage: "pencil") { beginRename(session) }
+            .tint(.secondary)
     }
 
     private func terminalStatusIcon(for state: SessionClient.State) -> some View {
@@ -693,44 +685,6 @@ struct WorkspaceView: View {
         case .networkError(let message):
             ContentUnavailableView { Label("Connection unavailable", systemImage: "wifi.exclamationmark") } description: { Text(message) } actions: { Button("Retry") { coordinator.retryConnection() }; Button("Choose Mac") { coordinator.showConnections() } }
         }
-    }
-}
-
-private struct TerminalTitleControl: UIViewRepresentable {
-    let title: String
-    let isEnabled: Bool
-    let rename: () -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(rename: rename) }
-
-    func makeUIView(context: Context) -> UIButton {
-        let button = UIButton(type: .system)
-        button.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
-        button.titleLabel?.adjustsFontForContentSizeCategory = true
-        button.titleLabel?.lineBreakMode = .byTruncatingTail
-        button.accessibilityLabel = "Terminal title"
-        button.accessibilityIdentifier = "terminal-title-button"
-        button.addTarget(context.coordinator, action: #selector(Coordinator.renameTerminal), for: .touchUpInside)
-        button.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        return button
-    }
-
-    func updateUIView(_ button: UIButton, context: Context) {
-        context.coordinator.rename = rename
-        button.setTitle(title, for: .normal)
-        // The title identifies the current terminal; it is not a primary action.
-        button.setTitleColor(.label, for: .normal)
-        button.isEnabled = isEnabled
-    }
-
-    @MainActor final class Coordinator: NSObject {
-        var rename: () -> Void
-
-        init(rename: @escaping () -> Void) {
-            self.rename = rename
-        }
-
-        @objc func renameTerminal() { rename() }
     }
 }
 

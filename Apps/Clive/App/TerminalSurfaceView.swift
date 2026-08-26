@@ -3,6 +3,7 @@ import SwiftTerm
 import SwiftUI
 
 extension Notification.Name {
+    static let terminalKeyboardDismissRequested = Notification.Name("clive.terminalKeyboardDismissRequested")
     static let terminalKeyboardRestoreRequested = Notification.Name("clive.terminalKeyboardRestoreRequested")
 }
 
@@ -158,6 +159,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         ])
         controls.onKeyboard = { [weak self] shown in shown ? self?.onKeyboardDismissRequested?() : self?.onKeyboardRequested?() }
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(dismissKeyboardRequested), name: .terminalKeyboardDismissRequested, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(restoreKeyboardRequested), name: .terminalKeyboardRestoreRequested, object: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -172,6 +174,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     @objc private func restoreKeyboardRequested() {
         onKeyboardRequested?()
+    }
+
+    @objc private func dismissKeyboardRequested() {
+        onKeyboardDismissRequested?()
     }
 
     func installKeyRow(_ row: TerminalKeyboardAccessory) { controls.installKeyRow(row) }
