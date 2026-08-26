@@ -14,6 +14,10 @@ The macOS daemon owns shared PTYs. Authenticated iOS connections and the owner-o
 
 Both clients are native Swift applications. Shared protocol, cryptography, framing, and terminal-model code should live in a Swift package consumed by the iOS app and macOS CLI.
 
+Connectivity route selection follows the transport-independent contract in
+[`connectivity-architecture.md`](connectivity-architecture.md). Route changes
+reattach to the existing stable session and never create a replacement PTY.
+
 ## Connection flow
 
 1. The intended macOS user launches the signed menu bar companion, which advertises `_iphone-term._tcp` through Bonjour.
