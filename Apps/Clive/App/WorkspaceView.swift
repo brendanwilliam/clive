@@ -11,6 +11,15 @@ private extension View {
             background(.thinMaterial, in: shape)
         }
     }
+
+    @ViewBuilder
+    func cliveClearGlassBackground<S: Shape>(in shape: S) -> some View {
+        if #available(iOS 26.0, *) {
+            glassEffect(.clear, in: shape)
+        } else {
+            background(.ultraThinMaterial, in: shape)
+        }
+    }
 }
 
 struct WorkspaceView: View {
@@ -32,6 +41,7 @@ struct WorkspaceView: View {
     @State private var keyboardVisible = false
     @State private var keyboardWasVisibleBeforeSidebar = false
     @State private var terminalMenuVisible = false
+    @State private var terminalTitleVisible = true
     @Namespace private var toolbarControlTransition
 
     var body: some View {
@@ -60,6 +70,12 @@ struct WorkspaceView: View {
             keyboardVisible = frame.minY < UIScreen.main.bounds.height && frame.maxY > 0
         }
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
+        .onChange(of: sidebarIsVisible) { _, isVisible in
+            guard !isVisible else { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                terminalTitleVisible = true
+            }
+        }
         .onChange(of: coordinator.presentedScreen) { _, screen in
             guard screen == .terminalList else { return }
             openSidebar()
@@ -236,8 +252,9 @@ struct WorkspaceView: View {
         HStack(spacing: 0) {
             terminalSidebarButton
             Spacer()
-            if !coordinator.sessions.isEmpty {
+            if !coordinator.sessions.isEmpty, terminalTitleVisible {
                 terminalTitleMenu
+                    .transition(.move(edge: .top))
             }
             Spacer()
             terminalActions
@@ -362,6 +379,7 @@ struct WorkspaceView: View {
 
     private func openSidebar() {
         terminalMenuVisible = false
+        terminalTitleVisible = false
         keyboardWasVisibleBeforeSidebar = keyboardVisible
         dismissKeyboard()
         if horizontalSizeClass == .compact {
@@ -483,7 +501,9 @@ struct WorkspaceView: View {
         .padding(.top, topSafeAreaInset)
         .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background {
+            Color.clear.cliveClearGlassBackground(in: Rectangle())
+        }
     }
 
     private var connectedSessions: [WorkspaceSession] {
