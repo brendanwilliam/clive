@@ -150,6 +150,7 @@ Agreed behavior:
 Implementation tasks:
 
 - [x] Add the common route adapter interface.
+- [x] Add the shared authenticated attachment and handoff coordinator.
 - [ ] Adapt LAN and existing direct WAN/cellular paths to the interface.
 - [ ] Add opportunistic private VPN discovery and optional endpoint configuration.
 - [x] Add route candidate refresh and health reporting.
