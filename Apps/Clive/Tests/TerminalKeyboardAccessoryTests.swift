@@ -42,6 +42,28 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertEqual(sent, [Data("\u{1b}[B".utf8), Data("\u{1b}[A".utf8), Data("\r".utf8)])
     }
 
+    func testShiftTabSendsReverseTabSequence() throws {
+        var sent: [Data] = []
+        let accessory = TerminalKeyboardAccessory(send: { sent.append($0) })
+        accessory.setKeyboardVisible(true)
+        let shift = try XCTUnwrap(accessory.descendant(withIdentifier: "shift") as? UIButton)
+        let tab = try XCTUnwrap(accessory.descendant(withIdentifier: "tab") as? UIButton)
+        shift.sendActions(for: .touchUpInside)
+        tab.sendActions(for: .touchUpInside)
+        XCTAssertEqual(sent, [Data("\u{1b}[Z".utf8)])
+    }
+
+    func testControlCSendsInterruptByte() throws {
+        var sent: [Data] = []
+        let accessory = TerminalKeyboardAccessory(send: { sent.append($0) })
+        accessory.setKeyboardVisible(true)
+        let control = try XCTUnwrap(accessory.descendant(withIdentifier: "control") as? UIButton)
+        let c = try XCTUnwrap(accessory.descendant(withIdentifier: "c") as? UIButton)
+        control.sendActions(for: .touchUpInside)
+        c.sendActions(for: .touchUpInside)
+        XCTAssertEqual(sent, [Data([0x03])])
+    }
+
     func testBottomControlsDoNotOverlapAtCompactIPhoneOrRegularIPadWidths() {
         for width: CGFloat in [320, 834] {
             let controls = TerminalBottomControls()

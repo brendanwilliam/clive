@@ -18,7 +18,7 @@ final class TerminalNavigationUITests: XCTestCase {
         app = nil
     }
 
-    func testTerminalTitleRemainsRenameOnlyAfterHorizontalDrag() {
+    func testTerminalTitleMenuDoesNotChangeSelectionAfterHorizontalDrag() {
         let first = terminalSurface(firstID)
         XCTAssertTrue(first.waitForExistence(timeout: 3))
         XCTAssertEqual(first.value as? String, "Selected")
@@ -31,13 +31,30 @@ final class TerminalNavigationUITests: XCTestCase {
         )
         XCTAssertTrue(waitForSelection(of: first))
         title.tap()
-        XCTAssertTrue(app.staticTexts["Rename terminal"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Disconnect"].exists)
+        XCTAssertTrue(app.buttons["Delete"].exists)
     }
 
     func testTerminalSidebarShowsTheSelectedTerminal() {
         openTerminalDrawer()
         XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 4))
         XCTAssertEqual(drawerRow(firstID).value as? String, "Selected")
+    }
+
+    func testOpeningTerminalSidebarDismissesKeyboardAndToggleClosesIt() {
+        terminalSurface(firstID).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "Terminal should accept focus before opening the sidebar")
+
+        openTerminalDrawer()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "Sidebar should dismiss the keyboard")
+        let closeButton = app.buttons["terminal-sidebar-button"]
+        XCTAssertTrue(closeButton.waitForExistence(timeout: 2), "Shared sidebar button should remain in the header")
+        XCTAssertGreaterThan(closeButton.frame.minY, 0, "Shared header should remain within the top safe area")
+        closeButton.tap()
+        XCTAssertTrue(app.staticTexts["Terminals"].waitForNonExistence(timeout: 3), "Sidebar should close")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3), "Closing the sidebar should restore the prior keyboard")
     }
 
     func testBottomBarStartsCompactAndTogglesKeyboard() {
@@ -77,9 +94,19 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(app.buttons["enter"].waitForExistence(timeout: 2))
     }
 
-    func testHeaderExposesOnlyNewTerminalAction() {
-        XCTAssertTrue(app.buttons["new-terminal-button"].exists)
+    func testHeaderPlacesSidebarTitleMenuAndNewTerminalOnOneRow() {
+        let sidebar = app.buttons["terminal-sidebar-button"]
+        let title = app.buttons["terminal-title-button"]
+        let add = app.buttons["new-terminal-button"]
+        XCTAssertTrue(sidebar.exists)
+        XCTAssertTrue(title.exists)
+        XCTAssertTrue(add.exists)
+        XCTAssertEqual(sidebar.frame.midY, title.frame.midY, accuracy: 2)
+        XCTAssertEqual(title.frame.midY, add.frame.midY, accuracy: 2)
+        XCTAssertLessThan(sidebar.frame.midX, title.frame.midX)
+        XCTAssertLessThan(title.frame.midX, add.frame.midX)
         XCTAssertFalse(app.buttons["shortcuts-button"].exists)
+        XCTAssertFalse(app.buttons["Terminal actions"].exists)
     }
 
     func testTerminalStartsBelowCompactNavigationBar() {
@@ -91,11 +118,15 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(terminal.frame.minY, title.frame.maxY)
     }
 
-    func testTerminalTitleOpensRenameInsteadOfSettings() {
+    func testTerminalTitleMenuRenamesAndDeletesWithConfirmation() {
         app.buttons["terminal-title-button"].tap()
+        app.buttons["Rename"].tap()
         XCTAssertTrue(app.staticTexts["Rename terminal"].waitForExistence(timeout: 2))
         app.buttons["Cancel"].tap()
-        XCTAssertFalse(app.navigationBars["Settings"].exists)
+        app.buttons["terminal-title-button"].tap()
+        app.buttons["Delete"].tap()
+        XCTAssertTrue(app.staticTexts["Close terminal?"].waitForExistence(timeout: 2))
+        app.buttons["Cancel"].tap()
     }
 
     func testKeyboardDismissalThenPagingRemainAvailable() {
@@ -158,21 +189,30 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Reconnect"].waitForExistence(timeout: 2))
     }
 
+    func testDrawerRowContextMenuMatchesLocalTerminalActions() {
+        openTerminalDrawer()
+        drawerRow(firstID).press(forDuration: 1)
+        XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Disconnect"].exists)
+        XCTAssertTrue(app.buttons["Delete"].exists)
+    }
+
+    func testCatalogRowContextMenuOnlyOffersAvailableReconnect() {
+        openTerminalDrawer()
+        let catalog = app.buttons["reconnect-terminal-00000000-0000-0000-0000-000000000003"]
+        XCTAssertTrue(catalog.waitForExistence(timeout: 2))
+        catalog.press(forDuration: 1)
+        XCTAssertTrue(app.buttons["Reconnect"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["Rename"].exists)
+        XCTAssertFalse(app.buttons["Delete"].exists)
+    }
+
     func testDrawerShowsConnectedAndDisconnectedTerminalsTogether() {
         openTerminalDrawer()
         XCTAssertTrue(app.images["terminal-status-\(firstID)"].exists)
         XCTAssertTrue(app.images["catalog-terminal-status-00000000-0000-0000-0000-000000000003"].exists)
         XCTAssertTrue(app.staticTexts["Detached shell"].exists)
         XCTAssertFalse(app.staticTexts["Available on this Mac"].exists)
-    }
-
-    func testDeleteAllPermanentlyEndsLocalCliveTerminals() {
-        openTerminalDrawer()
-        app.buttons["Terminal actions"].tap()
-        app.buttons["Delete All"].tap()
-        XCTAssertTrue(app.staticTexts["Delete all terminals?"].waitForExistence(timeout: 2))
-        XCTAssertTrue(text(containing: "permanently ends every Clive terminal").exists)
-        app.buttons["Cancel"].tap()
     }
 
     func testShortcutMenuRunsCommandFromBottomControl() {
