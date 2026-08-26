@@ -5,6 +5,13 @@ import CliveCloud
 import CliveCore
 
 struct CliveDaemon {
+    struct CodexInvocation: Equatable, Sendable {
+        let arguments: [String]
+        let label: String?
+        let directory: String?
+        let deviceID: String?
+    }
+
     static func main() async {
         do {
             try await run(arguments: Array(CommandLine.arguments.dropFirst()))
@@ -284,7 +291,8 @@ struct CliveDaemon {
       cellular setup --manual --host <hostname-or-ip> --external-port <port> [--listener-port <port>]
       cellular test
       shell
-      codex [--directory <path>] [--label <name>] [codex options...]
+      codex [--directory <path>] [--label <name>] [--device <device-id>] [codex options...]
+        clive codex resume [codex resume arguments...]
       sessions [--device <device-id>]
       detached [--device <device-id>]
       reconnect [--device <device-id>]
@@ -391,15 +399,38 @@ struct CliveDaemon {
     }
 
     private static func runCodex(arguments: [String]) throws {
-        var values = arguments
-        let label: String?
-        if let index = values.firstIndex(of: "--label"), index + 1 < values.count {
-            label = values[index + 1]; values.removeSubrange(index...index + 1)
-        } else { label = nil }
-        let directory = option("--directory", in: values)
-        if let index = values.firstIndex(of: "--directory"), index + 1 < values.count { values.removeSubrange(index...index + 1) }
-        if let index = values.firstIndex(of: "--device"), index + 1 < values.count { values.removeSubrange(index...index + 1) }
-        try runManagedTerminal(command: .sessionCreate, sessionID: nil, deviceID: option("--device", in: arguments), sessionCommand: .codex(arguments: values, label: label), workingDirectory: directory)
+        let invocation = try parseCodexInvocation(arguments)
+        try runManagedTerminal(command: .sessionCreate, sessionID: nil, deviceID: invocation.deviceID, sessionCommand: .codex(arguments: invocation.arguments, label: invocation.label), workingDirectory: invocation.directory)
+    }
+
+    static func parseCodexInvocation(_ arguments: [String]) throws -> CodexInvocation {
+        var index = 0
+        var label: String?
+        var directory: String?
+        var deviceID: String?
+
+        // Clive options are limited to the prefix. Once the first Codex
+        // argument is encountered, the remainder—including `resume` and
+        // every option after it—is forwarded unchanged.
+        while index < arguments.count {
+            switch arguments[index] {
+            case "--label":
+                guard index + 1 < arguments.count else { throw CommandError.usage }
+                label = arguments[index + 1]
+                index += 2
+            case "--directory":
+                guard index + 1 < arguments.count else { throw CommandError.usage }
+                directory = arguments[index + 1]
+                index += 2
+            case "--device":
+                guard index + 1 < arguments.count, !arguments[index + 1].isEmpty else { throw CommandError.usage }
+                deviceID = arguments[index + 1]
+                index += 2
+            default:
+                return CodexInvocation(arguments: Array(arguments[index...]), label: label, directory: directory, deviceID: deviceID)
+            }
+        }
+        return CodexInvocation(arguments: [], label: label, directory: directory, deviceID: deviceID)
     }
 
     private static func runManagedTerminal(command: ControlCommand, sessionID: UUID?, deviceID: String?, sessionCommand: ManagedSessionCommand? = nil, workingDirectory: String? = nil) throws {

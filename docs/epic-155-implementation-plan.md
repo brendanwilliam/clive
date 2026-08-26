@@ -240,7 +240,8 @@ Implementation tasks:
 
 ### 10. Existing Codex handoff — #167
 
-Status: `[-]` design decisions recorded; implementation not started.
+Status: `[-]` design decisions recorded; paste-friendly resume forwarding is
+implemented and covered; local handoff requests remain future work.
 
 Agreed behavior:
 
@@ -256,8 +257,8 @@ Agreed behavior:
 
 Implementation tasks:
 
-- [ ] Implement `clive codex resume ...` argument forwarding.
-- [ ] Add native-error-preserving resume failure behavior.
+- [x] Implement `clive codex resume ...` argument forwarding.
+- [x] Preserve native Codex resume errors and recovery guidance in the managed terminal.
 - [ ] Define and implement the authenticated local handoff request.
 - [ ] Add the opt-in Codex handoff skill and iPhone confirmation flow.
 - [ ] Test pending, accepted, dismissed, expired, and rejected handoffs.

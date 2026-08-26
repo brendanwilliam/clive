@@ -5,6 +5,33 @@ import CliveCore
 
 @Suite("Control socket")
 struct ControlSocketTests {
+    @Test("forwards Codex resume arguments without interpreting Codex options")
+    func forwardsCodexResumeArgumentsUnchanged() throws {
+        let invocation = try CliveDaemon.parseCodexInvocation([
+            "--directory", "/tmp/project", "--label", "Project work", "resume", "--device", "codex-run", "--last-message",
+        ])
+
+        #expect(invocation.directory == "/tmp/project")
+        #expect(invocation.label == "Project work")
+        #expect(invocation.deviceID == nil)
+        #expect(invocation.arguments == ["resume", "--device", "codex-run", "--last-message"])
+    }
+
+    @Test("accepts Clive device selection before the Codex invocation")
+    func acceptsCliveOptionsBeforeCodexArguments() throws {
+        let invocation = try CliveDaemon.parseCodexInvocation(["--device", "phone", "resume", "run-1"])
+
+        #expect(invocation.deviceID == "phone")
+        #expect(invocation.arguments == ["resume", "run-1"])
+    }
+
+    @Test("rejects a missing Codex wrapper option value")
+    func rejectsMissingCodexWrapperOptionValue() {
+        #expect(throws: (any Error).self) {
+            try CliveDaemon.parseCodexInvocation(["--directory"])
+        }
+    }
+
     @Test("filters detached sessions for CLI recovery")
     func filtersDetachedSessionsForRecovery() {
         let detached = SessionDescriptor(id: UUID(), attachmentCount: 0, resizeOwner: nil, outputOffset: 12)
