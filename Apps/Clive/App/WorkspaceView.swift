@@ -147,6 +147,8 @@ struct WorkspaceView: View {
 
     private var compactNavigation: some View {
         GeometryReader { proxy in
+            let sidebarWidth = min(320, proxy.size.width * 0.84)
+
             ZStack(alignment: .leading) {
                 navigation
                 if sidebarOverlayVisible {
@@ -156,17 +158,23 @@ struct WorkspaceView: View {
                         .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = false } }
                         .zIndex(1)
                     terminalSidebar(showsDismissButton: true)
-                        .frame(width: min(320, proxy.size.width * 0.84))
+                        .padding(.top, proxy.safeAreaInsets.top)
+                        .frame(width: sidebarWidth)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .background(Color(uiColor: .secondarySystemBackground))
                         .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
                         // The drawer background reaches the screen edges; its content
-                        // keeps the safe-area padding applied in `terminalSidebar`.
+                        // is explicitly offset below the status bar.
                         .ignoresSafeArea(.container, edges: .vertical)
                         .shadow(color: .black.opacity(0.28), radius: 18, x: 6)
                         .transition(.move(edge: .leading))
                         .zIndex(2)
                 }
+                terminalSidebarButton
+                    .frame(width: 44, height: 44)
+                    .padding(.top, proxy.safeAreaInsets.top + 4)
+                    .padding(.leading, sidebarOverlayVisible ? sidebarWidth - 52 : 8)
+                    .zIndex(3)
             }
         }
     }
@@ -210,18 +218,10 @@ struct WorkspaceView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        toggleSidebar()
-                    } label: {
-                        Image(systemName: "sidebar.leading")
-                            .foregroundStyle(sidebarIsVisible ? .black : .primary)
-                            .padding(6)
-                            .background(sidebarIsVisible ? Color.white : .clear, in: .rect(cornerRadius: 8))
+                if horizontalSizeClass != .compact {
+                    ToolbarItem(placement: .topBarLeading) {
+                        terminalSidebarButton
                     }
-                    .accessibilityLabel("Terminals")
-                    .accessibilityValue(sidebarIsVisible ? "Open" : "Closed")
-                    .accessibilityIdentifier("terminal-sidebar-button")
                 }
                 ToolbarItem(placement: .principal) { terminalTitleButton }
                 ToolbarItem(placement: .topBarTrailing) { terminalActions }
@@ -262,6 +262,20 @@ struct WorkspaceView: View {
 
     private var sidebarIsVisible: Bool {
         horizontalSizeClass == .compact ? sidebarOverlayVisible : sidebarVisibility != .detailOnly
+    }
+
+    private var terminalSidebarButton: some View {
+        Button {
+            toggleSidebar()
+        } label: {
+            Image(systemName: "sidebar.leading")
+                .foregroundStyle(sidebarIsVisible ? .black : .primary)
+                .padding(6)
+                .background(sidebarIsVisible ? Color.white : .clear, in: .rect(cornerRadius: 8))
+        }
+        .accessibilityLabel(sidebarIsVisible ? "Close terminals" : "Open terminals")
+        .accessibilityValue(sidebarIsVisible ? "Open" : "Closed")
+        .accessibilityIdentifier("terminal-sidebar-button")
     }
 
     private func toggleSidebar() {
@@ -319,23 +333,10 @@ struct WorkspaceView: View {
     private func terminalSidebar(showsDismissButton: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsDismissButton {
-                HStack {
-                    Text("Terminals")
-                        .font(.headline)
-                    Spacer()
-                    Button {
-                        toggleSidebar()
-                    } label: {
-                        Image(systemName: "sidebar.leading")
-                            .foregroundStyle(.black)
-                            .frame(width: 32, height: 32)
-                            .background(Color.white, in: .rect(cornerRadius: 8))
-                    }
-                    .accessibilityLabel("Close terminals")
-                    .accessibilityIdentifier("terminal-sidebar-close-button")
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                Text("Terminals")
+                    .font(.headline)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
             }
             List {
                 Section {
@@ -386,7 +387,7 @@ struct WorkspaceView: View {
             .listStyle(.plain)
             .listRowSpacing(DrawerRowRevealPolicy.rowSpacing)
             .scrollContentBackground(.hidden)
-            .navigationTitle("Terminals")
+            .navigationTitle(showsDismissButton ? "" : "Terminals")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -420,7 +421,7 @@ struct WorkspaceView: View {
                 }
             }
         }
-        .safeAreaPadding(.top, 16)
+        .safeAreaPadding(.top, showsDismissButton ? 0 : 16)
         .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .secondarySystemBackground))

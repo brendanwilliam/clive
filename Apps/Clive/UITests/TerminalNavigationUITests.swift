@@ -47,8 +47,9 @@ final class TerminalNavigationUITests: XCTestCase {
         openTerminalDrawer()
 
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        let closeButton = app.buttons["terminal-sidebar-close-button"]
+        let closeButton = app.buttons["terminal-sidebar-button"]
         XCTAssertTrue(closeButton.waitForExistence(timeout: 2))
+        XCTAssertGreaterThan(closeButton.frame.minY, 44)
         closeButton.tap()
         XCTAssertTrue(app.staticTexts["Terminals"].waitForNonExistence(timeout: 3))
     }
