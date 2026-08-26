@@ -328,7 +328,6 @@ struct WorkspaceView: View {
         .accessibilityLabel(sidebarIsVisible ? "Close terminals" : "Open terminals")
         .accessibilityValue(sidebarIsVisible ? "Open" : "Closed")
         .accessibilityIdentifier("terminal-sidebar-button")
-        .matchedGeometryEffect(id: "terminal-sidebar", in: toolbarControlTransition)
     }
 
     private func toggleSidebar() {
@@ -411,11 +410,11 @@ struct WorkspaceView: View {
             }
             .padding(.horizontal, 16)
             .frame(height: 60)
-            Text("Terminals")
-                .font(.largeTitle.weight(.bold))
+            Text("Clive Sessions")
+                .font(.title.weight(.bold))
                 .padding(.horizontal, 12)
-                .padding(.top, 4)
-                .padding(.bottom, 4)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
             List {
                 Section {
                     if connectedSessions.isEmpty {
@@ -475,7 +474,10 @@ struct WorkspaceView: View {
         }
         .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background {
+            Color(uiColor: .secondarySystemBackground)
+                .ignoresSafeArea(.container, edges: .top)
+        }
     }
 
     private var connectedSessions: [WorkspaceSession] {
@@ -593,8 +595,9 @@ struct WorkspaceView: View {
                 deleteTarget = session
             }
         }
-        .padding(8)
-        .frame(width: 220)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(width: 236)
     }
 
     private func terminalPopoverButton(
@@ -605,7 +608,7 @@ struct WorkspaceView: View {
     ) -> some View {
         Button(role: role) {
             terminalMenuVisible = false
-            DispatchQueue.main.async(execute: action)
+            action()
         } label: {
             Label(title, systemImage: systemImage)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
