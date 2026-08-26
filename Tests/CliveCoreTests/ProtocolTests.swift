@@ -179,11 +179,18 @@ private struct StaticRouteProvider: RouteProvider {
 
 @Test func v3SessionAndOutputDescriptorsRoundTrip() throws {
     let id = UUID()
-    let descriptor = SessionDescriptor(id: id, label: "build", attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 42)
+    let descriptor = SessionDescriptor(id: id, kind: .codex, label: "build", attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 42)
     #expect(try ProtocolPayload.decode(SessionDescriptor.self, from: ProtocolPayload.encode(descriptor)) == descriptor)
     let chunk = TerminalOutputChunk(offset: 42, bytes: Data("ok".utf8))
     #expect(try ProtocolPayload.decode(TerminalOutputChunk.self, from: ProtocolPayload.encode(chunk)) == chunk)
     #expect(chunk.endOffset == 44)
+}
+
+@Test func legacySessionDescriptorDefaultsToShell() throws {
+    let id = UUID()
+    let legacy = "{\"id\":\"\(id.uuidString)\",\"label\":\"old\",\"attachmentCount\":0,\"resizeOwner\":null,\"outputOffset\":0}"
+    let descriptor = try ProtocolPayload.decode(SessionDescriptor.self, from: Data(legacy.utf8))
+    #expect(descriptor.kind == .shell)
 }
 
 @Test func sessionAttachAndAttachmentStateRoundTrip() throws {

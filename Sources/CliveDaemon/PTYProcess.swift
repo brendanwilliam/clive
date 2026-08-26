@@ -61,7 +61,7 @@ final class PTYProcess: TerminalProcess, @unchecked Sendable {
     private var outputSuspended = false
     private var terminated = false
 
-    init(size: TerminalSize, workingDirectory: String? = nil, output: @escaping @Sendable (Data) -> Void, onExit: @escaping @Sendable () -> Void = {}) throws {
+    init(size: TerminalSize, workingDirectory: String? = nil, command: ManagedSessionCommand = .shell, output: @escaping @Sendable (Data) -> Void, onExit: @escaping @Sendable () -> Void = {}) throws {
         self.output = output
         self.onExit = onExit
         let directory = try Self.resolveWorkingDirectory(workingDirectory)
@@ -77,8 +77,12 @@ final class PTYProcess: TerminalProcess, @unchecked Sendable {
             // reliable way to hand work off before that restart closes the
             // shell's process group.
             setenv("CLIVE_MANAGED_TERMINAL", "1", 1)
-            var arguments: [UnsafeMutablePointer<CChar>?] = [strdup("zsh"), strdup("-l"), nil]
-            arguments.withUnsafeMutableBufferPointer { buffer in
+            let arguments: [String] = switch command {
+            case .shell: ["zsh", "-l"]
+            case .codex(let values, _): ["zsh", "-l", "-c", Self.codexScript(arguments: values)]
+            }
+            var childArguments = arguments.map { strdup($0) } + [nil]
+            childArguments.withUnsafeMutableBufferPointer { buffer in
                 _ = execv("/bin/zsh", buffer.baseAddress)
             }
             _exit(127)
@@ -90,6 +94,15 @@ final class PTYProcess: TerminalProcess, @unchecked Sendable {
         readSource.setEventHandler { [weak self] in self?.readAvailableOutput() }
         readSource.setCancelHandler { close(masterFD) }
         readSource.resume()
+    }
+
+    static func codexScript(arguments: [String]) -> String {
+        let command = (["codex"] + arguments).map(shellQuote).joined(separator: " ")
+        return "if ! command -v codex >/dev/null 2>&1; then print -u2 'clive: codex executable was not found on PATH.'; exec zsh -l; fi; " + command + "; exec zsh -l"
+    }
+
+    private static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     private static func resolveWorkingDirectory(_ value: String?) throws -> String {
