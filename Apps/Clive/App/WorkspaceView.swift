@@ -41,7 +41,7 @@ struct WorkspaceView: View {
     private var mainNavigation: some View {
         GeometryReader { proxy in
             terminalWorkspace(availableWidth: proxy.size.width)
-                .ignoresSafeArea(.container, edges: .bottom)
+                .ignoresSafeArea(.container, edges: [.top, .bottom])
         }
     }
 
@@ -183,6 +183,7 @@ struct WorkspaceView: View {
                 .zIndex(3)
             navigation
         }
+        .safeAreaPadding(.top)
     }
 
     private func handleOpenURL(_ url: URL) {
@@ -328,6 +329,7 @@ struct WorkspaceView: View {
         .accessibilityLabel(sidebarIsVisible ? "Close terminals" : "Open terminals")
         .accessibilityValue(sidebarIsVisible ? "Open" : "Closed")
         .accessibilityIdentifier("terminal-sidebar-button")
+        .matchedGeometryEffect(id: "terminal-sidebar", in: toolbarControlTransition)
     }
 
     private func toggleSidebar() {
@@ -472,12 +474,10 @@ struct WorkspaceView: View {
                 }
             }
         }
+        .safeAreaPadding(.top)
         .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background {
-            Color(uiColor: .secondarySystemBackground)
-                .ignoresSafeArea(.container, edges: .top)
-        }
+        .background(Color(uiColor: .secondarySystemBackground))
     }
 
     private var connectedSessions: [WorkspaceSession] {
@@ -595,7 +595,7 @@ struct WorkspaceView: View {
                 deleteTarget = session
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 24)
         .padding(.vertical, 8)
         .frame(width: 236)
     }
