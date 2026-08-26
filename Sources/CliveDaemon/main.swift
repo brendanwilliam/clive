@@ -226,7 +226,7 @@ struct CliveDaemon {
             switch response.kind {
             case .pairingTicket:
                 guard let ticket = response.pairingTicket, let link = try? PairingLink.makeURL(for: ticket) else { throw ControlSocketError.malformedMessage }
-                print("Scan this secure pairing code with the iPhone Camera app within five minutes:")
+                print("Scan this secure pairing code with the iPhone Camera app within one minute:")
                 print("Pairing endpoint: \(ticket.endpoint):\(ticket.port)")
                 print(try TerminalQRCode.render(payload: link.absoluteString))
                 print("Ctrl-C cancels this code. After scanning, approve the device below.")

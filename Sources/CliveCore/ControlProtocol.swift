@@ -57,11 +57,14 @@ public struct PairingPrompt: Codable, Equatable, Sendable {
     public let deviceID: String
     public let displayName: String
     public let certificateFingerprint: String
+    /// Timestamp assigned by the Mac when the pairing request was received.
+    public let scannedAt: Date?
 
-    public init(deviceID: String, displayName: String, certificateFingerprint: String) {
+    public init(deviceID: String, displayName: String, certificateFingerprint: String, scannedAt: Date? = nil) {
         self.deviceID = deviceID
         self.displayName = displayName
         self.certificateFingerprint = certificateFingerprint
+        self.scannedAt = scannedAt
     }
 }
 

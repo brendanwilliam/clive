@@ -30,6 +30,7 @@ final class PairingConnectionHandler: @unchecked Sendable {
         guard frame.kind == .pairingRequest,
               let request = try? ProtocolPayload.decode(PairingRequest.self, from: frame.payload) else {
             onDiagnostic("invalid request received")
+            Task { await coordinator.invalidate(); onFinished(false) }
             framedConnection?.cancel()
             return
         }

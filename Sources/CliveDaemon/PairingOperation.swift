@@ -23,16 +23,17 @@ final class PairingOperation: @unchecked Sendable {
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw ControlSocketError.unavailable }
         let secretBytes = Data(bytes)
         let secretValue = secretBytes.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-        let placeholder = PairingTicket(endpoint: endpoint, port: 1, expiresAt: .now.addingTimeInterval(300), oneTimeSecret: secretValue, daemonCertificateFingerprint: fingerprint)
+        let placeholder = PairingTicket(endpoint: endpoint, port: 1, expiresAt: .now.addingTimeInterval(60), oneTimeSecret: secretValue, daemonCertificateFingerprint: fingerprint)
         let secret = PairingSecret(ticket: placeholder)
         coordinator = PairingCoordinator(secret: secret, trustStore: trustStore, macID: state.macID, displayName: Host.current().localizedName ?? "Mac", serviceID: state.serviceID, macCertificate: try identityStore.certificateData(of: identity), rendezvousCapability: rendezvousCapability, approval: { request in
-            let prompt = PairingPrompt(deviceID: request.deviceID, displayName: request.deviceName, certificateFingerprint: Fingerprint.sha256(of: request.certificate))
             do {
-                try channel.send(ControlResponse(kind: .pairingPrompt, success: true, pairingPrompt: prompt))
                 let response = try channel.readRequest()
                 return response.command == .approvePairing && response.approved == true
             } catch { return false }
-        }, didPair: onPaired)
+        }, didPair: onPaired, onScan: { request, scannedAt in
+            let prompt = PairingPrompt(deviceID: request.deviceID, displayName: request.deviceName, certificateFingerprint: Fingerprint.sha256(of: request.certificate), scannedAt: scannedAt)
+            try? channel.send(ControlResponse(kind: .pairingPrompt, success: true, pairingPrompt: prompt))
+        })
         listener = try SecureListener(identity: identity, onReady: { [weak self] port in
             guard let self else { return }
             let ticket = PairingTicket(endpoint: endpoint, port: port, expiresAt: placeholder.expiresAt, oneTimeSecret: secretValue, daemonCertificateFingerprint: fingerprint, remoteEndpoint: state.remoteEndpoint)
@@ -40,10 +41,13 @@ final class PairingOperation: @unchecked Sendable {
             try? channel.send(ControlResponse(kind: .pairingTicket, success: true, pairingTicket: ticket))
         }, onConnection: { [weak self] connection, queue, _, _, _ in self?.accept(connection, queue: queue) })
         listener?.start()
-        DispatchQueue.global().asyncAfter(deadline: .now() + 300) { [weak self] in self?.finish(success: false, message: "Pairing ticket expired.") }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 60) { [weak self] in self?.finish(success: false, message: "Pairing ticket expired.") }
     }
 
-    func cancel(message: String = "Pairing cancelled.") { finish(success: false, message: message) }
+    func cancel(message: String = "Pairing cancelled.") {
+        Task { await coordinator.invalidate() }
+        finish(success: false, message: message)
+    }
 
     private func accept(_ connection: NWConnection, queue: DispatchQueue) {
         print("Pairing: connection received.")
