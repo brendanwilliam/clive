@@ -309,10 +309,13 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyRowGroup.isHidden = false
         controlsHeight.constant = compact ? 144 : 48
         keyRowHeight.constant = compact ? 140 : 44
-        compactKeyRowWidth.isActive = compact
-        compactKeyRowTrailing.isActive = !expanded
-        expandedKeyRowLeading.isActive = expanded
-        expandedKeyRowTrailing.isActive = expanded
+        if expanded {
+            NSLayoutConstraint.deactivate([compactKeyRowTrailing, compactKeyRowWidth])
+            NSLayoutConstraint.activate([expandedKeyRowLeading, expandedKeyRowTrailing])
+        } else {
+            NSLayoutConstraint.deactivate([expandedKeyRowLeading, expandedKeyRowTrailing])
+            NSLayoutConstraint.activate([compactKeyRowTrailing, compactKeyRowWidth])
+        }
         if compact {
             keyRowGroup.effect = nil
         } else if #available(iOS 26.0, *) {
@@ -322,6 +325,9 @@ struct TerminalSurfaceView: UIViewRepresentable {
         } else {
             keyRowGroup.effect = UIBlurEffect(style: .systemMaterial)
         }
+        setNeedsUpdateConstraints()
+        updateConstraintsIfNeeded()
+        setNeedsLayout()
         layoutIfNeeded()
     }
 }

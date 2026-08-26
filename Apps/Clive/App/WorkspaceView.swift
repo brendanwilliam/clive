@@ -209,17 +209,20 @@ struct WorkspaceView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if horizontalSizeClass == .compact {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            dismissKeyboard()
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismissKeyboard()
+                        if horizontalSizeClass == .compact {
                             withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = true }
-                        } label: {
-                            Image(systemName: "sidebar.leading")
+                        } else {
+                            sidebarVisibility = .all
+                            preferredCompactColumn = .sidebar
                         }
-                        .accessibilityLabel("Terminals")
-                        .accessibilityIdentifier("terminal-sidebar-button")
+                    } label: {
+                        Image(systemName: "sidebar.leading")
                     }
+                    .accessibilityLabel("Terminals")
+                    .accessibilityIdentifier("terminal-sidebar-button")
                 }
                 ToolbarItem(placement: .principal) { terminalTitleButton }
                 ToolbarItem(placement: .topBarTrailing) { terminalActions }
