@@ -241,8 +241,10 @@ Implementation tasks:
 
 ### 10. Existing Codex handoff — #167
 
-Status: `[-]` design decisions recorded; paste-friendly resume forwarding is
+Status: `[-]` handoff boundary documented; paste-friendly resume forwarding is
 implemented and covered; local handoff requests remain future work.
+
+Handoff contract: [`codex-handoff.md`](codex-handoff.md).
 
 Agreed behavior:
 
