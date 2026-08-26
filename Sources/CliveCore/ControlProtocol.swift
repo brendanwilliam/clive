@@ -8,6 +8,10 @@ public enum ControlCommand: String, Codable, Sendable {
 public enum ManagedSessionCommand: Codable, Equatable, Sendable {
     case shell
     case codex(arguments: [String], label: String?)
+
+    public var sessionKind: SessionKind {
+        switch self { case .shell: .shell; case .codex: .codex }
+    }
 }
 
 public enum CellularEndpointMode: String, Codable, Equatable, Sendable { case automatic, manual }

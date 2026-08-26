@@ -571,12 +571,12 @@ struct WorkspaceView: View {
     private func catalogSessionRow(_ session: CliveCore.SessionDescriptor) -> some View {
         Button { coordinator.reconnect(session) } label: {
             HStack(spacing: 12) {
-                Image(systemName: "terminal")
+                Image(systemName: session.kind == .codex ? "sparkles" : "terminal")
                     .foregroundStyle(session.attachmentCount > 0 ? Color.green : Color.secondary)
                     .frame(width: 20, height: 20)
                     .accessibilityLabel("Disconnected")
                     .accessibilityIdentifier("catalog-terminal-status-\(session.id.uuidString)")
-                Text(session.label ?? "Detached terminal")
+                Text(session.label ?? (session.kind == .codex ? "Detached Codex session" : "Detached terminal"))
                 Spacer(minLength: 4)
                 if session.attachmentCount == 0 {
                     Image(systemName: "arrow.clockwise")

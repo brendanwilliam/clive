@@ -30,6 +30,42 @@ final class PTYProcessTests: XCTestCase {
         XCTAssertTrue(script.hasSuffix("exec zsh -l"))
         XCTAssertTrue(script.contains("command -v codex"))
     }
+
+    func testCodexSessionIsClassifiedAndCanHandoffFromMacToIPhone() throws {
+        let process = FakeTerminalProcess()
+        let directories = Box<[String?]>([])
+        let manager = TerminalSessionManager(
+            registry: SessionRegistry(),
+            processFactory: { _, _, output, exit in
+                process.output = output; process.exit = exit; return process
+            },
+            codexProcessFactory: { _, directory, output, exit in
+                directories.value.append(directory)
+                process.output = output; process.exit = exit; return process
+            }
+        )
+        let clientID = UUID()
+        let original = try manager.attach(
+            deviceID: "phone", clientSessionID: clientID, size: TerminalSize(columns: 80, rows: 24), workingDirectory: "/tmp",
+            command: .codex(arguments: ["resume", "run-1"], label: "Project work"),
+            attachmentID: UUID(), attachmentKind: .macCLI, output: { _, done in done() },
+            onSuperseded: {}, onShellExit: {}
+        )
+
+        let descriptor = manager.descriptors(deviceID: "phone").first
+        XCTAssertEqual(descriptor?.kind, .codex)
+        XCTAssertEqual(descriptor?.label, "Project work")
+        XCTAssertEqual(directories.value, ["/tmp"])
+
+        let handoff = try manager.attachExisting(
+            deviceID: "phone", serverSessionID: original.serverSessionID, size: TerminalSize(columns: 80, rows: 24),
+            attachmentID: UUID(), attachmentKind: .iPhone, lastReceivedOffset: 0,
+            output: { _, done in done() }, onDetached: { _ in }, onShellExit: {}
+        )
+        XCTAssertEqual(handoff?.disposition, .resumed)
+        XCTAssertEqual(manager.descriptors(deviceID: "phone").first?.attachmentCount, 1)
+        XCTAssertEqual(process.terminateCount, 0)
+    }
 }
 
 final class TerminalSessionManagerTests: XCTestCase {

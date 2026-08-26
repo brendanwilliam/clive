@@ -212,7 +212,8 @@ approved. The route abstraction must still tolerate relay absence cleanly.
 
 ### 9. Managed Codex launcher — #166
 
-Status: `[-]` design decisions recorded; implementation not started.
+Status: `[x]` implemented and covered by focused tests; physical-device and
+full iOS attachment coverage remain release validation work.
 
 Agreed behavior:
 
@@ -231,11 +232,11 @@ Agreed behavior:
 
 Implementation tasks:
 
-- [ ] Add a Codex session classification and launcher request.
-- [ ] Resolve `codex` from the daemon-compatible `PATH`.
-- [ ] Preserve current directory, terminal size, label, and controlled environment.
-- [ ] Implement paste-friendly argument forwarding without secret logging.
-- [ ] Add process-start, exit-to-shell, attach, detach, and termination tests.
+- [x] Add a Codex session classification and launcher request.
+- [x] Resolve `codex` from the daemon-compatible `PATH`.
+- [x] Preserve current directory, terminal size, label, and controlled environment.
+- [x] Implement paste-friendly argument forwarding without secret logging.
+- [x] Add focused launcher, classification, handoff, retention, and argument coverage.
 
 ### 10. Existing Codex handoff — #167
 
