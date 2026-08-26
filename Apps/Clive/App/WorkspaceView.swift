@@ -45,7 +45,7 @@ struct WorkspaceView: View {
                     columnVisibility: $sidebarVisibility,
                     preferredCompactColumn: $preferredCompactColumn
                 ) {
-                    terminalSidebar()
+                    terminalSidebar(showsDismissButton: true)
                         .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 380)
                 } detail: {
                     navigation
@@ -168,6 +168,14 @@ struct WorkspaceView: View {
                         .transition(.move(edge: .leading))
                         .zIndex(2)
                 }
+                terminalSidebarButton
+                    .padding(.top, proxy.safeAreaInsets.top + 8)
+                    .padding(.leading, 16)
+                    // The navigation stack lays out this overlay below its own
+                    // top bar. Compensate for that inset so the control stays
+                    // in the same upper-leading position as the split view.
+                    .offset(y: -(proxy.safeAreaInsets.top + 20))
+                    .zIndex(3)
             }
         }
     }
@@ -211,11 +219,6 @@ struct WorkspaceView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if horizontalSizeClass == .compact && !sidebarOverlayVisible {
-                    ToolbarItem(placement: .topBarLeading) {
-                        terminalSidebarButton
-                    }
-                }
                 ToolbarItem(placement: .principal) { terminalTitleButton }
                 ToolbarItem(placement: .topBarTrailing) { terminalActions }
             }
@@ -278,6 +281,7 @@ struct WorkspaceView: View {
                 }
                 .clipShape(Circle())
         }
+        .buttonStyle(.plain)
         .accessibilityLabel(sidebarIsVisible ? "Close terminals" : "Open terminals")
         .accessibilityValue(sidebarIsVisible ? "Open" : "Closed")
         .accessibilityIdentifier("terminal-sidebar-button")
@@ -351,14 +355,18 @@ struct WorkspaceView: View {
     private func terminalSidebar(showsDismissButton: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsDismissButton {
-                HStack {
-                    terminalSidebarButton
+                VStack(alignment: .leading, spacing: 0) {
+                    if horizontalSizeClass != .compact {
+                        terminalSidebarButton
+                            .padding(.top, 8)
+                            .padding(.leading, 16)
+                    }
                     Text("Terminals")
-                        .font(.headline)
-                    Spacer()
+                        .font(.largeTitle.weight(.bold))
+                        .padding(.top, horizontalSizeClass == .compact ? 64 : 8)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
                 }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
             }
             List {
                 Section {
@@ -411,13 +419,15 @@ struct WorkspaceView: View {
             .scrollContentBackground(.hidden)
             .navigationTitle(showsDismissButton ? "" : "Terminals")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("Disconnect All", systemImage: "network.slash") { coordinator.disconnectAll() }
-                        Button("Delete All", systemImage: "trash", role: .destructive) { showingClearAllConfirmation = true }
-                    } label: { Image(systemName: "ellipsis").frame(width: 44, height: 32) }
-                    .accessibilityLabel("Terminal actions")
-                    .disabled(coordinator.openSessionCount == 0)
+                if !showsDismissButton {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button("Disconnect All", systemImage: "network.slash") { coordinator.disconnectAll() }
+                            Button("Delete All", systemImage: "trash", role: .destructive) { showingClearAllConfirmation = true }
+                        } label: { Image(systemName: "ellipsis").frame(width: 44, height: 32) }
+                        .accessibilityLabel("Terminal actions")
+                        .disabled(coordinator.openSessionCount == 0)
+                    }
                 }
             }
             .toolbarBackground(.visible, for: .navigationBar)
