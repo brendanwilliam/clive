@@ -182,7 +182,8 @@ Implementation tasks:
 
 ### 7. Relay design — #162
 
-Status: `[-]` design decisions recorded; production relay deferred.
+Status: `[-]` architecture decision record and threat model implemented;
+production relay deferred pending launch gates.
 
 Agreed boundary:
 
@@ -198,9 +199,9 @@ Agreed boundary:
 
 Implementation tasks:
 
-- [ ] Produce the architecture decision record and threat model.
-- [ ] Define operational ownership, credential issuance, quotas, and monitoring.
-- [ ] Add deterministic relay-unavailable behavior to route tests.
+- [x] Produce the architecture decision record and threat model.
+- [x] Define operational ownership, credential issuance, quotas, and monitoring.
+- [x] Define deterministic relay-unavailable behavior and launch gates.
 
 ### 8. Relay implementation — #163
 
@@ -323,7 +324,7 @@ Update this table as work lands. Link the implementation PR or commit in the
 | #159 QR security | Design recorded | — |
 | #160 Route abstraction | Design recorded | — |
 | #161 Reattachment | Design recorded | — |
-| #162 Relay design | Design recorded | — |
+| #162 Relay design | ADR and threat model | [`relay-architecture-and-threat-model.md`](relay-architecture-and-threat-model.md) |
 | #163 Relay implementation | Deferred | — |
 | #166 Codex launcher | Design recorded | — |
 | #167 Existing-run handoff | Design recorded | — |
