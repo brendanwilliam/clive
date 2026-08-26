@@ -31,6 +31,7 @@ struct WorkspaceView: View {
     @State private var sidebarOverlayVisible = false
     @State private var keyboardVisible = false
     @State private var keyboardWasVisibleBeforeSidebar = false
+    @State private var terminalMenuVisible = false
     @Namespace private var toolbarControlTransition
 
     var body: some View {
@@ -263,10 +264,8 @@ struct WorkspaceView: View {
     }
 
     private var terminalTitleMenu: some View {
-        Menu {
-            if let session = coordinator.selectedSession {
-                terminalSessionActions(for: session)
-            }
+        Button {
+            terminalMenuVisible.toggle()
         } label: {
             Text(coordinator.selectedSession?.descriptor.label ?? "No terminal")
                 .lineLimit(1)
@@ -279,10 +278,20 @@ struct WorkspaceView: View {
                     Color.clear.cliveGlassBackground(in: Capsule())
                 }
         }
-        .menuOrder(.fixed)
+        .buttonStyle(.plain)
         .disabled(coordinator.selectedSession == nil)
         .accessibilityLabel("Terminal title")
         .accessibilityIdentifier("terminal-title-button")
+        .popover(
+            isPresented: $terminalMenuVisible,
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            if let session = coordinator.selectedSession {
+                terminalPopoverActions(for: session)
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
     }
 
     private func dismissKeyboard() {
@@ -345,6 +354,7 @@ struct WorkspaceView: View {
     }
 
     private func openSidebar() {
+        terminalMenuVisible = false
         keyboardWasVisibleBeforeSidebar = keyboardVisible
         dismissKeyboard()
         if horizontalSizeClass == .compact {
@@ -563,6 +573,46 @@ struct WorkspaceView: View {
             Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
         }
         Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
+    }
+
+    private func terminalPopoverActions(for session: WorkspaceSession) -> some View {
+        VStack(spacing: 0) {
+            terminalPopoverButton("Rename", systemImage: "pencil") {
+                beginRename(session)
+            }
+            if ConnectionPresentation.status(for: session.state) == .connected {
+                terminalPopoverButton("Disconnect", systemImage: "network.slash") {
+                    coordinator.disconnect(session)
+                }
+            } else {
+                terminalPopoverButton("Reconnect", systemImage: "arrow.clockwise") {
+                    coordinator.reconnect(session)
+                }
+            }
+            terminalPopoverButton("Delete", systemImage: "trash", role: .destructive) {
+                deleteTarget = session
+            }
+        }
+        .padding(8)
+        .frame(width: 220)
+    }
+
+    private func terminalPopoverButton(
+        _ title: String,
+        systemImage: String,
+        role: ButtonRole? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(role: role) {
+            terminalMenuVisible = false
+            DispatchQueue.main.async(execute: action)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(role == .destructive ? Color.red : Color.primary)
     }
 
     @ViewBuilder private func terminalSessionSwipeActions(for session: WorkspaceSession) -> some View {
