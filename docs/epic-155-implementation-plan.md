@@ -39,8 +39,8 @@ local verification workflow is reserved for PR preparation.
 
 ### 1. Connectivity architecture — #156
 
-Status: `[-]` design decisions recorded; architecture document and protocol
-contracts remain to be written.
+Status: `[-]` architecture contract and deterministic selector implemented;
+daemon/provider integration remains in #160.
 
 Agreed behavior:
 
@@ -62,10 +62,10 @@ Agreed behavior:
 
 Implementation tasks:
 
-- [ ] Define route candidate and route-provider types.
-- [ ] Define route ranking, health, backoff, debounce, and staleness constants.
-- [ ] Document the state machine and transition invariants.
-- [ ] Add deterministic state-machine tests.
+- [x] Define route candidate and route-provider types.
+- [x] Define route ranking, health, backoff, debounce, and staleness constants.
+- [x] Document the state machine and transition invariants.
+- [x] Add deterministic state-machine tests.
 
 ### 2. QR onboarding links — #157
 
