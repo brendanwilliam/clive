@@ -2558,6 +2558,14 @@
         "Apps/Clive/UITests/TerminalNavigationUITests.swift"
       ],
       "result": "no-component-impact"
+    },
+    {
+      "id": "2026-08-25-epic-155-implementation-plan",
+      "reason": "The Epic 155 implementation plan documents architecture, connectivity, Codex, verification, and release work without changing mapped user interface components or resource relationships.",
+      "paths": [
+        "docs/epic-155-implementation-plan.md"
+      ],
+      "result": "no-component-impact"
     }
   ]
 }
