@@ -522,7 +522,12 @@ struct WorkspaceView: View {
                   count: coordinator.sessions.count,
                   forward: forward
               ) else { return }
-        coordinator.selectSession(coordinator.sessions[adjacent].id)
+        // Only the selected TerminalView is mounted, so SwiftTerm cannot provide
+        // a live neighboring-terminal peek without duplicating a session view.
+        // Keep the transition short and animated as the closest practical preview.
+        withAnimation(.easeInOut(duration: 0.2)) {
+            coordinator.selectSession(coordinator.sessions[adjacent].id)
+        }
     }
 
     private var scanner: some View {

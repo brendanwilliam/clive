@@ -73,7 +73,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         private weak var container: TerminalSurfaceContainer?
         private var accessory: TerminalKeyboardAccessory?
         private var edgeObserver: TerminalLeftEdgeObserver?
-        private var twoFingerObserver: TerminalTwoFingerSwitchObserver?
+        private var horizontalSwitchObserver: TerminalHorizontalSwitchObserver?
 
         init(
             session: SessionClient?,
@@ -104,7 +104,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 manage: manageShortcuts
             )
             edgeObserver = TerminalLeftEdgeObserver.install(on: container.terminal) { [weak self] in self?.openDrawer() }
-            twoFingerObserver = TerminalTwoFingerSwitchObserver.install(on: container.terminal) { [weak self] forward in
+            horizontalSwitchObserver = TerminalHorizontalSwitchObserver.install(on: container.terminal) { [weak self] forward in
                 self?.selectAdjacentTerminal(forward)
             }
         }
@@ -373,7 +373,7 @@ enum TerminalSurfaceConfiguration {
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { view != nil }
 }
 
-@MainActor private final class TerminalTwoFingerSwitchObserver: NSObject, UIGestureRecognizerDelegate {
+@MainActor private final class TerminalHorizontalSwitchObserver: NSObject, UIGestureRecognizerDelegate {
     private weak var view: TerminalView?
     private let selectAdjacent: (Bool) -> Void
     private lazy var gesture = UIPanGestureRecognizer(target: self, action: #selector(handle(_:)))
@@ -382,10 +382,10 @@ enum TerminalSurfaceConfiguration {
     static func install(
         on view: TerminalView,
         selectAdjacent: @escaping (Bool) -> Void
-    ) -> TerminalTwoFingerSwitchObserver {
-        let observer = TerminalTwoFingerSwitchObserver(view: view, selectAdjacent: selectAdjacent)
-        observer.gesture.minimumNumberOfTouches = 2
-        observer.gesture.maximumNumberOfTouches = 2
+    ) -> TerminalHorizontalSwitchObserver {
+        let observer = TerminalHorizontalSwitchObserver(view: view, selectAdjacent: selectAdjacent)
+        observer.gesture.minimumNumberOfTouches = 1
+        observer.gesture.maximumNumberOfTouches = 1
         observer.gesture.delegate = observer
         view.addGestureRecognizer(observer.gesture)
         return observer
@@ -415,8 +415,13 @@ enum TerminalSurfaceConfiguration {
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let view, gesture.numberOfTouches == 2 else { return false }
+        guard let view, gesture.numberOfTouches == 1 else { return false }
         let velocity = gesture.velocity(in: view)
         return abs(velocity.x) > abs(velocity.y)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let view else { return false }
+        return TerminalHorizontalNavigationPolicy.allowsTerminalSwipe(startingAt: touch.location(in: view).x)
     }
 }
