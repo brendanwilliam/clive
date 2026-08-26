@@ -12,6 +12,70 @@ private struct StaticRouteProvider: RouteProvider {
     func candidates() async -> [RouteCandidate] { snapshot }
 }
 
+private actor FakeRouteConnection: RouteConnection {
+    let opened: SessionOpened
+    var events: [String] = []
+    var shouldFailAttach = false
+
+    init(opened: SessionOpened, shouldFailAttach: Bool = false) {
+        self.opened = opened
+        self.shouldFailAttach = shouldFailAttach
+    }
+
+    func authenticate() async throws { events.append("authenticate") }
+
+    func attach(serverSessionID: UUID, lastReceivedOffset: UInt64, initialSize: TerminalSize) async throws -> SessionOpened {
+        events.append("attach:\(lastReceivedOffset)")
+        if shouldFailAttach { throw StartupTestError.failed }
+        return opened
+    }
+
+    func sendInput(_ data: Data) async throws { events.append("input") }
+    func resize(_ size: TerminalSize) async throws { events.append("resize") }
+    func receiveOutput() async throws -> TerminalOutputChunk { throw StartupTestError.unavailable }
+    func close() async { events.append("close") }
+}
+
+private struct FakeRouteAdapter: RouteAdapter {
+    let kind: RouteKind
+    let connection: FakeRouteConnection
+
+    func connect(to candidate: RouteCandidate) async throws -> any RouteConnection { connection }
+}
+
+@Test func routeSessionCoordinatorAuthenticatesBeforeAttaching() async throws {
+    let sessionID = UUID()
+    let opened = SessionOpened(serverSessionID: sessionID, disposition: .resumed, replayTruncated: false)
+    let connection = FakeRouteConnection(opened: opened)
+    let candidate = RouteCandidate(kind: .lan, host: "mac.local", port: 64236)
+    let coordinator = RouteSessionCoordinator()
+
+    let result = try await coordinator.connect(using: FakeRouteAdapter(kind: .lan, connection: connection), candidate: candidate, serverSessionID: sessionID, lastReceivedOffset: 12, initialSize: TerminalSize(columns: 80, rows: 24))
+
+    #expect(result == opened)
+    #expect(await connection.events == ["authenticate", "attach:12"])
+    #expect(await coordinator.selectedCandidate == candidate)
+}
+
+@Test func routeSessionCoordinatorKeepsOldConnectionWhenHandoffAttachFails() async throws {
+    let sessionID = UUID()
+    let opened = SessionOpened(serverSessionID: sessionID, disposition: .resumed, replayTruncated: false)
+    let oldConnection = FakeRouteConnection(opened: opened)
+    let failedConnection = FakeRouteConnection(opened: opened, shouldFailAttach: true)
+    let oldCandidate = RouteCandidate(kind: .lan, host: "mac.local", port: 64236)
+    let newCandidate = RouteCandidate(kind: .privateVPN, host: "mac.vpn", port: 64236)
+    let coordinator = RouteSessionCoordinator()
+    _ = try await coordinator.connect(using: FakeRouteAdapter(kind: .lan, connection: oldConnection), candidate: oldCandidate, serverSessionID: sessionID, lastReceivedOffset: 0, initialSize: TerminalSize(columns: 80, rows: 24))
+
+    await #expect(throws: StartupTestError.failed) {
+        try await coordinator.handoff(using: FakeRouteAdapter(kind: .privateVPN, connection: failedConnection), candidate: newCandidate, serverSessionID: sessionID, lastReceivedOffset: 42, initialSize: TerminalSize(columns: 80, rows: 24))
+    }
+
+    #expect(await coordinator.selectedCandidate == oldCandidate)
+    #expect(await oldConnection.events == ["authenticate", "attach:0"])
+    #expect(await failedConnection.events == ["authenticate", "attach:42", "close"])
+}
+
 @Test func routeCatalogCombinesProviderSnapshotsWithoutReinterpretingHealth() async {
     let lan = RouteCandidate(kind: .lan, host: "mac.local", port: 64236, health: .healthy)
     let vpn = RouteCandidate(kind: .privateVPN, host: "mac.vpn", port: 64236, health: .failed)
