@@ -1,6 +1,6 @@
 # Architecture
 
-The macOS daemon owns shared PTYs. Authenticated iOS connections and the owner-only local control socket attach to them; `clive sessions`, `clive attach`, and `clive shell` switch to framed terminal traffic after the control response. Closing or breaking a local control socket immediately detaches its attachment; repeated cleanup is harmless. The final detach starts the documented 30-minute reattachment grace period, while explicit termination, shell exit, revocation, and shutdown close every attachment.
+The macOS daemon owns shared PTYs. Authenticated iOS connections and the owner-only local control socket attach to them; `clive sessions`, `clive attach`, and `clive shell` switch to framed terminal traffic after the control response. Closing or breaking a local control socket immediately detaches its attachment; repeated cleanup is harmless. The final detach starts the documented 90-minute reattachment grace period, while explicit termination, shell exit, revocation, and shutdown close every attachment.
 
 ## Components
 
@@ -52,4 +52,4 @@ The app requires biometric authentication on initial launch and when more than f
 
 When iOS becomes inactive, Clive immediately detaches every live transport and removes terminal previews from memory. On foreground it reconnects from opaque local and server session IDs only after the in-memory biometric grace check or successful authorization. Reconnection always sends `session.attach`; an expired, exited, revoked, or daemon-restarted PTY is shown as ended and never replaced implicitly. Only an explicit New Shell action sends `session.open`. Authentication cancellation leaves the workspace locked and opens no catalog or terminal connection. Process termination, a missing timestamp, or clock rollback invalidates the grace period.
 
-The biometric and daemon clocks are independent. Returning at or before 300 seconds can reattach without another prompt, but does not extend the Mac's detached-session lifetime. Returning later requires Face ID first; if the Mac's 30-minute retention has also elapsed, the descriptor becomes ended and the user must explicitly create a new shell.
+The biometric and daemon clocks are independent. Returning at or before 300 seconds can reattach without another prompt, but does not extend the Mac's detached-session lifetime. Returning later requires Face ID first; if the Mac's 90-minute retention has also elapsed, the descriptor becomes ended and the user must explicitly create a new shell.

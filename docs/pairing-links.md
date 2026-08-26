@@ -8,7 +8,7 @@ the link version and the existing `CL2:` ticket payload:
 https://pair.clive.app/pair#v=1&ticket=CL2:…
 ```
 
-The ticket remains a five-minute, single-use bearer for one pairing attempt. It
+The ticket remains a one-minute, single-use bearer for one pairing attempt. It
 contains no private key, certificate, or reusable credential. The iOS app validates
 the link version, payload, expiry, protocol version, endpoint, and certificate
 fingerprint before opening a connection. Invalid, expired, cancelled, or unsupported

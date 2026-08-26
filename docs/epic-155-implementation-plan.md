@@ -296,7 +296,8 @@ Verification record: [`connectivity-verification.md`](connectivity-verification.
 
 ### #165 Documentation and release readiness
 
-Status: `[-]` documentation structure and checklist recorded; updates not started.
+Status: `[-]` V1 documentation and release checklist recorded; physical release
+evidence remains pending.
 
 Required documentation updates:
 
@@ -335,7 +336,7 @@ Update this table as work lands. Link the implementation PR or commit in the
 | #167 Existing-run handoff | Design recorded | — |
 | #168 Durable runs | Deferred | — |
 | #164 Verification | Automated matrix recorded; physical validation pending | [`connectivity-verification.md`](connectivity-verification.md) |
-| #165 Docs/release | Design recorded | — |
+| #165 Docs/release | Documentation and release checklist recorded; evidence pending | [`release-readiness.md`](release-readiness.md) |
 
 ## V1 exclusions
 
