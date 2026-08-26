@@ -1,17 +1,18 @@
 ---
 name: clive-local-verify
-description: Verify local compatibility across CliveCore, the macOS companion, and the iOS app when preparing a PR or diagnosing a platform build failure. Do not use for every development edit or to publish releases.
+description: Verify local compatibility across CliveCore, the macOS companion, and the iOS app when preparing develop for main, preparing a release, or diagnosing a platform build failure. Do not use for ordinary feature PRs or every development edit.
 ---
 
 # Clive Local Verify
 
-Use this skill for pre-PR compatibility verification or when diagnosing a platform
-build failure, not as a per-edit development requirement. During normal development,
-prefer focused tests and targeted builds that do not boot a simulator. For the full
+Use this skill for `develop` to `main` compatibility verification, release preparation,
+or when diagnosing a platform build failure. Do not use it for ordinary feature PRs.
+During normal development, use `./scripts/check-fast.sh` and targeted builds that do
+not boot a simulator. For the full
 check, run `./scripts/verify-local.sh` from the repository root. It generates the
 ignored iOS Xcode project with XcodeGen when absent, then executes the shared Swift
 tests and unsigned Debug builds for macOS and generic iOS in parallel, reusing
-DerivedData under `/private/tmp/clive-local-verify`. Use `--signed` only when the user
+DerivedData and logs under `scripts/outputs/local-verify`. Use `--signed` only when the user
 wants local signing or physical-device readiness and the machine's development
 configuration is available.
 
@@ -19,7 +20,7 @@ The same script is the source of truth for `.github/workflows/verify.yml` and th
 
 ## On failure
 
-Read the named log under `/private/tmp/clive-local-verify/logs`. Determine whether the failure is introduced by the current change, stale generated Xcode project state, unavailable dependencies, or local signing/provisioning.
+Read the named log under `scripts/outputs/local-verify/logs`. Determine whether the failure is introduced by the current change, stale generated Xcode project state, unavailable dependencies, or local signing/provisioning.
 
 - For source or checked-in configuration incompatibility caused by the current task, make the smallest scoped correction and rerun the complete script.
 - If `project.yml` changed, regenerate the affected Xcode project with XcodeGen, review the generated diff, and rerun verification.
