@@ -1,13 +1,14 @@
 ---
 name: clive-local-verify
-description: Verify local compatibility across CliveCore, the macOS companion, and the iOS app when preparing a PR or diagnosing a platform build failure. Do not use for every development edit or to publish releases.
+description: Verify local compatibility across CliveCore, the macOS companion, and the iOS app when preparing develop for main, preparing a release, or diagnosing a platform build failure. Do not use for ordinary feature PRs or every development edit.
 ---
 
 # Clive Local Verify
 
-Use this skill for pre-PR compatibility verification or when diagnosing a platform
-build failure, not as a per-edit development requirement. During normal development,
-prefer focused tests and targeted builds that do not boot a simulator. For the full
+Use this skill for `develop` to `main` compatibility verification, release preparation,
+or when diagnosing a platform build failure. Do not use it for ordinary feature PRs.
+During normal development, use `./scripts/check-fast.sh` and targeted builds that do
+not boot a simulator. For the full
 check, run `./scripts/verify-local.sh` from the repository root. It generates the
 ignored iOS Xcode project with XcodeGen when absent, then executes the shared Swift
 tests and unsigned Debug builds for macOS and generic iOS in parallel, reusing

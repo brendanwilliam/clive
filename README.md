@@ -67,12 +67,15 @@ swift test
 swift run clive status
 ```
 
-For the normal development loop, use focused Swift tests and targeted builds; no
-simulator is required. Before preparing a pull request, run
-`./scripts/verify-local.sh`, which runs shared Swift tests plus macOS and iOS
-tests/builds. Pass `--signed` only when checking local signing readiness. The
-localhost TLS/PTY integration test is likewise a pre-PR or release check. To open the
-iOS project, run `cd Apps/Clive && xcodegen generate`, then open `Clive.xcodeproj`.
+For the normal development loop, run `./scripts/check-fast.sh`. Rebuild only the
+target you need with `./scripts/rebuild-local.sh cli` or
+`./scripts/rebuild-local.sh app`; the app rebuild does not boot a Simulator. Run
+`./scripts/verify-local.sh` only for `develop` to `main` integration, release
+preparation, or platform diagnosis. Pass `--signed` only when checking local signing
+readiness. To open the iOS project, run `cd Apps/Clive && xcodegen generate`, then open `Clive.xcodeproj`.
+Use `./scripts/script-performance.sh` to see each development script's total runs,
+average duration, failed runs, and five most recent durations. Samples stay local in
+`~/Library/Application Support/Clive/Development/script-runs.tsv`.
 Local bundle identifiers and signing settings belong in an ignored `Local.xcconfig`;
 see the example files in each app's `Config` directory.
 

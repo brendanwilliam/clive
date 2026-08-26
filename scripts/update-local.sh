@@ -73,6 +73,9 @@ if [[ ${CLIVE_MANAGED_TERMINAL:-} == 1 && ${WORKER} == false ]]; then
     exit 0
 fi
 
+source "${ROOT_DIR}/scripts/lib/script-performance.zsh" update-local
+trap 'exit_code=$?; clive_record_script_performance ${exit_code}' EXIT
+
 for command in swift xcodebuild xcrun xcodegen lsof plutil; do
     command -v "${command}" >/dev/null || {
         echo "Missing required command: ${command}" >&2
@@ -107,6 +110,8 @@ if [[ ${SIGNED_COMPANION} == true ]]; then
         -destination platform=macOS \
         -derivedDataPath "${DERIVED_DIR}/CliveMac" \
         -allowProvisioningUpdates \
+        SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+        CLANG_ENABLE_EXPLICIT_MODULES=NO \
         build
     MAC_APP=${DERIVED_DIR}/CliveMac/Build/Products/Debug/Clive.app
     if [[ ! -d ${MAC_APP} ]]; then
@@ -268,6 +273,8 @@ xcodebuild \
     -destination "id=${IOS_DESTINATION_ID}" \
     -derivedDataPath "${DERIVED_DIR}" \
     -allowProvisioningUpdates \
+    SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+    CLANG_ENABLE_EXPLICIT_MODULES=NO \
     build
 
 app_path=${DERIVED_DIR}/Build/Products/Debug-iphoneos/Clive\ -\ CLI\ for\ iOS.app

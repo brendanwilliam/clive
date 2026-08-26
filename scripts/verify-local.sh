@@ -7,9 +7,7 @@ LOG_DIR=${VERIFY_DIR}/logs
 DAEMON_LIFECYCLE_LOG=${CLIVE_VERIFY_DAEMON_LOG:-${LOG_DIR}/daemon-lifecycle.log}
 DAEMON_SERVICE="gui/$(id -u)/com.clive.development-daemon"
 SIGNED=false
-
-echo "Validating UI feature map…"
-python3 "${ROOT_DIR}/scripts/feature-map.py" validate
+source "${ROOT_DIR}/scripts/lib/script-performance.zsh" verify-local
 
 if [[ ${1:-} == --signed ]]; then
     SIGNED=true
@@ -48,6 +46,7 @@ verify_local_exit() {
         echo "WARNING: the Clive development daemon changed during verification (${DAEMON_PID_BEFORE} -> ${daemon_pid_after})." >&2
         echo "Daemon lifecycle details: ${DAEMON_LIFECYCLE_LOG}" >&2
     fi
+    clive_record_script_performance ${exit_code}
     return ${exit_code}
 }
 trap verify_local_exit EXIT
@@ -177,6 +176,8 @@ if xcodebuild -quiet \
     -destination platform=macOS \
     -derivedDataPath "${VERIFY_DIR}/mac-derived-data" \
     "${signing_arguments[@]}" \
+    SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+    CLANG_ENABLE_EXPLICIT_MODULES=NO \
     test >"${LOG_DIR}/mac-test.log" 2>&1; then
     mac_status=0
 else
@@ -189,6 +190,8 @@ if xcodebuild -quiet \
     -destination "id=${IOS_DESTINATION_ID}" \
     -derivedDataPath "${VERIFY_DIR}/ios-derived-data" \
     -resultBundlePath "${IOS_RESULT_BUNDLE}" \
+    SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+    CLANG_ENABLE_EXPLICIT_MODULES=NO \
     test >"${LOG_DIR}/ios-test.log" 2>&1; then
     ios_status=0
 else
