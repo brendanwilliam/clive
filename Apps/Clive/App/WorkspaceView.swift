@@ -29,6 +29,8 @@ struct WorkspaceView: View {
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .detailOnly
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .detail
     @State private var sidebarOverlayVisible = false
+    @State private var keyboardVisible = false
+    @State private var keyboardWasVisibleBeforeSidebar = false
 
     var body: some View {
         presentedWorkspace
@@ -60,15 +62,14 @@ struct WorkspaceView: View {
         }
         .onOpenURL(perform: handleOpenURL)
         .onReceive(NotificationCenter.default.publisher(for: .externalTerminalLaunchRequested)) { _ in coordinator.handleExternalLaunch() }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+            guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            keyboardVisible = frame.minY < UIScreen.main.bounds.height && frame.maxY > 0
+        }
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
         .onChange(of: coordinator.presentedScreen) { _, screen in
             guard screen == .terminalList else { return }
-            if horizontalSizeClass == .compact {
-                withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = true }
-            } else {
-                sidebarVisibility = .all
-                preferredCompactColumn = .sidebar
-            }
+            openSidebar()
             coordinator.dismissPresentedScreen()
         }
         .onChange(of: coordinator.state) { _, state in
@@ -146,9 +147,7 @@ struct WorkspaceView: View {
 
     private var compactNavigation: some View {
         GeometryReader { proxy in
-            let sidebarWidth = min(320, proxy.size.width * 0.84)
-
-            ZStack(alignment: .leading) {
+            ZStack(alignment: .topLeading) {
                 navigation
                 if sidebarOverlayVisible {
                     Color.black.opacity(0.28)
@@ -158,7 +157,7 @@ struct WorkspaceView: View {
                         .zIndex(1)
                     terminalSidebar(showsDismissButton: true)
                         .padding(.top, proxy.safeAreaInsets.top)
-                        .frame(width: sidebarWidth)
+                        .frame(width: min(320, proxy.size.width * 0.84))
                         .frame(maxHeight: .infinity, alignment: .top)
                         .background(Color(uiColor: .secondarySystemBackground))
                         .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
@@ -169,11 +168,6 @@ struct WorkspaceView: View {
                         .transition(.move(edge: .leading))
                         .zIndex(2)
                 }
-                terminalSidebarButton
-                    .frame(width: 44, height: 44)
-                    .padding(.top, proxy.safeAreaInsets.top + 4)
-                    .padding(.leading, sidebarOverlayVisible ? sidebarWidth - 52 : 8)
-                    .zIndex(3)
             }
         }
     }
@@ -217,7 +211,7 @@ struct WorkspaceView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if horizontalSizeClass != .compact {
+                if horizontalSizeClass == .compact && !sidebarOverlayVisible {
                     ToolbarItem(placement: .topBarLeading) {
                         terminalSidebarButton
                     }
@@ -259,6 +253,10 @@ struct WorkspaceView: View {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
+    private func restoreKeyboard() {
+        NotificationCenter.default.post(name: .terminalKeyboardRestoreRequested, object: nil)
+    }
+
     private var sidebarIsVisible: Bool {
         horizontalSizeClass == .compact ? sidebarOverlayVisible : sidebarVisibility != .detailOnly
     }
@@ -269,8 +267,16 @@ struct WorkspaceView: View {
         } label: {
             Image(systemName: "sidebar.leading")
                 .foregroundStyle(sidebarIsVisible ? .black : .primary)
-                .padding(6)
-                .background(sidebarIsVisible ? Color.white : .clear, in: .rect(cornerRadius: 8))
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background {
+                    if sidebarIsVisible {
+                        Color.white
+                    } else {
+                        Color.clear.cliveGlassBackground(in: Circle())
+                    }
+                }
+                .clipShape(Circle())
         }
         .accessibilityLabel(sidebarIsVisible ? "Close terminals" : "Open terminals")
         .accessibilityValue(sidebarIsVisible ? "Open" : "Closed")
@@ -278,17 +284,31 @@ struct WorkspaceView: View {
     }
 
     private func toggleSidebar() {
+        if sidebarIsVisible {
+            withAnimation(.easeOut(duration: 0.2)) {
+                if horizontalSizeClass == .compact {
+                    sidebarOverlayVisible = false
+                } else {
+                    sidebarVisibility = .detailOnly
+                    preferredCompactColumn = .detail
+                }
+            }
+            if keyboardWasVisibleBeforeSidebar { restoreKeyboard() }
+            return
+        }
+
+        openSidebar()
+    }
+
+    private func openSidebar() {
+        keyboardWasVisibleBeforeSidebar = keyboardVisible
+        dismissKeyboard()
         if horizontalSizeClass == .compact {
             withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible.toggle() }
         } else {
             withAnimation(.easeOut(duration: 0.2)) {
-                if sidebarIsVisible {
-                    sidebarVisibility = .detailOnly
-                    preferredCompactColumn = .detail
-                } else {
-                    sidebarVisibility = .all
-                    preferredCompactColumn = .sidebar
-                }
+                sidebarVisibility = .all
+                preferredCompactColumn = .sidebar
             }
         }
     }
@@ -331,8 +351,12 @@ struct WorkspaceView: View {
     private func terminalSidebar(showsDismissButton: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if showsDismissButton {
-                Text("Terminals")
-                    .font(.headline)
+                HStack {
+                    terminalSidebarButton
+                    Text("Terminals")
+                        .font(.headline)
+                    Spacer()
+                }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
             }

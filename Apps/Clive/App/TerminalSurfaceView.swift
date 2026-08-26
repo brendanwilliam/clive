@@ -2,6 +2,10 @@ import CliveCore
 import SwiftTerm
 import SwiftUI
 
+extension Notification.Name {
+    static let terminalKeyboardRestoreRequested = Notification.Name("clive.terminalKeyboardRestoreRequested")
+}
+
 struct TerminalSurfaceView: UIViewRepresentable {
     let session: SessionClient?
     let accessibilityIdentifier: String
@@ -154,12 +158,20 @@ struct TerminalSurfaceView: UIViewRepresentable {
         ])
         controls.onKeyboard = { [weak self] shown in shown ? self?.onKeyboardDismissRequested?() : self?.onKeyboardRequested?() }
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(restoreKeyboardRequested), name: .terminalKeyboardRestoreRequested, object: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    deinit { NotificationCenter.default.removeObserver(self) }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 
     @objc private func focusTerminal() {
         _ = terminal.becomeFirstResponder()
+    }
+
+    @objc private func restoreKeyboardRequested() {
+        onKeyboardRequested?()
     }
 
     func installKeyRow(_ row: TerminalKeyboardAccessory) { controls.installKeyRow(row) }
