@@ -34,6 +34,23 @@ typealias TerminalProcessFactory = @Sendable (
     _ onExit: @escaping @Sendable () -> Void
 ) throws -> any TerminalProcess
 
+enum TerminalColorEnvironment {
+    static let variables = [
+        "TERM": "xterm-256color",
+        "COLORTERM": "truecolor",
+        "CLICOLOR": "1",
+        "CLICOLOR_FORCE": "1",
+        "FORCE_COLOR": "1",
+    ]
+
+    static func configure() {
+        variables.forEach { name, value in
+            setenv(name, value, 1)
+        }
+        unsetenv("NO_COLOR")
+    }
+}
+
 final class PTYProcess: TerminalProcess, @unchecked Sendable {
     let pid: pid_t
     private let masterFD: Int32
@@ -54,7 +71,7 @@ final class PTYProcess: TerminalProcess, @unchecked Sendable {
         guard childPID >= 0 else { throw PTYProcessError.spawnFailed(errno) }
         if childPID == 0 {
             if chdir(directory) != 0 { _exit(126) }
-            setenv("TERM", "xterm-256color", 1)
+            TerminalColorEnvironment.configure()
             // Development tools invoked from a Clive shell sometimes need to
             // restart the daemon that owns this PTY. Give those tools a
             // reliable way to hand work off before that restart closes the

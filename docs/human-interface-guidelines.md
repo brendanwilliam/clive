@@ -1,11 +1,31 @@
 # Human Interface Guidelines for agentic workflows
 
 Use the [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)
-as a required reference for Clive UI work. Review the [design
+as a required reference for Clive UI work. Treat the HIG as the design-principle and
+platform-convention layer, then implement those decisions with the native elements in
+the [Apple UI kit reference](apple-ui-kit-reference.md). Review the [design
 principles](https://developer.apple.com/design/human-interface-guidelines/design-principles),
 [Generative AI](https://developer.apple.com/design/human-interface-guidelines/generative-ai),
 and [accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility/)
-guidance alongside the relevant iOS or macOS component and pattern guidance.
+guidance alongside the relevant iOS, iPadOS, or macOS component and pattern guidance.
+
+## Design principles and UI kit
+
+Use these principles to decide what the interface should communicate and how much
+control it should give people. Use the UI kit reference to decide which native Apple
+element should express that decision. This keeps Clive aligned with both the intent of
+the HIG and the behavior Apple users already understand.
+
+| HIG principle | Clive design question | Typical native expression |
+| --- | --- | --- |
+| Purpose | Is the primary task obvious? | Focused navigation hierarchy, clear titles, one primary action |
+| Agency | Can people start, stop, dismiss, and recover? | `Button`, `sheet`, navigation back actions, cancellation and recovery controls |
+| Responsibility | Are consequences, permissions, and security boundaries clear? | Native alerts, confirmation flows, secure authentication and explanatory copy |
+| Familiarity | Will this behave like the same control elsewhere on Apple platforms? | `NavigationStack`, `Form`, `List`, standard toolbar and settings patterns |
+| Flexibility | Does it adapt to platform, size, input method, and accessibility needs? | Adaptive SwiftUI layout, Auto Layout, Dynamic Type, VoiceOver labels |
+| Simplicity | Is every visible element necessary and understandable? | Native controls with concise labels, progressive disclosure, standard sheets |
+| Craft | Does the interaction feel deliberate and polished? | System spacing, typography, materials, animation, and state feedback |
+| Delight | Does the experience feel human without distracting from the task? | Appropriate symbols, responsive feedback, and restrained Liquid Glass chrome |
 
 For Clive, an **agentic workflow** is a user-facing flow in which the product proposes,
 performs, or reports work on a person's behalf. It can include planning, execution,
@@ -25,6 +45,10 @@ When an agentic workflow UI is added or materially changed, review it for:
   a request for input or a failure, and offer the next safe action.
 - **Platform conventions.** Prefer native iOS and macOS components, navigation, menus,
   alerts, and terminology. Platform terminology wins when it conflicts with this guide.
+- **Liquid Glass.** Use Apple's Liquid Glass materials and controls for Clive's iOS and
+  macOS navigation chrome, toolbars, sheets, and interactive controls on supported OS
+  versions. Keep content legible and visually separate from the glass; use the closest
+  native material fallback on older deployment targets rather than imitating the effect.
 - **Accessibility.** Give workflow controls and status the same clear terminology in
   visible text and accessibility labels; do not rely on color, animation, or position alone
   to communicate a state.

@@ -8,7 +8,10 @@ Clive is a native Swift project with shared packages and platform apps:
 - `Sources/CliveDaemon` contains the macOS daemon and `clive` command-line implementation.
 - `Apps/CliveMac` contains the macOS companion app, and `Apps/Clive` contains the iOS app.
 - `Tests/CliveCoreTests` and `Tests/CliveDaemonTests` contain Swift package tests. Keep new tests with the target whose behavior they cover.
-- `docs/architecture.md`, `docs/protocol.md`, and `docs/security.md` define product boundaries and non-negotiable behavior.
+- `docs/architecture.md`, `docs/protocol.md`, `docs/security.md`, and
+  `docs/human-interface-guidelines.md` define product boundaries and non-negotiable
+  behavior. Use `docs/apple-ui-kit-reference.md` for the corresponding native Apple UI
+  elements.
 
 Keep the root `README.md` as the project entry point. Do not commit Xcode `DerivedData/`, SwiftPM `.build/`, provisioning files, or local pairing state; these are ignored already.
 
@@ -19,7 +22,7 @@ Repository skills are cumulative. Use every skill that applies to the requested 
 | Task | Skill |
 | --- | --- |
 | Initial UI feature-map creation, major rebuild, or new-platform inventory | `clive-create-feature-map` |
-| Every repository change intended for `develop` | Add `clive-update-feature-map` |
+| Preparing a pull request into `develop` | Add `clive-update-feature-map` |
 | UI work involving agentic workflows or user-facing workflow terminology | Add `clive-hig-audit` |
 | Swift implementation or refactoring | `clive-swift-development` |
 | Pairing, certificates, key storage, logging, permissions, CloudKit, cellular routing, LAN exposure, or other security-sensitive work | Add `clive-security-review` |
@@ -28,9 +31,22 @@ Repository skills are cumulative. Use every skill that applies to the requested 
 | Coordinated macOS and iOS releases | `clive-release` |
 | Deliberate physical-device recovery when losing the active terminal is acceptable | `clive-local-refresh` |
 
-Focused tests belong in the development loop. After those pass, use `clive-local-verify` for the authoritative repository verification before submitting a pull request. Keep `clive-local-verify`, `clive-release`, and `clive-local-refresh` as the source of truth for their scripts, authorization boundaries, and operational procedures.
+Focused tests belong in the development loop. Do not boot a simulator or run
+`./scripts/verify-local.sh` for every edit. Use the smallest relevant package or
+platform-focused test/build while iterating. Reserve `clive-local-verify` and its
+simulator-based checks for preparing a pull request, where it is the authoritative
+repository verification. Keep `clive-local-verify`, `clive-release`, and
+`clive-local-refresh` as the source of truth for their scripts, authorization
+boundaries, and operational procedures.
 
-Before opening a pull request, update `docs/ui-feature-map.json` for every component-impacting change. For a change with no component impact, append one immutable `no-component-impact` review record whose paths cover the full pull-request diff except the map itself. Run `python3 scripts/feature-map.py validate` and `python3 scripts/feature-map.py check-change --base <develop-base>` locally.
+When preparing a pull request into `develop`, inspect the complete branch diff and
+then update `docs/ui-feature-map.json` for every component-impacting change. Do not
+require map edits for intermediate commits; the final PR diff is the source of truth.
+For a PR with no component impact, append one immutable `no-component-impact` review
+record whose paths cover the full pull-request diff except the map itself. Run
+`python3 scripts/feature-map.py validate` and
+`python3 scripts/feature-map.py check-change --base <develop-base>` locally before
+opening the PR.
 
 ## Workflow Rules
 - At the start of any task that may use GitHub, run `gh auth status`.
@@ -41,7 +57,14 @@ Before opening a pull request, update `docs/ui-feature-map.json` for every compo
 
 ## Build, Test, and Development Commands
 
-Run focused `swift test --filter <test-or-suite>` checks while developing. Run `./scripts/verify-local.sh` for the authoritative quick compatibility check: it executes `swift test` and builds both app targets. Use `./scripts/verify-local.sh --signed` only when local signing readiness matters. `./scripts/test-macos-integration.sh` covers localhost TLS/PTY behavior, and `./scripts/build-pkg.sh` builds the macOS installer.
+During development, run focused `swift test --filter <test-or-suite>` checks and
+targeted platform builds as needed; these do not require booting a simulator. Before
+opening a pull request, run `./scripts/verify-local.sh` for the authoritative
+compatibility check: it executes shared tests and builds/tests both app targets,
+including the iOS Simulator. Use `./scripts/verify-local.sh --signed` only when local
+signing readiness matters. `./scripts/test-macos-integration.sh` and
+`./scripts/build-pkg.sh` are also pre-PR/release checks unless the task specifically
+requires them.
 
 ## Coding Style & Naming Conventions
 
