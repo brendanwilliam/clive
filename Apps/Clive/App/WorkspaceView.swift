@@ -31,6 +31,7 @@ struct WorkspaceView: View {
     @State private var sidebarOverlayVisible = false
     @State private var keyboardVisible = false
     @State private var keyboardWasVisibleBeforeSidebar = false
+    @State private var terminalMenuVisible = false
 
     var body: some View {
         presentedWorkspace
@@ -42,7 +43,8 @@ struct WorkspaceView: View {
                 terminalHeader(availableWidth: proxy.size.width)
                     .padding(.horizontal, 16)
                     .frame(height: 60)
-                terminalWorkspace
+                    .zIndex(3)
+                terminalWorkspace(availableHeight: proxy.size.height)
             }
             .ignoresSafeArea(.container, edges: .bottom)
         }
@@ -138,7 +140,7 @@ struct WorkspaceView: View {
         } message: { Text(coordinator.deleteAllError ?? "Try again.") }
     }
 
-    @ViewBuilder private var terminalWorkspace: some View {
+    @ViewBuilder private func terminalWorkspace(availableHeight: CGFloat) -> some View {
         if horizontalSizeClass == .compact {
             ZStack(alignment: .topLeading) {
                 navigation
@@ -152,7 +154,8 @@ struct WorkspaceView: View {
                         .frame(width: 320)
                         .frame(maxWidth: 320)
                         .containerRelativeFrame(.horizontal, count: 100, span: 84, spacing: 0)
-                        .frame(maxHeight: .infinity, alignment: .top)
+                        .frame(height: availableHeight, alignment: .top)
+                        .offset(y: -60)
                         .background(Color(uiColor: .secondarySystemBackground))
                         .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
                         .shadow(color: .black.opacity(0.28), radius: 18, x: 6)
@@ -165,6 +168,8 @@ struct WorkspaceView: View {
                 if sidebarVisibility != .detailOnly {
                     terminalSidebar
                         .frame(minWidth: 260, idealWidth: 320, maxWidth: 380)
+                        .frame(height: availableHeight, alignment: .top)
+                        .offset(y: -60)
                         .transition(.move(edge: .leading))
                 }
                 navigation
@@ -221,7 +226,7 @@ struct WorkspaceView: View {
             } else {
                 Spacer()
                 if coordinator.sessions.isEmpty {
-                    newTerminalHeaderButton
+                    EmptyView()
                 } else {
                     terminalTitleMenu
                 }
@@ -231,6 +236,12 @@ struct WorkspaceView: View {
         }
         .frame(maxWidth: sidebarIsVisible ? sidebarHeaderWidth(availableWidth: availableWidth) : .infinity, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(alignment: .leading) {
+            if sidebarIsVisible {
+                Color(uiColor: .secondarySystemBackground)
+                    .frame(width: sidebarHeaderWidth(availableWidth: availableWidth), height: 60)
+            }
+        }
     }
 
     private func sidebarHeaderWidth(availableWidth: CGFloat) -> CGFloat {
@@ -265,22 +276,10 @@ struct WorkspaceView: View {
             .accessibilityIdentifier("new-terminal-button")
     }
 
-    private var newTerminalHeaderButton: some View {
-        Button { navigate { coordinator.addShell() } } label: {
-            Text("New Terminal")
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 14)
-                .frame(minHeight: 36)
-        }
-        .buttonStyle(.borderedProminent)
-        .accessibilityIdentifier("new-terminal-header-button")
-    }
-
     private var terminalTitleMenu: some View {
-        Menu {
-            if let session = coordinator.selectedSession {
-                terminalSessionActions(for: session)
-            }
+        Button {
+            guard coordinator.selectedSession != nil else { return }
+            withAnimation(.easeOut(duration: 0.16)) { terminalMenuVisible.toggle() }
         } label: {
             HStack(spacing: 0) {
                 Text(coordinator.selectedSession?.descriptor.label ?? "No terminal")
@@ -293,6 +292,29 @@ struct WorkspaceView: View {
             .frame(maxWidth: 240)
             .background {
                 Color.clear.cliveGlassBackground(in: Capsule())
+            }
+        }
+        .overlay(alignment: .top) {
+            if terminalMenuVisible, let session = coordinator.selectedSession {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(session.descriptor.label)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    Divider()
+                    VStack(alignment: .leading, spacing: 0) {
+                        terminalSessionActions(for: session)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .frame(width: 220, alignment: .leading)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
+                .offset(y: 54)
+                .transition(.scale(scale: 0.94, anchor: .top).combined(with: .opacity))
+                .zIndex(4)
             }
         }
         .disabled(coordinator.selectedSession == nil)
@@ -359,6 +381,7 @@ struct WorkspaceView: View {
     }
 
     private func openSidebar() {
+        terminalMenuVisible = false
         keyboardWasVisibleBeforeSidebar = keyboardVisible
         dismissKeyboard()
         if horizontalSizeClass == .compact {
@@ -410,9 +433,9 @@ struct WorkspaceView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Terminals")
                 .font(.largeTitle.weight(.bold))
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                .padding(.bottom, 4)
             List {
                 Section {
                     if connectedSessions.isEmpty {
@@ -422,7 +445,7 @@ struct WorkspaceView: View {
                             terminalRow(session)
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
-                                .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+                                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                         }
                     }
                 } header: { drawerSectionHeader("Connected") }
@@ -434,13 +457,13 @@ struct WorkspaceView: View {
                             terminalRow(session)
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
-                                .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+                                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                         }
                         ForEach(coordinator.unrepresentedCatalogSessions) { session in
                             catalogSessionRow(session)
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
-                                .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+                                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                         }
                     }
                 } header: { drawerSectionHeader("Disconnected") }
@@ -461,7 +484,7 @@ struct WorkspaceView: View {
                         }
                     }.buttonStyle(.plain).accessibilityIdentifier("drawer-settings-button")
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 8)
                 .padding(.vertical, 10)
             } else {
                 Divider()
