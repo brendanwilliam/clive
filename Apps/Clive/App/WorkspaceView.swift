@@ -240,6 +240,11 @@ struct WorkspaceView: View {
     private var terminalActions: some View {
         Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus") }
             .frame(width: 44, height: 44)
+            .foregroundStyle(.white)
+            .background {
+                Color.clear.cliveGlassBackground(in: Circle())
+            }
+            .clipShape(Circle())
             .accessibilityLabel("New Terminal")
             .accessibilityIdentifier("new-terminal-button")
     }
@@ -257,9 +262,13 @@ struct WorkspaceView: View {
                     .font(.caption.weight(.semibold))
             }
             .font(.subheadline)
-            .foregroundStyle(.primary)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
             .frame(minHeight: 44)
             .frame(maxWidth: 240)
+            .background {
+                Color.clear.cliveGlassBackground(in: Capsule())
+            }
         }
         .disabled(coordinator.selectedSession == nil)
         .accessibilityLabel("Terminal title")
@@ -284,7 +293,7 @@ struct WorkspaceView: View {
             toggleSidebar()
         } label: {
             Image(systemName: "sidebar.leading")
-                .foregroundStyle(sidebarIsVisible ? .black : .primary)
+                .foregroundStyle(sidebarIsVisible ? .black : .white)
                 .font(.title3)
                 .frame(width: 44, height: 44)
                 .background {
