@@ -157,7 +157,8 @@ Implementation tasks:
 
 ### 6. Loss-safe reattachment — #161
 
-Status: `[-]` design decisions recorded; implementation not started.
+Status: `[-]` attachment fencing and bounded retention implemented; integration
+coverage for sleep/wake and daemon restart remains.
 
 Agreed behavior:
 
@@ -174,9 +175,9 @@ Agreed behavior:
 
 Implementation tasks:
 
-- [ ] Add attachment generations and input fencing.
-- [ ] Make handoff and replay confirmation atomic on the session queue.
-- [ ] Update PTY retention to 90 minutes and preserve truncation reporting.
+- [x] Add attachment generations and input fencing.
+- [x] Make handoff and replay confirmation atomic on the session queue.
+- [x] Update PTY retention to 90 minutes and preserve truncation reporting.
 - [ ] Add race, offset, truncation, sleep/wake, expiry, and restart tests.
 
 ### 7. Relay design — #162
