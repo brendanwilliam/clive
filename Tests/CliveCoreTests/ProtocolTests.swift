@@ -6,6 +6,24 @@ import Security
 
 private enum StartupTestError: Error, Equatable { case unavailable, failed }
 
+private struct StaticRouteProvider: RouteProvider {
+    let kind: RouteKind
+    let snapshot: [RouteCandidate]
+    func candidates() async -> [RouteCandidate] { snapshot }
+}
+
+@Test func routeCatalogCombinesProviderSnapshotsWithoutReinterpretingHealth() async {
+    let lan = RouteCandidate(kind: .lan, host: "mac.local", port: 64236, health: .healthy)
+    let vpn = RouteCandidate(kind: .privateVPN, host: "mac.vpn", port: 64236, health: .failed)
+    let catalog = RouteCatalog(providers: [
+        StaticRouteProvider(kind: .lan, snapshot: [lan]),
+        StaticRouteProvider(kind: .privateVPN, snapshot: [vpn])
+    ])
+
+    #expect(await catalog.refresh() == [lan, vpn])
+    #expect(vpn.state(at: .now) == .failed)
+}
+
 @Test func routeSelectorPrefersLANAndDebouncesRecovery() {
     let now = Date(timeIntervalSince1970: 100)
     let lan = RouteCandidate(id: UUID(), kind: .lan, host: "mac.local", port: 64236, health: .healthy)
