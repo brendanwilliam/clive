@@ -23,6 +23,15 @@ private final class Box<Value>: @unchecked Sendable {
     init(_ value: Value) { self.value = value }
 }
 
+final class PTYProcessTests: XCTestCase {
+    func testCodexScriptQuotesArgumentsAndReturnsToShell() {
+        let script = PTYProcess.codexScript(arguments: ["resume", "a b", "it's-safe"])
+        XCTAssertTrue(script.contains("'resume' 'a b' 'it'\\''s-safe'"))
+        XCTAssertTrue(script.hasSuffix("exec zsh -l"))
+        XCTAssertTrue(script.contains("command -v codex"))
+    }
+}
+
 final class TerminalSessionManagerTests: XCTestCase {
     private let size = TerminalSize(columns: 80, rows: 24)
 

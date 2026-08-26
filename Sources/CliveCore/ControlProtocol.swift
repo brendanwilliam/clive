@@ -5,6 +5,11 @@ public enum ControlCommand: String, Codable, Sendable {
     case sessions, sessionCreate, sessionAttach, sessionEnd
 }
 
+public enum ManagedSessionCommand: Codable, Equatable, Sendable {
+    case shell
+    case codex(arguments: [String], label: String?)
+}
+
 public enum CellularEndpointMode: String, Codable, Equatable, Sendable { case automatic, manual }
 
 public struct CellularConfiguration: Codable, Equatable, Sendable {
@@ -27,15 +32,17 @@ public struct ControlRequest: Codable, Equatable, Sendable {
     public let cellularConfiguration: CellularConfiguration?
     public let sessionID: UUID?
     public let initialSize: TerminalSize?
+    public let sessionCommand: ManagedSessionCommand?
+    public let workingDirectory: String?
 
-    public init(command: ControlCommand, deviceID: String? = nil, approved: Bool? = nil, cellularEnabled: Bool? = nil, manualEndpoint: RemoteEndpoint? = nil, cellularConfiguration: CellularConfiguration? = nil, sessionID: UUID? = nil, initialSize: TerminalSize? = nil) {
+    public init(command: ControlCommand, deviceID: String? = nil, approved: Bool? = nil, cellularEnabled: Bool? = nil, manualEndpoint: RemoteEndpoint? = nil, cellularConfiguration: CellularConfiguration? = nil, sessionID: UUID? = nil, initialSize: TerminalSize? = nil, sessionCommand: ManagedSessionCommand? = nil, workingDirectory: String? = nil) {
         self.command = command
         self.deviceID = deviceID
         self.approved = approved
         self.cellularEnabled = cellularEnabled
         self.manualEndpoint = manualEndpoint
         self.cellularConfiguration = cellularConfiguration
-        self.sessionID = sessionID; self.initialSize = initialSize
+        self.sessionID = sessionID; self.initialSize = initialSize; self.sessionCommand = sessionCommand; self.workingDirectory = workingDirectory
     }
 }
 

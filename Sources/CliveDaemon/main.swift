@@ -64,6 +64,7 @@ struct CliveDaemon {
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
             try runOneShot(.init(command: .sessionEnd, deviceID: option("--device", in: arguments), sessionID: id))
         case "shell": try requireInteractiveTerminal(); try runManagedTerminal(command: .sessionCreate, sessionID: nil, deviceID: option("--device", in: arguments))
+        case "codex": try requireInteractiveTerminal(); try runCodex(arguments: Array(arguments.dropFirst()))
         case "help", "--help", "-h": print(usage)
         default: throw CommandError.usage
         }
@@ -283,6 +284,7 @@ struct CliveDaemon {
       cellular setup --manual --host <hostname-or-ip> --external-port <port> [--listener-port <port>]
       cellular test
       shell
+      codex [--directory <path>] [--label <name>] [codex options...]
       sessions [--device <device-id>]
       detached [--device <device-id>]
       reconnect [--device <device-id>]
@@ -388,10 +390,22 @@ struct CliveDaemon {
         }
     }
 
-    private static func runManagedTerminal(command: ControlCommand, sessionID: UUID?, deviceID: String?) throws {
+    private static func runCodex(arguments: [String]) throws {
+        var values = arguments
+        let label: String?
+        if let index = values.firstIndex(of: "--label"), index + 1 < values.count {
+            label = values[index + 1]; values.removeSubrange(index...index + 1)
+        } else { label = nil }
+        let directory = option("--directory", in: values)
+        if let index = values.firstIndex(of: "--directory"), index + 1 < values.count { values.removeSubrange(index...index + 1) }
+        if let index = values.firstIndex(of: "--device"), index + 1 < values.count { values.removeSubrange(index...index + 1) }
+        try runManagedTerminal(command: .sessionCreate, sessionID: nil, deviceID: option("--device", in: arguments), sessionCommand: .codex(arguments: values, label: label), workingDirectory: directory)
+    }
+
+    private static func runManagedTerminal(command: ControlCommand, sessionID: UUID?, deviceID: String?, sessionCommand: ManagedSessionCommand? = nil, workingDirectory: String? = nil) throws {
         let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
         let size = terminalSize()
-        try channel.send(ControlRequest(command: command, deviceID: deviceID, sessionID: sessionID, initialSize: size))
+        try channel.send(ControlRequest(command: command, deviceID: deviceID, sessionID: sessionID, initialSize: size, sessionCommand: sessionCommand, workingDirectory: workingDirectory))
         let response = try channel.readResponse(); guard response.success else { throw CommandError.remote(response.message ?? "Unable to open session.") }
         var original = termios(); guard tcgetattr(STDIN_FILENO, &original) == 0 else { throw CommandError.requiresInteractiveTerminal }
         var raw = original; cfmakeraw(&raw); guard tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0 else { throw CommandError.requiresInteractiveTerminal }

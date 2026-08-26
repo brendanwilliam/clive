@@ -37,11 +37,11 @@ final class TerminalSessionManager: @unchecked Sendable {
         init(id: UUID, kind: AttachmentKind, generation: UInt64, size: TerminalSize, activitySequence: UInt64, output: @escaping Output, onDetached: @escaping @Sendable (DetachmentReason) -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate) { self.id = id; self.kind = kind; self.generation = generation; self.size = size; self.activitySequence = activitySequence; self.output = output; self.onDetached = onDetached; self.onShellExit = onShellExit; self.onState = onState }
     }
     private final class Entry: @unchecked Sendable {
-        let session: TerminalSession; let shell: any TerminalProcess
+        let session: TerminalSession; let shell: any TerminalProcess; let label: String?
         var sinks: [UUID: Sink] = [:]; var resizeOwner: UUID?; var detachTimer: DispatchWorkItem?
         var nextGeneration: UInt64 = 0; var authoritativeGeneration: UInt64?
         var replay = Data(); var replayStartOffset: UInt64 = 0; var outputOffset: UInt64 = 0; var activitySequence: UInt64 = 0
-        init(session: TerminalSession, shell: any TerminalProcess) { self.session = session; self.shell = shell }
+        init(session: TerminalSession, shell: any TerminalProcess, label: String?) { self.session = session; self.shell = shell; self.label = label }
     }
     private let queue = DispatchQueue(label: "com.clive.daemon.sessions")
     private let registry: SessionRegistry; private let graceInterval: TimeInterval; private let replayLimit: Int
@@ -53,35 +53,42 @@ final class TerminalSessionManager: @unchecked Sendable {
         self.registry = registry; self.graceInterval = graceInterval; self.replayLimit = replayLimit; self.sleepActivity = sleepActivity; self.processFactory = processFactory
     }
 
-    func attach(deviceID: String, clientSessionID: UUID, size: TerminalSize, workingDirectory: String?, attachmentID: UUID, attachmentKind: AttachmentKind = .iPhone, lastReceivedOffset: UInt64 = 0, output: @escaping Output, onSuperseded: @escaping @Sendable () -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate = { _ in }) throws -> Attachment {
-        try attach(deviceID: deviceID, clientSessionID: clientSessionID, size: size, workingDirectory: workingDirectory, mayCreate: true, attachmentID: attachmentID, attachmentKind: attachmentKind, lastReceivedOffset: lastReceivedOffset, output: output, onDetached: { _ in onSuperseded() }, onShellExit: onShellExit, onState: onState)
+    func attach(deviceID: String, clientSessionID: UUID, size: TerminalSize, workingDirectory: String?, command: ManagedSessionCommand = .shell, attachmentID: UUID, attachmentKind: AttachmentKind = .iPhone, lastReceivedOffset: UInt64 = 0, output: @escaping Output, onSuperseded: @escaping @Sendable () -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate = { _ in }) throws -> Attachment {
+        try attach(deviceID: deviceID, clientSessionID: clientSessionID, size: size, workingDirectory: workingDirectory, command: command, mayCreate: true, attachmentID: attachmentID, attachmentKind: attachmentKind, lastReceivedOffset: lastReceivedOffset, output: output, onDetached: { _ in onSuperseded() }, onShellExit: onShellExit, onState: onState)
     }
     func attachExisting(deviceID: String, serverSessionID: UUID, size: TerminalSize, attachmentID: UUID, attachmentKind: AttachmentKind, lastReceivedOffset: UInt64, output: @escaping Output, onDetached: @escaping @Sendable (DetachmentReason) -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate = { _ in }) throws -> Attachment? {
         try queue.sync {
             guard let key = entries.first(where: { $0.key.deviceID == deviceID && $0.value.session.id == serverSessionID })?.key else { return nil }
-            return try attachLocked(key: key, size: size, workingDirectory: nil, mayCreate: false, attachmentID: attachmentID, attachmentKind: attachmentKind, lastReceivedOffset: lastReceivedOffset, output: output, onDetached: onDetached, onShellExit: onShellExit, onState: onState)
+            return try attachLocked(key: key, size: size, workingDirectory: nil, command: .shell, mayCreate: false, attachmentID: attachmentID, attachmentKind: attachmentKind, lastReceivedOffset: lastReceivedOffset, output: output, onDetached: onDetached, onShellExit: onShellExit, onState: onState)
         }
     }
-    private func attach(deviceID: String, clientSessionID: UUID, size: TerminalSize, workingDirectory: String?, mayCreate: Bool, attachmentID: UUID, attachmentKind: AttachmentKind, lastReceivedOffset: UInt64, output: @escaping Output, onDetached: @escaping @Sendable (DetachmentReason) -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate) throws -> Attachment {
+    private func attach(deviceID: String, clientSessionID: UUID, size: TerminalSize, workingDirectory: String?, command: ManagedSessionCommand = .shell, mayCreate: Bool, attachmentID: UUID, attachmentKind: AttachmentKind, lastReceivedOffset: UInt64, output: @escaping Output, onDetached: @escaping @Sendable (DetachmentReason) -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate) throws -> Attachment {
         try queue.sync {
             let key = Key(deviceID: deviceID, clientSessionID: clientSessionID)
-            return try attachLocked(key: key, size: size, workingDirectory: workingDirectory, mayCreate: mayCreate, attachmentID: attachmentID, attachmentKind: attachmentKind, lastReceivedOffset: lastReceivedOffset, output: output, onDetached: onDetached, onShellExit: onShellExit, onState: onState)
+            return try attachLocked(key: key, size: size, workingDirectory: workingDirectory, command: command, mayCreate: mayCreate, attachmentID: attachmentID, attachmentKind: attachmentKind, lastReceivedOffset: lastReceivedOffset, output: output, onDetached: onDetached, onShellExit: onShellExit, onState: onState)
         }
     }
-    private func attachLocked(key: Key, size: TerminalSize, workingDirectory: String?, mayCreate: Bool, attachmentID: UUID, attachmentKind: AttachmentKind, lastReceivedOffset: UInt64, output: @escaping Output, onDetached: @escaping @Sendable (DetachmentReason) -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate) throws -> Attachment {
+    private func attachLocked(key: Key, size: TerminalSize, workingDirectory: String?, command: ManagedSessionCommand, mayCreate: Bool, attachmentID: UUID, attachmentKind: AttachmentKind, lastReceivedOffset: UInt64, output: @escaping Output, onDetached: @escaping @Sendable (DetachmentReason) -> Void, onShellExit: @escaping @Sendable () -> Void, onState: @escaping StateUpdate) throws -> Attachment {
             let entry: Entry; let disposition: SessionOpened.Disposition
             if let current = entries[key] { entry = current; disposition = .resumed }
             else {
                 precondition(mayCreate)
                 let session = TerminalSession(deviceID: key.deviceID, clientSessionID: key.clientSessionID, size: size)
-                let shell = try processFactory(size, workingDirectory, { [weak self] bytes in
+                let outputHandler: @Sendable (Data) -> Void = { [weak self] bytes in
                     guard let self else { return }
                     self.queue.async { self.receive(bytes, for: key) }
-                }, { [weak self] in
+                }
+                let exitHandler: @Sendable () -> Void = { [weak self] in
                     guard let self else { return }
                     self.queue.async { self.shellExited(key) }
-                })
-                entry = Entry(session: session, shell: shell); entries[key] = entry; disposition = .created; Task { await registry.record(session) }
+                }
+                let shell: any TerminalProcess
+                switch command {
+                case .shell: shell = try processFactory(size, workingDirectory, outputHandler, exitHandler)
+                case .codex: shell = try PTYProcess(size: size, workingDirectory: workingDirectory, command: command, output: outputHandler, onExit: exitHandler)
+                }
+                let label = commandLabel(command)
+                entry = Entry(session: session, shell: shell, label: label); entries[key] = entry; disposition = .created; Task { await registry.record(session) }
             }
             entry.detachTimer?.cancel(); entry.detachTimer = nil
             let requested = min(lastReceivedOffset, entry.outputOffset); let start = max(requested, entry.replayStartOffset); let index = Int(start - entry.replayStartOffset)
@@ -112,7 +119,7 @@ final class TerminalSessionManager: @unchecked Sendable {
     func closeAll(deviceID: String) { queue.async { self.entries.keys.filter { $0.deviceID == deviceID }.forEach(self.terminate) } }
     func shutdown() { queue.sync { Array(entries.keys).forEach(terminate) }; sleepActivity.shutdown() }
     func synchronize() { queue.sync {} }
-    func descriptors(deviceID: String) -> [SessionDescriptor] { queue.sync { entries.values.filter { $0.session.deviceID == deviceID }.map { entry in SessionDescriptor(id: entry.session.id, attachmentCount: entry.sinks.count, resizeOwner: entry.resizeOwner.flatMap { entry.sinks[$0]?.kind }, outputOffset: entry.outputOffset) }.sorted { $0.id.uuidString < $1.id.uuidString } } }
+    func descriptors(deviceID: String) -> [SessionDescriptor] { queue.sync { entries.values.filter { $0.session.deviceID == deviceID }.map { descriptor($0) }.sorted { $0.id.uuidString < $1.id.uuidString } } }
     func subscribe(deviceID: String, identifier: UUID, update: @escaping CatalogUpdate) { queue.async { self.catalogSubscribers[identifier] = (deviceID, update); update(self.descriptorsLocked(deviceID: deviceID)) } }
     func unsubscribe(identifier: UUID) { queue.async { self.catalogSubscribers.removeValue(forKey: identifier) } }
     func clientSessionID(deviceID: String, serverSessionID: UUID) -> UUID? { queue.sync { entries.first { $0.key.deviceID == deviceID && $0.value.session.id == serverSessionID }?.key.clientSessionID } }
@@ -150,7 +157,8 @@ final class TerminalSessionManager: @unchecked Sendable {
     private func shellExited(_ key: Key) { terminate(key) }
     private func terminate(_ key: Key) { guard let entry = entries.removeValue(forKey: key) else { return }; entry.detachTimer?.cancel(); entry.sinks.values.forEach { $0.onShellExit() }; entry.shell.terminate(); sleepActivity.end(sessionID: entry.session.id); publishCatalog(deviceID: key.deviceID); Task { await registry.close(id: entry.session.id) } }
     private func descriptorsLocked(deviceID: String) -> [SessionDescriptor] { entries.values.filter { $0.session.deviceID == deviceID }.map { entry in descriptor(entry) }.sorted { $0.id.uuidString < $1.id.uuidString } }
-    private func descriptor(_ entry: Entry) -> SessionDescriptor { SessionDescriptor(id: entry.session.id, attachmentCount: entry.sinks.count, resizeOwner: entry.resizeOwner.flatMap { entry.sinks[$0]?.kind }, outputOffset: entry.outputOffset) }
+    private func descriptor(_ entry: Entry) -> SessionDescriptor { SessionDescriptor(id: entry.session.id, label: entry.label, attachmentCount: entry.sinks.count, resizeOwner: entry.resizeOwner.flatMap { entry.sinks[$0]?.kind }, outputOffset: entry.outputOffset) }
+    private func commandLabel(_ command: ManagedSessionCommand) -> String? { if case .codex(_, let label) = command { return label }; return nil }
     private func publish(_ entry: Entry) { let value = descriptor(entry); let state = AttachmentState(sessionID: value.id, attachmentCount: value.attachmentCount, resizeOwner: value.resizeOwner, outputOffset: value.outputOffset); entry.sinks.values.forEach { $0.onState(state) }; publishCatalog(deviceID: entry.session.deviceID) }
     private func publishCatalog(deviceID: String) { let value = descriptorsLocked(deviceID: deviceID); catalogSubscribers.values.filter { $0.deviceID == deviceID }.forEach { $0.update(value) } }
 }
