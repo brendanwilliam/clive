@@ -40,7 +40,10 @@ struct WorkspaceView: View {
 
     private var mainNavigation: some View {
         GeometryReader { proxy in
-            terminalWorkspace(availableWidth: proxy.size.width)
+            terminalWorkspace(
+                availableWidth: proxy.size.width,
+                topSafeAreaInset: proxy.safeAreaInsets.top
+            )
                 .ignoresSafeArea(.container, edges: [.top, .bottom])
         }
     }
@@ -135,13 +138,16 @@ struct WorkspaceView: View {
         } message: { Text(coordinator.deleteAllError ?? "Try again.") }
     }
 
-    @ViewBuilder private func terminalWorkspace(availableWidth: CGFloat) -> some View {
+    @ViewBuilder private func terminalWorkspace(
+        availableWidth: CGFloat,
+        topSafeAreaInset: CGFloat
+    ) -> some View {
         if horizontalSizeClass == .compact {
             ZStack(alignment: .topLeading) {
                 if sidebarOverlayVisible {
                     navigation
                 } else {
-                    terminalDetail
+                    terminalDetail(topSafeAreaInset: topSafeAreaInset)
                 }
                 if sidebarOverlayVisible {
                     Color.black.opacity(0.28)
@@ -149,7 +155,7 @@ struct WorkspaceView: View {
                         .contentShape(.rect)
                         .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = false } }
                         .zIndex(1)
-                    terminalSidebar
+                    terminalSidebar(topSafeAreaInset: topSafeAreaInset)
                         .frame(width: min(320, availableWidth * 0.84))
                         .frame(maxHeight: .infinity, alignment: .top)
                         .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
@@ -161,13 +167,13 @@ struct WorkspaceView: View {
         } else {
             HStack(spacing: 0) {
                 if sidebarVisibility != .detailOnly {
-                    terminalSidebar
+                    terminalSidebar(topSafeAreaInset: topSafeAreaInset)
                         .frame(minWidth: 260, idealWidth: 320, maxWidth: 380)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .transition(.move(edge: .leading))
                 }
                 if sidebarVisibility == .detailOnly {
-                    terminalDetail
+                    terminalDetail(topSafeAreaInset: topSafeAreaInset)
                 } else {
                     navigation
                 }
@@ -175,7 +181,7 @@ struct WorkspaceView: View {
         }
     }
 
-    private var terminalDetail: some View {
+    private func terminalDetail(topSafeAreaInset: CGFloat) -> some View {
         VStack(spacing: 0) {
             terminalHeader
                 .padding(.horizontal, 16)
@@ -183,7 +189,7 @@ struct WorkspaceView: View {
                 .zIndex(3)
             navigation
         }
-        .safeAreaPadding(.top)
+        .padding(.top, topSafeAreaInset)
     }
 
     private func handleOpenURL(_ url: URL) {
@@ -403,7 +409,7 @@ struct WorkspaceView: View {
         }
     }
 
-    private var terminalSidebar: some View {
+    private func terminalSidebar(topSafeAreaInset: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
                 terminalSidebarButton
@@ -474,7 +480,7 @@ struct WorkspaceView: View {
                 }
             }
         }
-        .safeAreaPadding(.top)
+        .padding(.top, topSafeAreaInset)
         .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .secondarySystemBackground))
