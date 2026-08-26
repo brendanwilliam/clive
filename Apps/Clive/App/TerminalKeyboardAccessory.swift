@@ -122,7 +122,7 @@ final class TerminalKeyboardAccessory: UIView {
                ("⌥", "option", "Option", nil), ("⌘", "command", "Command", nil),
                ("←", "left", "Left", "\u{1b}[D"), ("↓", "down", "Down", "\u{1b}[B"),
                ("↑", "up", "Up", "\u{1b}[A"), ("→", "right", "Right", "\u{1b}[C"),
-               (".", "period", "Period", "."), ("/", "slash", "Slash", "/"),
+               ("C", "c", "C", "c"), (".", "period", "Period", "."), ("/", "slash", "Slash", "/"),
                ("@", "at", "At sign", "@"), ("$", "dollar", "Dollar", "$")]
             : [("↓", "down", "Down", "\u{1b}[B"), ("↑", "up", "Up", "\u{1b}[A"), ("↵", "enter", "Enter", "\r")]
         for (title, identifier, label, input) in keys {
@@ -175,6 +175,9 @@ final class TerminalKeyboardAccessory: UIView {
 
     private func applyModifiers(to data: Data) -> Data {
         var value = data
+        if activeModifiers.contains(.shift), value == Data("\t".utf8) {
+            value = Data("\u{1b}[Z".utf8)
+        }
         if activeModifiers.contains(.option) { value.insert(0x1b, at: 0) }
         if activeModifiers.contains(.control), value.count == 1, let byte = value.first, byte >= 0x40, byte <= 0x7f { value = Data([byte & 0x1f]) }
         activeModifiers.removeAll()
