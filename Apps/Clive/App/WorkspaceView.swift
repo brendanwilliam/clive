@@ -209,6 +209,15 @@ struct WorkspaceView: View {
     }
 
     private func handleOpenURL(_ url: URL) {
+        if url.scheme?.lowercased() == "https", url.host?.lowercased() == PairingLink.domain {
+            switch PairingLink.route(url) {
+            case .pairing(let ticket): coordinator.handlePairingLink(ticket)
+            case .updateRequired: coordinator.macs.state = .failed("Update Clive to open this pairing link.")
+            case .unsupported: coordinator.macs.state = .failed("This iPhone cannot run the current Clive pairing flow.")
+            case .invalid: coordinator.macs.state = .failed("This pairing link is invalid or expired. Generate a new code.")
+            }
+            return
+        }
         guard let action = ExternalLaunchURL.action(for: url) else { return }
         coordinator.handleExternalLaunch(action)
     }
@@ -712,7 +721,8 @@ struct WorkspaceView: View {
                     }
                 }
             },
-            onError: { error in showingScanner = false; coordinator.macs.state = .failed(error.localizedDescription) }
+            onError: { error in showingScanner = false; coordinator.macs.state = .failed(error.localizedDescription) },
+            onCancel: { showingScanner = false }
         )
         .ignoresSafeArea()
     }
@@ -833,7 +843,8 @@ private struct SettingsView: View {
                 onError: { error in
                     showingScanner = false
                     coordinator.macs.state = .failed(error.localizedDescription)
-                }
+                },
+                onCancel: { showingScanner = false }
             )
             .ignoresSafeArea()
         }

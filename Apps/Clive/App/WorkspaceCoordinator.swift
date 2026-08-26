@@ -371,6 +371,7 @@ struct LocalStateResetter {
     private var identity: IPhoneIdentity?
     private var suppressDestinationUpdates = false
     private var pendingExternalAction: ExternalLaunchURL.Action?
+    private var pendingPairingTicket: PairingTicket?
     private let sessionCatalog = SessionCatalogClient()
     private let authenticate: @Sendable () async throws -> Void
     private let provideIdentity: @MainActor () throws -> IPhoneIdentity
@@ -451,7 +452,10 @@ struct LocalStateResetter {
             lastSuccessfulAuthentication = now()
             guard isSceneActive else { state = .locked; return }
             state = .active
-            if let action = pendingExternalAction {
+            if let ticket = pendingPairingTicket {
+                pendingPairingTicket = nil
+                startPairing(ticket)
+            } else if let action = pendingExternalAction {
                 pendingExternalAction = nil
                 performExternalLaunch(action)
             } else {
@@ -469,7 +473,10 @@ struct LocalStateResetter {
         if authenticationGracePolicy.permitsAccess(lastSuccessfulAuthentication: lastSuccessfulAuthentication, now: now()) {
             guard identity != nil else { await authorize(); return }
             state = .active
-            resolveExternalLaunch()
+            if let ticket = pendingPairingTicket {
+                pendingPairingTicket = nil
+                startPairing(ticket)
+            } else { resolveExternalLaunch() }
         } else {
             await authorize()
         }
@@ -519,6 +526,23 @@ struct LocalStateResetter {
         connectionSetupPolicy.completePairing()
         recovery = nil
         resolveExternalLaunch()
+    }
+
+    func handlePairingLink(_ ticket: PairingTicket) {
+        guard (try? PairingTicketValidator.validate(ticket, now: now())) != nil else {
+            macs.state = .failed("This pairing link is expired or invalid. Generate a new code.")
+            return
+        }
+        guard state == .active else { pendingPairingTicket = ticket; return }
+        startPairing(ticket)
+    }
+
+    private func startPairing(_ ticket: PairingTicket) {
+        Task { [weak self] in
+            guard let self else { return }
+            await macs.pair(ticket)
+            if macs.state == .idle, !macs.devices.isEmpty { pairingDidSucceed() }
+        }
     }
 
     func dismissPresentedScreen() {
