@@ -31,7 +31,7 @@ struct WorkspaceView: View {
     @State private var sidebarOverlayVisible = false
     @State private var keyboardVisible = false
     @State private var keyboardWasVisibleBeforeSidebar = false
-    @State private var terminalMenuVisible = false
+    @Namespace private var toolbarControlTransition
 
     var body: some View {
         presentedWorkspace
@@ -39,14 +39,8 @@ struct WorkspaceView: View {
 
     private var mainNavigation: some View {
         GeometryReader { proxy in
-            VStack(spacing: 0) {
-                terminalHeader(availableWidth: proxy.size.width)
-                    .padding(.horizontal, 16)
-                    .frame(height: 60)
-                    .zIndex(3)
-                terminalWorkspace(availableHeight: proxy.size.height)
-            }
-            .ignoresSafeArea(.container, edges: .bottom)
+            terminalWorkspace(availableWidth: proxy.size.width)
+                .ignoresSafeArea(.container, edges: .bottom)
         }
     }
 
@@ -140,10 +134,14 @@ struct WorkspaceView: View {
         } message: { Text(coordinator.deleteAllError ?? "Try again.") }
     }
 
-    @ViewBuilder private func terminalWorkspace(availableHeight: CGFloat) -> some View {
+    @ViewBuilder private func terminalWorkspace(availableWidth: CGFloat) -> some View {
         if horizontalSizeClass == .compact {
             ZStack(alignment: .topLeading) {
-                navigation
+                if sidebarOverlayVisible {
+                    navigation
+                } else {
+                    terminalDetail
+                }
                 if sidebarOverlayVisible {
                     Color.black.opacity(0.28)
                         .ignoresSafeArea()
@@ -151,12 +149,8 @@ struct WorkspaceView: View {
                         .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = false } }
                         .zIndex(1)
                     terminalSidebar
-                        .frame(width: 320)
-                        .frame(maxWidth: 320)
-                        .containerRelativeFrame(.horizontal, count: 100, span: 84, spacing: 0)
-                        .frame(height: availableHeight, alignment: .top)
-                        .offset(y: -60)
-                        .background(Color(uiColor: .secondarySystemBackground))
+                        .frame(width: min(320, availableWidth * 0.84))
+                        .frame(maxHeight: .infinity, alignment: .top)
                         .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
                         .shadow(color: .black.opacity(0.28), radius: 18, x: 6)
                         .transition(.move(edge: .leading))
@@ -168,12 +162,25 @@ struct WorkspaceView: View {
                 if sidebarVisibility != .detailOnly {
                     terminalSidebar
                         .frame(minWidth: 260, idealWidth: 320, maxWidth: 380)
-                        .frame(height: availableHeight, alignment: .top)
-                        .offset(y: -60)
+                        .frame(maxHeight: .infinity, alignment: .top)
                         .transition(.move(edge: .leading))
                 }
-                navigation
+                if sidebarVisibility == .detailOnly {
+                    terminalDetail
+                } else {
+                    navigation
+                }
             }
+        }
+    }
+
+    private var terminalDetail: some View {
+        VStack(spacing: 0) {
+            terminalHeader
+                .padding(.horizontal, 16)
+                .frame(height: 60)
+                .zIndex(3)
+            navigation
         }
     }
 
@@ -217,38 +224,16 @@ struct WorkspaceView: View {
         }
     }
 
-    private func terminalHeader(availableWidth: CGFloat) -> some View {
+    private var terminalHeader: some View {
         HStack(spacing: 0) {
             terminalSidebarButton
-            if sidebarIsVisible {
-                Spacer(minLength: 0)
-                terminalActions
-            } else {
-                Spacer()
-                if coordinator.sessions.isEmpty {
-                    EmptyView()
-                } else {
-                    terminalTitleMenu
-                }
-                Spacer()
-                terminalActions
+            Spacer()
+            if !coordinator.sessions.isEmpty {
+                terminalTitleMenu
             }
+            Spacer()
+            terminalActions
         }
-        .frame(maxWidth: sidebarIsVisible ? sidebarHeaderWidth(availableWidth: availableWidth) : .infinity, alignment: .leading)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(alignment: .leading) {
-            if sidebarIsVisible {
-                Color(uiColor: .secondarySystemBackground)
-                    .frame(width: sidebarHeaderWidth(availableWidth: availableWidth), height: 60)
-            }
-        }
-    }
-
-    private func sidebarHeaderWidth(availableWidth: CGFloat) -> CGFloat {
-        if horizontalSizeClass == .compact {
-            return availableWidth * 0.84
-        }
-        return min(320, availableWidth)
     }
 
     private var connectionPresentation: ConnectionStatusPresentation {
@@ -274,49 +259,27 @@ struct WorkspaceView: View {
             .clipShape(Circle())
             .accessibilityLabel("New Terminal")
             .accessibilityIdentifier("new-terminal-button")
+            .matchedGeometryEffect(id: "new-terminal", in: toolbarControlTransition)
     }
 
     private var terminalTitleMenu: some View {
-        Button {
-            guard coordinator.selectedSession != nil else { return }
-            withAnimation(.easeOut(duration: 0.16)) { terminalMenuVisible.toggle() }
+        Menu {
+            if let session = coordinator.selectedSession {
+                terminalSessionActions(for: session)
+            }
         } label: {
-            HStack(spacing: 0) {
-                Text(coordinator.selectedSession?.descriptor.label ?? "No terminal")
-                    .lineLimit(1)
-            }
-            .font(.subheadline)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .frame(minHeight: 44)
-            .frame(maxWidth: 240)
-            .background {
-                Color.clear.cliveGlassBackground(in: Capsule())
-            }
-        }
-        .overlay(alignment: .top) {
-            if terminalMenuVisible, let session = coordinator.selectedSession {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(session.descriptor.label)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                    Divider()
-                    VStack(alignment: .leading, spacing: 0) {
-                        terminalSessionActions(for: session)
-                    }
-                    .padding(.vertical, 4)
+            Text(coordinator.selectedSession?.descriptor.label ?? "No terminal")
+                .lineLimit(1)
+                .font(.subheadline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .frame(maxWidth: 240)
+                .background {
+                    Color.clear.cliveGlassBackground(in: Capsule())
                 }
-                .frame(width: 220, alignment: .leading)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-                .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
-                .offset(y: 54)
-                .transition(.scale(scale: 0.94, anchor: .top).combined(with: .opacity))
-                .zIndex(4)
-            }
         }
+        .menuOrder(.fixed)
         .disabled(coordinator.selectedSession == nil)
         .accessibilityLabel("Terminal title")
         .accessibilityIdentifier("terminal-title-button")
@@ -356,6 +319,7 @@ struct WorkspaceView: View {
         .accessibilityLabel(sidebarIsVisible ? "Close terminals" : "Open terminals")
         .accessibilityValue(sidebarIsVisible ? "Open" : "Closed")
         .accessibilityIdentifier("terminal-sidebar-button")
+        .matchedGeometryEffect(id: "terminal-sidebar", in: toolbarControlTransition)
     }
 
     private func toggleSidebar() {
@@ -381,7 +345,6 @@ struct WorkspaceView: View {
     }
 
     private func openSidebar() {
-        terminalMenuVisible = false
         keyboardWasVisibleBeforeSidebar = keyboardVisible
         dismissKeyboard()
         if horizontalSizeClass == .compact {
@@ -431,6 +394,13 @@ struct WorkspaceView: View {
 
     private var terminalSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                terminalSidebarButton
+                Spacer(minLength: 0)
+                terminalActions
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 60)
             Text("Terminals")
                 .font(.largeTitle.weight(.bold))
                 .padding(.horizontal, 12)
