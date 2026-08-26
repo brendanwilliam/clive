@@ -39,12 +39,11 @@ struct WorkspaceView: View {
     private var mainNavigation: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
-                terminalHeader
+                terminalHeader(availableWidth: proxy.size.width)
                     .padding(.horizontal, 16)
                     .frame(height: 60)
                 terminalWorkspace
             }
-            .padding(.top, proxy.safeAreaInsets.top)
             .ignoresSafeArea(.container, edges: .bottom)
         }
     }
@@ -213,15 +212,32 @@ struct WorkspaceView: View {
         }
     }
 
-    private var terminalHeader: some View {
-        ZStack {
-            terminalTitleMenu
-            HStack {
-                terminalSidebarButton
+    private func terminalHeader(availableWidth: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            terminalSidebarButton
+            if sidebarIsVisible {
+                Spacer(minLength: 0)
+                terminalActions
+            } else {
+                Spacer()
+                if coordinator.sessions.isEmpty {
+                    newTerminalHeaderButton
+                } else {
+                    terminalTitleMenu
+                }
                 Spacer()
                 terminalActions
             }
         }
+        .frame(maxWidth: sidebarIsVisible ? sidebarHeaderWidth(availableWidth: availableWidth) : .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func sidebarHeaderWidth(availableWidth: CGFloat) -> CGFloat {
+        if horizontalSizeClass == .compact {
+            return availableWidth * 0.84
+        }
+        return min(320, availableWidth)
     }
 
     private var connectionPresentation: ConnectionStatusPresentation {
@@ -249,17 +265,26 @@ struct WorkspaceView: View {
             .accessibilityIdentifier("new-terminal-button")
     }
 
+    private var newTerminalHeaderButton: some View {
+        Button { navigate { coordinator.addShell() } } label: {
+            Text("New Terminal")
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 14)
+                .frame(minHeight: 36)
+        }
+        .buttonStyle(.borderedProminent)
+        .accessibilityIdentifier("new-terminal-header-button")
+    }
+
     private var terminalTitleMenu: some View {
         Menu {
             if let session = coordinator.selectedSession {
                 terminalSessionActions(for: session)
             }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 0) {
                 Text(coordinator.selectedSession?.descriptor.label ?? "No terminal")
                     .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.semibold))
             }
             .font(.subheadline)
             .foregroundStyle(.white)
