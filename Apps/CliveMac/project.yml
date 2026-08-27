@@ -53,8 +53,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        TEST_HOST: ""
-        BUNDLE_LOADER: ""
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Clive.app/Contents/MacOS/Clive"
+        BUNDLE_LOADER: "$(TEST_HOST)"
     dependencies:
       - target: CliveMac
 schemes:
