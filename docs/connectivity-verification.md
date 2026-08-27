@@ -38,7 +38,7 @@ signed macOS companion, a physical iPhone, and representative networks:
 | --- | --- | --- |
 | Camera-to-app QR pairing and explicit Mac approval | Sanitized pairing result and cancellation/retry result | Pending physical-device validation |
 | TestFlight fallback and pending-ticket resume | Missing-app fallback does not receive the URL fragment; resumed scan succeeds | Pending TestFlight validation |
-| Wi-Fi to direct cellular and cellular to Wi-Fi handoff | Stable session ID, preserved PTY, and no duplicated input | Pending physical-network validation |
+| Wi-Fi to direct cellular and cellular to Wi-Fi handoff | Stable session ID, preserved PTY, and no duplicated input | Wi-Fi→cellular validated on a physical iPhone with PR #189; cellular→Wi-Fi remains pending |
 | Private VPN discovery and fallback | Route selection and documented VPN limitations | Pending configured-VPN validation |
 | iPhone background/foreground reattachment | Replay offset and truncation behavior after foregrounding | Pending physical-device validation |
 | Mac-to-iPhone and iPhone-to-Mac takeover | Explicit user confirmation and single input owner | Pending physical-device validation |
@@ -46,6 +46,15 @@ signed macOS companion, a physical iPhone, and representative networks:
 Unsupported carrier behavior, NAT limitations, sleep/wake variability, and
 relay availability must be recorded as known limitations, environmental
 failures, or deferred behavior rather than silently treated as passing.
+
+### Evidence collected
+
+On 2026-08-26, a signed local build containing PR [#189](https://github.com/brendanwilliam/clive/pull/189)
+was exercised on a physical iPhone over Wi-Fi and 5G. An existing terminal
+resumed after Wi-Fi was disabled, and newly created cellular terminals attached
+successfully. The test did not record terminal content or credentials. The
+reverse cellular-to-Wi-Fi transition and broader carrier/network matrix remain
+release-blocking validation work.
 
 ## V1 boundary
 
