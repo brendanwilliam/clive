@@ -38,7 +38,7 @@ final class TerminalNavigationUITests: XCTestCase {
 
     func testTerminalSidebarShowsTheSelectedTerminal() {
         openTerminalDrawer()
-        XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 4))
+        XCTAssertTrue(waitForTerminalSidebar())
         XCTAssertEqual(drawerRow(firstID).value as? String, "Selected")
     }
 
@@ -275,10 +275,17 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     private func openTerminalDrawer() {
-        if terminalDrawerButton.waitForExistence(timeout: 1) {
+        // The regular-size layout starts with the sidebar visible and keeps its
+        // toggle inside the sidebar. Only tap the toggle when the compact
+        // layout is currently showing the terminal detail screen.
+        if !waitForTerminalSidebar(timeout: 1), terminalDrawerButton.waitForExistence(timeout: 1) {
             terminalDrawerButton.tap()
         }
-        XCTAssertTrue(app.staticTexts["Terminals"].waitForExistence(timeout: 3))
+        XCTAssertTrue(waitForTerminalSidebar())
+    }
+
+    private func waitForTerminalSidebar(timeout: TimeInterval = 3) -> Bool {
+        app.staticTexts["Clive Sessions"].waitForExistence(timeout: timeout)
     }
     private func waitForSelection(of terminal: XCUIElement, timeout: TimeInterval = 4) -> Bool {
         let predicate = NSPredicate(format: "value == %@", "Selected")
