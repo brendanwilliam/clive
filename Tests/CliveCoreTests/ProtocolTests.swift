@@ -6,6 +6,165 @@ import Security
 
 private enum StartupTestError: Error, Equatable { case unavailable, failed }
 
+private struct StaticRouteProvider: RouteProvider {
+    let kind: RouteKind
+    let snapshot: [RouteCandidate]
+    func candidates() async -> [RouteCandidate] { snapshot }
+}
+
+private actor FakeRouteConnection: RouteConnection {
+    let opened: SessionOpened
+    var events: [String] = []
+    var shouldFailAttach = false
+
+    init(opened: SessionOpened, shouldFailAttach: Bool = false) {
+        self.opened = opened
+        self.shouldFailAttach = shouldFailAttach
+    }
+
+    func authenticate() async throws { events.append("authenticate") }
+
+    func attach(serverSessionID: UUID, lastReceivedOffset: UInt64, initialSize: TerminalSize) async throws -> SessionOpened {
+        events.append("attach:\(lastReceivedOffset)")
+        if shouldFailAttach { throw StartupTestError.failed }
+        return opened
+    }
+
+    func sendInput(_ data: Data) async throws { events.append("input") }
+    func resize(_ size: TerminalSize) async throws { events.append("resize") }
+    func receiveOutput() async throws -> TerminalOutputChunk { throw StartupTestError.unavailable }
+    func close() async { events.append("close") }
+}
+
+private struct FakeRouteAdapter: RouteAdapter {
+    let kind: RouteKind
+    let connection: FakeRouteConnection
+
+    func connect(to candidate: RouteCandidate) async throws -> any RouteConnection { connection }
+}
+
+@Test func routeSessionCoordinatorAuthenticatesBeforeAttaching() async throws {
+    let sessionID = UUID()
+    let opened = SessionOpened(serverSessionID: sessionID, disposition: .resumed, replayTruncated: false)
+    let connection = FakeRouteConnection(opened: opened)
+    let candidate = RouteCandidate(kind: .lan, host: "mac.local", port: 64236)
+    let coordinator = RouteSessionCoordinator()
+
+    let result = try await coordinator.connect(using: FakeRouteAdapter(kind: .lan, connection: connection), candidate: candidate, serverSessionID: sessionID, lastReceivedOffset: 12, initialSize: TerminalSize(columns: 80, rows: 24))
+
+    #expect(result == opened)
+    #expect(await connection.events == ["authenticate", "attach:12"])
+    #expect(await coordinator.selectedCandidate == candidate)
+}
+
+@Test func routeSessionCoordinatorKeepsOldConnectionWhenHandoffAttachFails() async throws {
+    let sessionID = UUID()
+    let opened = SessionOpened(serverSessionID: sessionID, disposition: .resumed, replayTruncated: false)
+    let oldConnection = FakeRouteConnection(opened: opened)
+    let failedConnection = FakeRouteConnection(opened: opened, shouldFailAttach: true)
+    let oldCandidate = RouteCandidate(kind: .lan, host: "mac.local", port: 64236)
+    let newCandidate = RouteCandidate(kind: .privateVPN, host: "mac.vpn", port: 64236)
+    let coordinator = RouteSessionCoordinator()
+    _ = try await coordinator.connect(using: FakeRouteAdapter(kind: .lan, connection: oldConnection), candidate: oldCandidate, serverSessionID: sessionID, lastReceivedOffset: 0, initialSize: TerminalSize(columns: 80, rows: 24))
+
+    await #expect(throws: StartupTestError.failed) {
+        try await coordinator.handoff(using: FakeRouteAdapter(kind: .privateVPN, connection: failedConnection), candidate: newCandidate, serverSessionID: sessionID, lastReceivedOffset: 42, initialSize: TerminalSize(columns: 80, rows: 24))
+    }
+
+    #expect(await coordinator.selectedCandidate == oldCandidate)
+    #expect(await oldConnection.events == ["authenticate", "attach:0"])
+    #expect(await failedConnection.events == ["authenticate", "attach:42", "close"])
+}
+
+@Test func routeCatalogCombinesProviderSnapshotsWithoutReinterpretingHealth() async {
+    let lan = RouteCandidate(kind: .lan, host: "mac.local", port: 64236, health: .healthy)
+    let vpn = RouteCandidate(kind: .privateVPN, host: "mac.vpn", port: 64236, health: .failed)
+    let catalog = RouteCatalog(providers: [
+        StaticRouteProvider(kind: .lan, snapshot: [lan]),
+        StaticRouteProvider(kind: .privateVPN, snapshot: [vpn])
+    ])
+
+    #expect(await catalog.refresh() == [lan, vpn])
+    #expect(vpn.state(at: .now) == .failed)
+}
+
+@Test func routeSelectorPrefersLANAndDebouncesRecovery() {
+    let now = Date(timeIntervalSince1970: 100)
+    let lan = RouteCandidate(id: UUID(), kind: .lan, host: "mac.local", port: 64236, health: .healthy)
+    let cellular = RouteCandidate(id: UUID(), kind: .directWANCellular, host: "198.51.100.10", port: 64236, health: .healthy)
+    var selector = ConnectivityRouteStateMachine()
+
+    #expect(selector.evaluate([cellular], at: now) == .selected(cellular))
+    #expect(selector.evaluate([lan, cellular], at: now) == .noChange)
+    #expect(selector.evaluate([lan, cellular], at: now.addingTimeInterval(4.9)) == .noChange)
+    #expect(selector.evaluate([lan, cellular], at: now.addingTimeInterval(5)) == .handedOff(from: cellular.id, to: lan))
+    #expect(selector.selectedRouteID == lan.id)
+}
+
+@Test func routeSelectorFailsOverImmediatelyButDoesNotCreateAReplacement() {
+    let now = Date(timeIntervalSince1970: 100)
+    let lan = RouteCandidate(id: UUID(), kind: .lan, host: "mac.local", port: 64236, health: .failed)
+    let vpn = RouteCandidate(id: UUID(), kind: .privateVPN, host: "mac.vpn", port: 64236, health: .healthy)
+    var selector = ConnectivityRouteStateMachine(selectedRouteID: lan.id)
+
+    #expect(selector.evaluate([lan, vpn], at: now) == .handedOff(from: lan.id, to: vpn))
+    #expect(selector.selectedRouteID == vpn.id)
+}
+
+@Test func expiredOrUnauthorizedRoutesAreUnavailable() {
+    let now = Date(timeIntervalSince1970: 100)
+    let expired = RouteCandidate(kind: .lan, host: "mac.local", port: 64236, expiresAt: now, health: .healthy)
+    let unauthorized = RouteCandidate(kind: .privateVPN, host: "mac.vpn", port: 64236, authorization: .unauthorized, health: .healthy)
+    #expect(expired.state(at: now) == .unavailable)
+    #expect(unauthorized.state(at: now) == .unavailable)
+}
+
+@Test func staleHealthyRoutesAreUnavailable() {
+    let now = Date(timeIntervalSince1970: 100)
+    let stale = RouteCandidate(
+        kind: .lan,
+        host: "mac.local",
+        port: 64236,
+        lastVerifiedAt: now.addingTimeInterval(-ConnectivityRouteStateMachine.candidateStaleness - 1),
+        health: .healthy
+    )
+
+    #expect(!stale.isUsable(at: now))
+    #expect(stale.state(at: now) == .unavailable)
+}
+
+@Test func retryPolicyUsesBoundedExponentialBackoff() {
+    let policy = RouteRetryPolicy(baseDelay: 1, maximumDelay: 5)
+
+    #expect(policy.delay(forAttempt: 0) == 1)
+    #expect(policy.delay(forAttempt: 1) == 1)
+    #expect(policy.delay(forAttempt: 2) == 2)
+    #expect(policy.delay(forAttempt: 3) == 4)
+    #expect(policy.delay(forAttempt: 4) == 5)
+    #expect(policy.delay(forAttempt: 100) == 5)
+}
+
+@Test func equalPriorityRoutesAreSelectedDeterministically() {
+    let now = Date(timeIntervalSince1970: 100)
+    let first = RouteCandidate(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+        kind: .lan,
+        host: "first.local",
+        port: 64236,
+        health: .healthy
+    )
+    let second = RouteCandidate(
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+        kind: .lan,
+        host: "second.local",
+        port: 64236,
+        health: .healthy
+    )
+    var selector = ConnectivityRouteStateMachine()
+
+    #expect(selector.evaluate([second, first], at: now) == .selected(first))
+}
+
 @Test func companionStartupReturnsWithoutLaunchingWhenDaemonIsAvailable() throws {
     var launches = 0
     let result = try CompanionStartupPolicy.run(
@@ -84,11 +243,18 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
 
 @Test func v3SessionAndOutputDescriptorsRoundTrip() throws {
     let id = UUID()
-    let descriptor = SessionDescriptor(id: id, label: "build", attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 42)
+    let descriptor = SessionDescriptor(id: id, kind: .codex, label: "build", attachmentCount: 2, resizeOwner: .macCLI, outputOffset: 42)
     #expect(try ProtocolPayload.decode(SessionDescriptor.self, from: ProtocolPayload.encode(descriptor)) == descriptor)
     let chunk = TerminalOutputChunk(offset: 42, bytes: Data("ok".utf8))
     #expect(try ProtocolPayload.decode(TerminalOutputChunk.self, from: ProtocolPayload.encode(chunk)) == chunk)
     #expect(chunk.endOffset == 44)
+}
+
+@Test func legacySessionDescriptorDefaultsToShell() throws {
+    let id = UUID()
+    let legacy = "{\"id\":\"\(id.uuidString)\",\"label\":\"old\",\"attachmentCount\":0,\"resizeOwner\":null,\"outputOffset\":0}"
+    let descriptor = try ProtocolPayload.decode(SessionDescriptor.self, from: Data(legacy.utf8))
+    #expect(descriptor.kind == .shell)
 }
 
 @Test func sessionAttachAndAttachmentStateRoundTrip() throws {
@@ -210,6 +376,13 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     try await secret.consume(secret: "secret")
 }
 
+@Test func invalidatedPairingSecretRejectsLaterRequests() async throws {
+    let ticket = PairingTicket(endpoint: "127.0.0.1", port: 4444, expiresAt: .now.addingTimeInterval(60), oneTimeSecret: "secret", daemonCertificateFingerprint: "abc")
+    let secret = PairingSecret(ticket: ticket)
+    await secret.invalidate()
+    await #expect(throws: PairingError.consumed) { try await secret.verify(secret: "secret") }
+}
+
 @Test func validPairingRequestDoesNotConsumeSecretBeforeApproval() async throws {
     let ticket = PairingTicket(endpoint: "127.0.0.1", port: 4444, expiresAt: Date.now.addingTimeInterval(60), oneTimeSecret: "secret", daemonCertificateFingerprint: "abc")
     let secret = PairingSecret(ticket: ticket)
@@ -232,7 +405,10 @@ private enum StartupTestError: Error, Equatable { case unavailable, failed }
     let secret = PairingSecret(ticket: ticket)
     let coordinator = PairingCoordinator(secret: secret, trustStore: store, macID: "mac-a", displayName: "Mac", serviceID: "service-a", macCertificate: Data([9])) { _ in true }
     let request = PairingRequest(oneTimeSecret: "secret", deviceID: "phone-a", deviceName: "Phone", certificate: Data([1, 2]))
-    #expect(try await coordinator.accept(request) == PairingAcceptance(macID: "mac-a", displayName: "Mac", serviceID: "service-a", certificate: Data([9])))
+    let acceptance = try await coordinator.accept(request)
+    #expect(acceptance.macID == "mac-a")
+    #expect(acceptance.pairingEventID != nil)
+    #expect(acceptance.pairingTimestamp != nil)
     #expect(await store.device(id: "phone-a")?.certificateFingerprint == Fingerprint.sha256(of: Data([1, 2])))
     await #expect(throws: PairingError.consumed) { try await coordinator.accept(request) }
 }

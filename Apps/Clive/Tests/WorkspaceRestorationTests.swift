@@ -34,6 +34,19 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertFalse(policy.permitsAccess(lastSuccessfulAuthentication: verified, now: verified.addingTimeInterval(-1)))
     }
 
+    func testFaceIDPresentationDoesNotSuspendLiveSessions() {
+        XCTAssertFalse(SceneTransitionPolicy.shouldSuspendLiveSessions(
+            isSceneActive: true,
+            hasCapturedForeground: false,
+            authenticationInFlight: true
+        ))
+        XCTAssertTrue(SceneTransitionPolicy.shouldSuspendLiveSessions(
+            isSceneActive: true,
+            hasCapturedForeground: false,
+            authenticationInFlight: false
+        ))
+    }
+
     func testWorkspaceRestorationContainsNoAuthenticationOrTerminalContent() throws {
         let sessionID = UUID()
         let snapshot = WorkspaceSnapshot(
@@ -119,6 +132,30 @@ final class WorkspaceRestorationTests: XCTestCase {
             WorkspaceLaunchResolver.resolve(destination: nil, selectedMacID: nil, pairedMacIDs: [], descriptorsByMac: [:]),
             .connectionSetup
         )
+    }
+
+    func testRemovingActiveLANRouteStartsCellularReconnect() {
+        XCTAssertTrue(WorkspaceSession.shouldReconnectAfterRouteChange(
+            activeRouteKind: .lan,
+            newRoutes: [MacRoute(host: "198.51.100.10", port: 64236, kind: .manualPublicEndpoint)],
+            hasOpened: true
+        ))
+    }
+
+    func testAddingPreferredLANRouteStartsReconnectFromWAN() {
+        XCTAssertTrue(WorkspaceSession.shouldReconnectAfterRouteChange(
+            activeRouteKind: .manualPublicEndpoint,
+            newRoutes: [MacRoute(host: "mac.local", port: 64236, kind: .lan)],
+            hasOpened: true
+        ))
+    }
+
+    func testRouteChangesDoNotReconnectBeforeSessionOpens() {
+        XCTAssertFalse(WorkspaceSession.shouldReconnectAfterRouteChange(
+            activeRouteKind: .lan,
+            newRoutes: [],
+            hasOpened: false
+        ))
     }
 
     func testDestinationStoreRejectsUnsupportedVersion() throws {

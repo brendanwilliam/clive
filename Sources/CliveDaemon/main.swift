@@ -5,6 +5,13 @@ import CliveCloud
 import CliveCore
 
 struct CliveDaemon {
+    struct CodexInvocation: Equatable, Sendable {
+        let arguments: [String]
+        let label: String?
+        let directory: String?
+        let deviceID: String?
+    }
+
     static func main() async {
         do {
             try await run(arguments: Array(CommandLine.arguments.dropFirst()))
@@ -64,6 +71,7 @@ struct CliveDaemon {
             guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else { throw CommandError.usage }
             try runOneShot(.init(command: .sessionEnd, deviceID: option("--device", in: arguments), sessionID: id))
         case "shell": try requireInteractiveTerminal(); try runManagedTerminal(command: .sessionCreate, sessionID: nil, deviceID: option("--device", in: arguments))
+        case "codex": try requireInteractiveTerminal(); try runCodex(arguments: Array(arguments.dropFirst()))
         case "help", "--help", "-h": print(usage)
         default: throw CommandError.usage
         }
@@ -195,25 +203,47 @@ struct CliveDaemon {
     }
 
     private static func runPairingClient() throws {
-        let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
-        try channel.send(ControlRequest(command: .pair))
+        let channel: ControlChannel
+        do {
+            channel = try CompanionStartupPolicy.run(
+                companionIsInstalled: FileManager.default.fileExists(atPath: "/Applications/Clive.app"),
+                launch: launchCompanionApp,
+                request: {
+                    let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
+                    try channel.send(ControlRequest(command: .pair))
+                    return channel
+                },
+                isUnavailable: { $0 is ControlSocketError }
+            )
+        } catch {
+            throw CommandError.remote("Clive is not running. Install the companion or run `clive start`, then retry `clive pair`.")
+        }
+
+        signal(SIGINT, SIG_IGN)
+        let interrupt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global(qos: .userInitiated))
+        interrupt.setEventHandler {
+            guard let cancel = try? ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL) else { return }
+            try? cancel.send(ControlRequest(command: .cancelPairing)); _ = try? cancel.readResponse()
+        }
+        interrupt.resume()
+        defer { interrupt.cancel(); signal(SIGINT, SIG_DFL) }
+
         while true {
             let response = try channel.readResponse()
-            guard response.success else { throw CommandError.remote(response.message ?? "Pairing failed.") }
+            guard response.success else { throw CommandError.remote(response.message ?? "Pairing failed. Run `clive pair` to try again.") }
             switch response.kind {
             case .pairingTicket:
-                guard let ticket = response.pairingTicket else { throw ControlSocketError.malformedMessage }
-                print("Scan this pairing code within five minutes:")
+                guard let ticket = response.pairingTicket, let link = try? PairingLink.makeURL(for: ticket) else { throw ControlSocketError.malformedMessage }
+                print("Scan this secure pairing code with the iPhone Camera app within one minute:")
                 print("Pairing endpoint: \(ticket.endpoint):\(ticket.port)")
-                print(try TerminalQRCode.render(payload: PairingPayload.encode(ticket)))
-                print("Waiting for the iPhone. After scanning, approve the device below.")
+                print(try TerminalQRCode.render(payload: link.absoluteString))
+                print("Ctrl-C cancels this code. After scanning, approve the device below.")
             case .pairingPrompt:
                 guard let prompt = response.pairingPrompt else { throw ControlSocketError.malformedMessage }
-                print("Pair \(prompt.displayName) (\(prompt.deviceID))?")
+                print("Approve pairing for \(prompt.displayName) (\(prompt.deviceID))?")
                 print("Certificate: \(prompt.certificateFingerprint)")
                 print("Approve [y/N]: ", terminator: "")
-                let approved = readLine()?.lowercased() == "y"
-                try channel.send(ControlRequest(command: .approvePairing, approved: approved))
+                try channel.send(ControlRequest(command: .approvePairing, approved: readLine()?.lowercased() == "y"))
             case .result:
                 if let message = response.message { print(message) }
                 return
@@ -261,6 +291,8 @@ struct CliveDaemon {
       cellular setup --manual --host <hostname-or-ip> --external-port <port> [--listener-port <port>]
       cellular test
       shell
+      codex [--directory <path>] [--label <name>] [--device <device-id>] [codex options...]
+        clive codex resume [codex resume arguments...]
       sessions [--device <device-id>]
       detached [--device <device-id>]
       reconnect [--device <device-id>]
@@ -366,10 +398,45 @@ struct CliveDaemon {
         }
     }
 
-    private static func runManagedTerminal(command: ControlCommand, sessionID: UUID?, deviceID: String?) throws {
+    private static func runCodex(arguments: [String]) throws {
+        let invocation = try parseCodexInvocation(arguments)
+        try runManagedTerminal(command: .sessionCreate, sessionID: nil, deviceID: invocation.deviceID, sessionCommand: .codex(arguments: invocation.arguments, label: invocation.label), workingDirectory: invocation.directory)
+    }
+
+    static func parseCodexInvocation(_ arguments: [String]) throws -> CodexInvocation {
+        var index = 0
+        var label: String?
+        var directory: String?
+        var deviceID: String?
+
+        // Clive options are limited to the prefix. Once the first Codex
+        // argument is encountered, the remainder—including `resume` and
+        // every option after it—is forwarded unchanged.
+        while index < arguments.count {
+            switch arguments[index] {
+            case "--label":
+                guard index + 1 < arguments.count else { throw CommandError.usage }
+                label = arguments[index + 1]
+                index += 2
+            case "--directory":
+                guard index + 1 < arguments.count else { throw CommandError.usage }
+                directory = arguments[index + 1]
+                index += 2
+            case "--device":
+                guard index + 1 < arguments.count, !arguments[index + 1].isEmpty else { throw CommandError.usage }
+                deviceID = arguments[index + 1]
+                index += 2
+            default:
+                return CodexInvocation(arguments: Array(arguments[index...]), label: label, directory: directory, deviceID: deviceID)
+            }
+        }
+        return CodexInvocation(arguments: [], label: label, directory: directory, deviceID: deviceID)
+    }
+
+    private static func runManagedTerminal(command: ControlCommand, sessionID: UUID?, deviceID: String?, sessionCommand: ManagedSessionCommand? = nil, workingDirectory: String? = nil) throws {
         let channel = try ControlSocketClient.connect(url: RuntimePaths.live.controlSocketURL)
         let size = terminalSize()
-        try channel.send(ControlRequest(command: command, deviceID: deviceID, sessionID: sessionID, initialSize: size))
+        try channel.send(ControlRequest(command: command, deviceID: deviceID, sessionID: sessionID, initialSize: size, sessionCommand: sessionCommand, workingDirectory: workingDirectory))
         let response = try channel.readResponse(); guard response.success else { throw CommandError.remote(response.message ?? "Unable to open session.") }
         var original = termios(); guard tcgetattr(STDIN_FILENO, &original) == 0 else { throw CommandError.requiresInteractiveTerminal }
         var raw = original; cfmakeraw(&raw); guard tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0 else { throw CommandError.requiresInteractiveTerminal }

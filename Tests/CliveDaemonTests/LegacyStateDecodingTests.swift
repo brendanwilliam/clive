@@ -5,11 +5,16 @@ import CliveCore
 
 @Suite("Legacy daemon state")
 struct LegacyStateDecodingTests {
-    @Test("daemon state rejects a missing current listener port")
-    func daemonStateRejectsMissingListenerPort() {
+    @Test("daemon state defaults a missing listener port")
+    func daemonStateDefaultsMissingListenerPort() throws {
         let data = Data(#"{"macID":"mac","serviceID":"service","remoteEndpoint":null}"#.utf8)
 
-        #expect(throws: (any Error).self) { try JSONDecoder().decode(DaemonState.self, from: data) }
+        let state = try JSONDecoder().decode(DaemonState.self, from: data)
+
+        #expect(state.macID == "mac")
+        #expect(state.serviceID == "service")
+        #expect(state.remoteEndpoint == nil)
+        #expect(state.listenerPort == 64236)
     }
 
     @Test("rendezvous settings reject missing current fields")

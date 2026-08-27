@@ -61,3 +61,11 @@ struct TerminalPagerPolicy {
 }
 
 enum HorizontalDirection: Equatable { case left, right }
+
+enum TerminalHorizontalNavigationPolicy {
+    static let leadingEdgeExclusion: CGFloat = 24
+
+    static func allowsTerminalSwipe(startingAt x: CGFloat) -> Bool {
+        x > leadingEdgeExclusion
+    }
+}

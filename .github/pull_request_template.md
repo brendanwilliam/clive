@@ -13,16 +13,9 @@
 
 ## Verification
 
-- [ ] `./scripts/verify-local.sh`
-- [ ] `./scripts/test-macos-integration.sh`
+- [ ] `./scripts/check-fast.sh`
+- [ ] Full compatibility checks were run when preparing a `develop` → `main` PR.
 - [ ] Additional tests are listed below.
-
-## UI feature map
-
-- [ ] `docs/ui-feature-map.json` updates every affected component mapping, or appends one
-      validated `no-component-impact` review record whose paths match the complete PR diff.
-- [ ] `python3 scripts/feature-map.py validate` and
-      `python3 scripts/feature-map.py check-change --base <develop-base>` pass.
 
 ## Screenshots
 

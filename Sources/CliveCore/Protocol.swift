@@ -33,15 +33,30 @@ public enum FrameKind: UInt8, Sendable, CaseIterable {
 
 public enum AttachmentKind: String, Codable, Equatable, Sendable { case iPhone, macCLI }
 
+public enum SessionKind: String, Codable, Equatable, Sendable { case shell, codex }
+
 public struct SessionDescriptor: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
+    public let kind: SessionKind
     public let label: String?
     public let attachmentCount: Int
     public let resizeOwner: AttachmentKind?
     public let outputOffset: UInt64
-    public init(id: UUID, label: String? = nil, attachmentCount: Int, resizeOwner: AttachmentKind?, outputOffset: UInt64) {
-        self.id = id; self.label = label; self.attachmentCount = attachmentCount
+    public init(id: UUID, kind: SessionKind = .shell, label: String? = nil, attachmentCount: Int, resizeOwner: AttachmentKind?, outputOffset: UInt64) {
+        self.id = id; self.kind = kind; self.label = label; self.attachmentCount = attachmentCount
         self.resizeOwner = resizeOwner; self.outputOffset = outputOffset
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, kind, label, attachmentCount, resizeOwner, outputOffset }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        kind = try values.decodeIfPresent(SessionKind.self, forKey: .kind) ?? .shell
+        label = try values.decodeIfPresent(String.self, forKey: .label)
+        attachmentCount = try values.decode(Int.self, forKey: .attachmentCount)
+        resizeOwner = try values.decodeIfPresent(AttachmentKind.self, forKey: .resizeOwner)
+        outputOffset = try values.decode(UInt64.self, forKey: .outputOffset)
     }
 }
 

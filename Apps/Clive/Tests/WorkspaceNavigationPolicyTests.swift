@@ -3,11 +3,17 @@ import XCTest
 @testable import Clive
 
 final class WorkspaceNavigationPolicyTests: XCTestCase {
-    func testTwoFingerNavigationDoesNothingAtListBoundaries() {
+    func testHorizontalNavigationDoesNothingAtListBoundaries() {
         XCTAssertNil(TerminalTwoFingerNavigationPolicy.adjacentIndex(current: 0, count: 2, forward: false))
         XCTAssertEqual(TerminalTwoFingerNavigationPolicy.adjacentIndex(current: 0, count: 2, forward: true), 1)
         XCTAssertEqual(TerminalTwoFingerNavigationPolicy.adjacentIndex(current: 1, count: 2, forward: false), 0)
         XCTAssertNil(TerminalTwoFingerNavigationPolicy.adjacentIndex(current: 1, count: 2, forward: true))
+    }
+
+    func testTerminalSwipeLeavesLeadingEdgeToTheDrawerGesture() {
+        XCTAssertFalse(TerminalHorizontalNavigationPolicy.allowsTerminalSwipe(startingAt: 0))
+        XCTAssertFalse(TerminalHorizontalNavigationPolicy.allowsTerminalSwipe(startingAt: 24))
+        XCTAssertTrue(TerminalHorizontalNavigationPolicy.allowsTerminalSwipe(startingAt: 25))
     }
 
     func testPagerSelectsNormalPagesBidirectionally() {
