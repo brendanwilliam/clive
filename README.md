@@ -19,14 +19,12 @@ Clive combines a native SwiftUI terminal client with a user-started macOS menu b
 
 ![Clive macOS companion showing sanitized disconnected state](docs/assets/macos-companion.png)
 
-## Requirements
+## Quick install for users
 
-- Apple-silicon Mac running macOS 14 or later
-- iPhone running iOS 17 or later
-- Both devices on the same LAN, or the optional direct cellular mode configured
-- For source builds: Xcode 26.5 or later, Swift 6, and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
-
-## Install and pair
+Use this path if you want to run Clive without building the project yourself.
+You need an Apple-silicon Mac running macOS 14 or later and an iPhone running
+iOS 17 or later. The devices should be on the same LAN, unless you have
+configured optional direct cellular access.
 
 Install the Apple-silicon macOS companion with Homebrew (macOS 14 or later):
 
@@ -80,22 +78,56 @@ The wrapper uses the daemon's controlled environment and never logs Codex
 arguments or terminal content. A resume command starts Codex in a new
 Clive-managed PTY; Clive does not adopt an existing terminal emulator session.
 
-## Build from source
+## Install for local development
+
+Use this path if you are contributing code, building features locally, or
+running Clive from a checkout. The shared packages and CLI build without Apple
+signing credentials. Building or running the iOS and macOS apps requires an
+Apple-silicon Mac running macOS 14 or later, Xcode 26.5 or later, Swift 6, and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen). Physical-device development
+also requires local signing setup.
+
+### 1. Install prerequisites
+
+Use an Apple-silicon Mac running macOS 14 or later with Xcode 26.5 or later and
+Swift 6. Install [Homebrew](https://brew.sh/) if it is not already available,
+then install XcodeGen:
+
+```sh
+brew install xcodegen
+```
+
+Open Xcode once and accept its license and any requested additional components.
+
+### 2. Clone and test the repository
 
 ```sh
 git clone https://github.com/brendanwilliam/clive.git
 cd clive
-brew install xcodegen
+swift package resolve
 swift test
-swift run clive status
+swift build --product clive
+swift run --product clive status
+```
+
+### 3. Generate and open the app projects
+
+The Xcode projects are generated from `project.yml` files. Regenerate them after
+changing a project definition or checking out a branch that changes one:
+
+```sh
+xcodegen generate --spec Apps/Clive/project.yml
+xcodegen generate --spec Apps/CliveMac/project.yml
+open Apps/Clive/Clive.xcodeproj
+open Apps/CliveMac/CliveMac.xcodeproj
 ```
 
 For the normal development loop, run `./scripts/check-fast.sh`. Rebuild only the
 target you need with `./scripts/rebuild-local.sh cli` or
 `./scripts/rebuild-local.sh app`; the app rebuild does not boot a Simulator. Run
 `./scripts/verify-local.sh` only for `develop` to `main` integration, release
-preparation, or platform diagnosis. Pass `--signed` only when checking local signing
-readiness. To open the iOS project, run `cd Apps/Clive && xcodegen generate`, then open `Clive.xcodeproj`.
+preparation, or platform diagnosis. Pass `--signed` only when checking local
+signing readiness.
 Use `./scripts/script-performance.sh` to see each development script's total runs,
 average duration, failed runs, and five most recent durations. Samples stay local in
 `scripts/script-runs.tsv`, which is gitignored. Script logs and run artifacts are
@@ -121,7 +153,7 @@ Read the [architecture](docs/architecture.md), [wire protocol](docs/protocol.md)
 - **No Mac appears:** confirm the companion is running and both devices are on a LAN that permits Bonjour and peer connections.
 - **Startup rejects the network:** Clive requires RFC1918 IPv4, IPv6 ULA/link-local, or loopback by default. `--allow-non-private-network` is for deliberate development testing only.
 - **The CLI cannot reach the companion:** stop any separately launched foreground daemon that owns the control socket, then reopen the app.
-- **Pairing expired:** generate a new QR code; secrets expire after five minutes and cannot be reused.
+- **Pairing expired:** generate a new QR code; pairing codes expire after one minute and cannot be reused.
 - **A certificate changed:** do not bypass the warning. Revoke the device and pair again only after verifying why its identity changed.
 
 Please use the [bug form](https://github.com/brendanwilliam/clive/issues/new?template=bug_report.yml) for reproducible problems and [report vulnerabilities privately](SECURITY.md).
