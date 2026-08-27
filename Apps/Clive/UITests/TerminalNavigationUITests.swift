@@ -154,6 +154,8 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 2))
         XCTAssertTrue(text(containing: "Open Terminals").exists)
         XCTAssertTrue(text(containing: "Active Terminals").exists)
+        XCTAssertTrue(app.buttons["settings-pair-mac-button"].exists)
+        XCTAssertTrue(app.buttons["settings-disconnect-unpair-button"].exists)
         let connection = app.buttons.matching(
             NSPredicate(
                 format: "label CONTAINS %@ AND identifier != %@",

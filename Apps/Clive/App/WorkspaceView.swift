@@ -209,7 +209,10 @@ struct WorkspaceView: View {
     }
 
     private func handleOpenURL(_ url: URL) {
-        if url.scheme?.lowercased() == "https", url.host?.lowercased() == PairingLink.domain {
+        let isPairingLink =
+            (url.scheme?.lowercased() == "https" && url.host?.lowercased() == PairingLink.domain) ||
+            (url.scheme?.lowercased() == PairingLink.appScheme && url.host?.lowercased() == PairingLink.appHost)
+        if isPairingLink {
             switch PairingLink.route(url) {
             case .pairing(let ticket): coordinator.handlePairingLink(ticket)
             case .updateRequired: coordinator.macs.state = .failed("Update Clive to open this pairing link.")
@@ -809,6 +812,7 @@ private struct SettingsView: View {
     let opensShortcutSettings: Bool
     @Environment(\.dismiss) private var dismiss
     @State private var showingScanner = false
+    @State private var showingDisconnectConfirmation = false
     @State private var showingShortcutSettings: Bool
 
     init(coordinator: WorkspaceCoordinator, opensShortcutSettings: Bool) {
@@ -861,6 +865,29 @@ private struct SettingsView: View {
                         }
                     }
                 }
+                Section {
+                    Button("Pair a Mac", systemImage: "qrcode.viewfinder") { showingScanner = true }
+                        .accessibilityIdentifier("settings-pair-mac-button")
+                    if coordinator.selectedMac != nil {
+                        Button("Disconnect and unpair", systemImage: "person.crop.circle.badge.xmark", role: .destructive) {
+                            showingDisconnectConfirmation = true
+                        }
+                        .accessibilityIdentifier("settings-disconnect-unpair-button")
+                    }
+                    if let state = coordinator.selectedSession?.state,
+                       case .revoked = state {
+                        Label("This pairing was revoked by the Mac.", systemImage: "lock.slash")
+                            .foregroundStyle(.orange)
+                    } else if let state = coordinator.selectedSession?.state,
+                              case .certificateChanged = state {
+                        Label("The Mac certificate changed. Verify it locally before pairing again.", systemImage: "exclamationmark.shield")
+                            .foregroundStyle(.orange)
+                    }
+                } header: {
+                    Text("Connection Management")
+                } footer: {
+                    Text("Pairing a new Mac does not remove this connection. Disconnect and unpair to revoke this iPhone from the selected Mac.")
+                }
                 Section("Terminals") {
                     LabeledContent("Open Terminals", value: "\(coordinator.openSessionCount)")
                     LabeledContent("Active Terminals", value: "\(coordinator.activeSessionCount)")
@@ -910,6 +937,31 @@ private struct SettingsView: View {
             }
         }
         .toolbarBackground(.visible, for: .navigationBar)
+        .fullScreenCover(isPresented: $showingScanner) {
+            PairingScannerView(
+                onTicket: { ticket in
+                    showingScanner = false
+                    Task {
+                        await coordinator.macs.pair(ticket)
+                        if coordinator.macs.state == .idle, !coordinator.macs.devices.isEmpty {
+                            coordinator.pairingDidSucceed()
+                        }
+                    }
+                },
+                onError: { error in
+                    showingScanner = false
+                    coordinator.macs.state = .failed(error.localizedDescription)
+                },
+                onCancel: { showingScanner = false }
+            )
+            .ignoresSafeArea()
+        }
+        .alert("Disconnect and unpair?", isPresented: $showingDisconnectConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Disconnect", role: .destructive) { Task { await coordinator.disconnectCurrentMac() } }
+        } message: {
+            Text("The Mac must be online. Clive will revoke this iPhone on the Mac before removing the connection from this phone.")
+        }
     }
 }
 
