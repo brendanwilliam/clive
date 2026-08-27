@@ -8,7 +8,7 @@ private func testTicket(expiresAt: Date = Date(timeIntervalSince1970: floor(Date
 
 @Test func pairingLinkRoundTripsTicketWithoutQueryMaterial() throws {
     let ticket = testTicket(); let url = try PairingLink.makeURL(for: ticket)
-    #expect(url.absoluteString.hasPrefix("https://pair.clive.app/pair#"))
+    #expect(url.absoluteString.hasPrefix("clive://pair#"))
     #expect(URLComponents(url: url, resolvingAgainstBaseURL: false)?.query == nil)
     #expect(PairingLink.route(url) == .pairing(ticket))
 }
