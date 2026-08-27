@@ -13,9 +13,9 @@ permissions:
 
 jobs:
   fast-validation:
-    name: Swift package tests and static checks
+    name: Fast checks
     runs-on: macos-26
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,20 +28,5 @@ jobs:
           xcrun --find swift
           swift --version
 
-      - name: Check whitespace errors
-        run: git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
-
-      - name: Validate UI feature map
-        run: python3 scripts/feature-map.py validate
-
-      - name: Require a fresh UI feature map
-        run: python3 scripts/feature-map.py check-change --base "${{ github.event.pull_request.base.sha }}"
-
-      - name: Test UI feature map tooling
-        run: python3 -m unittest discover -s Tests/FeatureMapTests
-
-      - name: Run Swift package tests
-        run: swift test
-
-  compatibility:
-    uses: ./.github/workflows/compatibility.yml
+      - name: Run fast checks
+        run: ./scripts/check-fast.sh "${{ github.event.pull_request.base.sha }}"

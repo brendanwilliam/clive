@@ -5,8 +5,9 @@ description: Audit Clive agentic workflow UI against Apple Human Interface Guide
 
 # Clive HIG audit
 
-Read [the agentic-workflow HIG reference](../../docs/human-interface-guidelines.md)
-and the applicable Apple HIG pages it links before auditing a user-facing agentic workflow.
+Read [the agentic-workflow HIG reference](../../docs/human-interface-guidelines.md),
+the [Apple UI kit reference](../../docs/apple-ui-kit-reference.md), and the applicable
+Apple HIG and framework pages they link before auditing a user-facing agentic workflow.
 Use this skill alongside the normal implementation skill; it is a review, not a replacement
 for platform development or security review.
 
@@ -22,6 +23,8 @@ Check that the UI:
 - provides meaningful feedback and a safe next action for waiting, failure, and
   cancellation states;
 - uses appropriate native iOS or macOS patterns instead of inventing parallel controls;
+- maps the applicable HIG principle to the closest native SwiftUI, UIKit, or AppKit
+  element, checking framework availability and platform-specific behavior;
 - exposes equivalent workflow names and state through visible copy and accessibility labels;
 - uses the preferred terms in the naming guide, while preserving exact protocol and CLI
   names and platform-native terminology.

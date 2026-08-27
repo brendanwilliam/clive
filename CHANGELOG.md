@@ -4,6 +4,8 @@ All notable changes are documented here. Clive follows [Semantic Versioning](htt
 
 ## Unreleased
 
+- Document Epic 155 V1 connectivity behavior, managed Codex usage, upgrade and
+  rollback guidance, diagnostics boundaries, and release gates.
 - Prepare community, licensing, security, and release documentation for open-source launch.
 - Add GitHub contribution templates, dependency updates, and workflow hardening.
 

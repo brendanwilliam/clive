@@ -140,6 +140,12 @@ struct AuthenticationGracePolicy: Equatable {
     }
 }
 
+enum SceneTransitionPolicy {
+    static func shouldSuspendLiveSessions(isSceneActive: Bool, hasCapturedForeground: Bool, authenticationInFlight: Bool) -> Bool {
+        isSceneActive && !hasCapturedForeground && !authenticationInFlight
+    }
+}
+
 @MainActor @Observable final class WorkspaceSession: Identifiable {
     var descriptor: SessionDescriptor
     nonisolated let id: UUID
@@ -235,11 +241,25 @@ struct AuthenticationGracePolicy: Equatable {
         retryTask?.cancel()
         if reconnecting { routeIndex = 0; attemptReconnect() }
         else if reconnectPolicy.shouldBeginRetryAfterRouteChange(hasOpened: hasOpened, reconnecting: reconnecting) { beginReconnect() }
-        else if hasOpened {
-            let activeDirectWAN = activeRouteKind == .publicIPv6 || activeRouteKind == .manualPublicEndpoint
-            let directWANWasRemoved = activeDirectWAN && !routes.contains { $0.kind == activeRouteKind }
-            if directWANWasRemoved || (activeRouteKind != .lan && routes.first?.kind == .lan) { beginReconnect() }
+        else if Self.shouldReconnectAfterRouteChange(activeRouteKind: activeRouteKind, newRoutes: routes, hasOpened: hasOpened) {
+            // Bonjour can report the LAN route disappearing before the cloud
+            // rendezvous refresh has supplied the cellular route. Keep the
+            // existing connection alive during that gap and refresh now;
+            // entering the waiting state here makes a usable session appear
+            // stuck and can cancel a handoff before its fallback is known.
+            guard !routes.isEmpty else {
+                lastRouteRefresh = now()
+                Task { await refreshRoutes() }
+                return
+            }
+            beginReconnect()
         }
+    }
+
+    nonisolated static func shouldReconnectAfterRouteChange(activeRouteKind: MacRouteKind?, newRoutes: [MacRoute], hasOpened: Bool) -> Bool {
+        guard hasOpened, let activeRouteKind else { return false }
+        let activeRouteWasRemoved = !newRoutes.contains { $0.kind == activeRouteKind }
+        return activeRouteWasRemoved || (activeRouteKind != .lan && newRoutes.first?.kind == .lan)
     }
 
     private func handleState(_ value: SessionClient.State) {
@@ -343,7 +363,7 @@ struct LocalStateResetter {
 
 @MainActor @Observable final class WorkspaceCoordinator {
     enum State: Equatable { case locked, authenticating, active, authenticationCancelled, unsupportedLocalState, failed(String) }
-    enum PresentedScreen: Equatable { case terminalList, settings }
+    enum PresentedScreen: Equatable { case terminalList, settings, shortcutSettings }
     enum Recovery: Equatable { case unavailableMac(String), noPairedMac, disconnected }
 
     let macs = PairedMacsModel()
@@ -365,6 +385,7 @@ struct LocalStateResetter {
     private var identity: IPhoneIdentity?
     private var suppressDestinationUpdates = false
     private var pendingExternalAction: ExternalLaunchURL.Action?
+    private var pendingPairingTicket: PairingTicket?
     private let sessionCatalog = SessionCatalogClient()
     private let authenticate: @Sendable () async throws -> Void
     private let provideIdentity: @MainActor () throws -> IPhoneIdentity
@@ -407,8 +428,8 @@ struct LocalStateResetter {
             state = .unsupportedLocalState
             return
         }
-        macs.start()
         macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
+        macs.start()
         selectedMacID = snapshot.selectedMacID
     }
 
@@ -422,8 +443,8 @@ struct LocalStateResetter {
             sessions = []
             catalogSessions = []
             state = .locked
-            macs.start()
             macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
+            macs.start()
         } catch {
             state = .unsupportedLocalState
         }
@@ -445,7 +466,10 @@ struct LocalStateResetter {
             lastSuccessfulAuthentication = now()
             guard isSceneActive else { state = .locked; return }
             state = .active
-            if let action = pendingExternalAction {
+            if let ticket = pendingPairingTicket {
+                pendingPairingTicket = nil
+                startPairing(ticket)
+            } else if let action = pendingExternalAction {
                 pendingExternalAction = nil
                 performExternalLaunch(action)
             } else {
@@ -463,7 +487,10 @@ struct LocalStateResetter {
         if authenticationGracePolicy.permitsAccess(lastSuccessfulAuthentication: lastSuccessfulAuthentication, now: now()) {
             guard identity != nil else { await authorize(); return }
             state = .active
-            resolveExternalLaunch()
+            if let ticket = pendingPairingTicket {
+                pendingPairingTicket = nil
+                startPairing(ticket)
+            } else { resolveExternalLaunch() }
         } else {
             await authorize()
         }
@@ -502,6 +529,7 @@ struct LocalStateResetter {
     }
 
     func showSettings() { presentedScreen = .settings }
+    func showShortcutSettings() { presentedScreen = .shortcutSettings }
     func showConnections() { showTerminalList() }
 
     func shouldPresentConnectionSetupGuide() -> Bool {
@@ -512,6 +540,23 @@ struct LocalStateResetter {
         connectionSetupPolicy.completePairing()
         recovery = nil
         resolveExternalLaunch()
+    }
+
+    func handlePairingLink(_ ticket: PairingTicket) {
+        guard (try? PairingTicketValidator.validate(ticket, now: now())) != nil else {
+            macs.state = .failed("This pairing link is expired or invalid. Generate a new code.")
+            return
+        }
+        guard state == .active else { pendingPairingTicket = ticket; return }
+        startPairing(ticket)
+    }
+
+    private func startPairing(_ ticket: PairingTicket) {
+        Task { [weak self] in
+            guard let self else { return }
+            await macs.pair(ticket)
+            if macs.state == .idle, !macs.devices.isEmpty { pairingDidSucceed() }
+        }
     }
 
     func dismissPresentedScreen() {
@@ -607,15 +652,51 @@ struct LocalStateResetter {
 
     func deleteAllVisibleSessions() async {
         guard !isDeletingAllVisibleSessions else { return }
-        let visibleIDs = Array(Set(catalogSessions.map(\.id)).union(sessions.compactMap(\.descriptor.serverSessionID)))
+        await deleteVisibleSessions(
+            sessionIDs: Set(catalogSessions.map(\.id)).union(sessions.compactMap(\.descriptor.serverSessionID)),
+            localSessions: sessions
+        )
+    }
+
+    func deleteDisconnectedVisibleSessions() async {
+        let localSessions = sessions.filter { ConnectionPresentation.status(for: $0.state) != .connected }
+        let catalogSessions = unrepresentedCatalogSessions
+        await deleteVisibleSessions(
+            sessionIDs: Set(catalogSessions.map(\.id)).union(localSessions.compactMap(\.descriptor.serverSessionID)),
+            localSessions: localSessions
+        )
+    }
+
+    func disconnectAndDeleteConnectedSessions() async {
+        let localSessions = sessions.filter { ConnectionPresentation.status(for: $0.state) == .connected }
+        localSessions.forEach { $0.disconnect() }
+        await deleteVisibleSessions(
+            sessionIDs: Set(localSessions.compactMap(\.descriptor.serverSessionID)),
+            localSessions: localSessions
+        )
+    }
+
+    private func deleteVisibleSessions(sessionIDs: Set<UUID>, localSessions: [WorkspaceSession]) async {
+        guard !isDeletingAllVisibleSessions else { return }
+        guard !localSessions.isEmpty || !sessionIDs.isEmpty else { return }
+        let visibleIDs = Array(sessionIDs)
         isDeletingAllVisibleSessions = true; deleteAllError = nil
         defer { isDeletingAllVisibleSessions = false }
 #if DEBUG
-        if isUITestFixture { sessions.forEach { $0.terminate() }; sessions.removeAll(); catalogSessions.removeAll(); selectSession(nil); return }
+        if isUITestFixture {
+            localSessions.forEach { $0.terminate() }
+            sessions.removeAll { session in localSessions.contains { $0.id == session.id } }
+            catalogSessions.removeAll { sessionIDs.contains($0.id) }
+            if localSessions.contains(where: { $0.id == selectedSessionID }) { selectSession(sessions.first?.id) }
+            return
+        }
 #endif
         if visibleIDs.isEmpty {
-            sessions.forEach { $0.terminate() }; sessions.removeAll(); selectSession(nil)
-            saveCurrentDescriptors(); persist(); clearDestination()
+            localSessions.forEach { $0.terminate() }
+            sessions.removeAll { session in localSessions.contains { $0.id == session.id } }
+            if localSessions.contains(where: { $0.id == selectedSessionID }) { selectSession(sessions.first?.id) }
+            saveCurrentDescriptors(); persist()
+            if sessions.isEmpty { clearDestination() }
             return
         }
         let result: Result<[UUID], Error> = await withCheckedContinuation { continuation in
@@ -623,9 +704,12 @@ struct LocalStateResetter {
         }
         switch result {
         case .success(let terminated) where Set(terminated) == Set(visibleIDs):
-            sessions.filter { $0.descriptor.serverSessionID == nil }.forEach { $0.terminate() }
-            sessions.removeAll(); catalogSessions.removeAll(); selectSession(nil)
-            saveCurrentDescriptors(); persist(); clearDestination()
+            localSessions.forEach { $0.terminate() }
+            sessions.removeAll { session in localSessions.contains { $0.id == session.id } }
+            catalogSessions.removeAll { sessionIDs.contains($0.id) }
+            if localSessions.contains(where: { $0.id == selectedSessionID }) { selectSession(sessions.first?.id) }
+            saveCurrentDescriptors(); persist()
+            if sessions.isEmpty { clearDestination() }
         case .success(let terminated):
             deleteAllError = "Deleted \(terminated.count) of \(visibleIDs.count) terminals. Refresh and try again."
         case .failure:
@@ -674,7 +758,11 @@ struct LocalStateResetter {
     }
 
     func sceneWillLeaveForeground() {
-        guard isSceneActive, !hasCapturedForeground else { return }
+        guard SceneTransitionPolicy.shouldSuspendLiveSessions(
+            isSceneActive: isSceneActive,
+            hasCapturedForeground: hasCapturedForeground,
+            authenticationInFlight: authenticationInFlight
+        ) else { return }
         isSceneActive = false
         hasCapturedForeground = true
         if !sessions.isEmpty { saveCurrentDescriptors(); persist() }

@@ -126,7 +126,7 @@ final class DaemonRuntime: @unchecked Sendable {
             try? channel.send(ControlResponse(success: true, sessions: terminalSessions.descriptors(deviceID: deviceID)))
         case .sessionCreate:
             guard let deviceID = await selectedDevice(request.deviceID, channel: channel) else { return }
-            await runLocalAttachment(deviceID: deviceID, clientSessionID: UUID(), channel: channel, size: request.initialSize ?? TerminalSize(columns: 80, rows: 24))
+            await runLocalAttachment(deviceID: deviceID, clientSessionID: UUID(), channel: channel, size: request.initialSize ?? TerminalSize(columns: 80, rows: 24), command: request.sessionCommand ?? .shell, workingDirectory: request.workingDirectory)
         case .sessionAttach:
             guard let deviceID = await selectedDevice(request.deviceID, channel: channel), let sessionID = request.sessionID else {
                 try? channel.send(ControlResponse(success: false, message: "The requested session is unavailable.")); return
@@ -149,7 +149,7 @@ final class DaemonRuntime: @unchecked Sendable {
         return devices[0].id
     }
 
-    private func runLocalAttachment(deviceID: String, clientSessionID: UUID?, serverSessionID: UUID? = nil, channel: ControlChannel, size: TerminalSize) async {
+    private func runLocalAttachment(deviceID: String, clientSessionID: UUID?, serverSessionID: UUID? = nil, channel: ControlChannel, size: TerminalSize, command: ManagedSessionCommand = .shell, workingDirectory: String? = nil) async {
         let attachmentID = UUID()
         var resolvedClientSessionID: UUID?
         do {
@@ -167,7 +167,7 @@ final class DaemonRuntime: @unchecked Sendable {
             } else {
                 guard let clientSessionID else { throw ControlSocketError.malformedMessage }
                 resolvedClientSessionID = clientSessionID
-                attachment = try terminalSessions.attach(deviceID: deviceID, clientSessionID: clientSessionID, size: size, workingDirectory: nil, attachmentID: attachmentID, attachmentKind: .macCLI, output: sendOutput, onSuperseded: { try? channel.send(ProtocolFrame(kind: .sessionClose)) }, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) })
+                attachment = try terminalSessions.attach(deviceID: deviceID, clientSessionID: clientSessionID, size: size, workingDirectory: workingDirectory, command: command, attachmentID: attachmentID, attachmentKind: .macCLI, output: sendOutput, onSuperseded: { try? channel.send(ProtocolFrame(kind: .sessionClose)) }, onShellExit: { try? channel.send(ProtocolFrame(kind: .sessionClose)) })
             }
             guard let resolvedClientSessionID else { throw ControlSocketError.malformedMessage }
             try channel.send(ControlResponse(success: true, sessions: [SessionDescriptor(id: attachment.serverSessionID, attachmentCount: 1, resizeOwner: .macCLI, outputOffset: attachment.replayOffset)]))

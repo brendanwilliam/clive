@@ -15,6 +15,7 @@ final class PairedMacsModel {
     private var records: [PairedMac] = []
     private let rendezvous = try? IPhoneRendezvousService()
     private(set) var localRendezvousCapability: RendezvousCapability?
+    private(set) var lastPairingTimestamp: Date?
     private var cloudObserver: NSObjectProtocol?
     var onRoutesChanged: (() -> Void)?
 
@@ -35,6 +36,7 @@ final class PairedMacsModel {
             let capability = try await rendezvous?.prepare()
             localRendezvousCapability = capability
             let record = try await PairingClient().pair(ticket: ticket, identity: identity, rendezvousCapability: capability)
+            lastPairingTimestamp = record.pairingTimestamp
             try store.upsert(record); records = try store.load(); update(routes); state = .idle
             await refreshRendezvous()
         } catch { state = .failed(pairingMessage(error)) }
