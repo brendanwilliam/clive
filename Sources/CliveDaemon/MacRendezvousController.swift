@@ -25,7 +25,7 @@ actor MacRendezvousController {
     private let state: DaemonState
     private let trustStore: TrustStore
     private let settingsURL: URL
-    private let cloud: CloudRendezvousStore?
+    private let cloud: (any CloudRendezvousProviding)?
     private let keys: RendezvousKeyPair
     private var settings: Settings
     private var accountBinding: String?
@@ -40,7 +40,7 @@ actor MacRendezvousController {
     private var routerMapping: RouterMapping?
     private var mappingRenewal: Task<Void, Never>?
 
-    init(state: DaemonState, trustStore: TrustStore, baseURL: URL) throws {
+    init(state: DaemonState, trustStore: TrustStore, baseURL: URL, cloudOverride: (any CloudRendezvousProviding)? = nil) throws {
         self.state = state; self.trustStore = trustStore
         settingsURL = baseURL.appending(path: "cellular.json")
         if FileManager.default.fileExists(atPath: settingsURL.path) {
@@ -52,7 +52,7 @@ actor MacRendezvousController {
         let container = ProcessInfo.processInfo.environment["CLIVE_ICLOUD_CONTAINER"]
             ?? bundledContainer
             ?? "iCloud.com.clive"
-        cloud = Self.hasCloudKitEntitlement ? CloudRendezvousStore(containerIdentifier: container) : nil
+        cloud = cloudOverride ?? (Self.hasCloudKitEntitlement ? CloudRendezvousStore(containerIdentifier: container) : nil)
         keys = try RendezvousKeyStore(service: "com.clive.mac.rendezvous").loadOrCreate()
         currentStatus = CellularAccessStatus(enabled: settings.enabled, state: settings.enabled ? .preparing : .disabled)
     }
@@ -69,7 +69,10 @@ actor MacRendezvousController {
         }
         do {
             accountBinding = try await cloud.prepare()
-            if settings.enabled { await publishAll() }
+            if settings.enabled {
+                beginStartupVerification()
+                await publishAll()
+            }
         } catch {
             currentStatus = CellularAccessStatus(enabled: settings.enabled, state: settings.enabled ? .blocked : .disabled, diagnostic: error.localizedDescription)
         }
@@ -99,9 +102,14 @@ actor MacRendezvousController {
 
     func beginVerification() async throws {
         guard settings.enabled else { throw CellularSetupError.notEnabled }
-        verificationChallenge = UUID(); verifiedAt = nil
-        currentStatus = makeStatus(state: .verifying, diagnostic: "Open Clive on the paired iPhone using cellular data to verify this connection.")
+        beginStartupVerification()
         await publishAll()
+    }
+
+    private func beginStartupVerification() {
+        verificationChallenge = UUID()
+        verifiedAt = nil
+        currentStatus = makeStatus(state: .verifying, diagnostic: "Open Clive on the paired iPhone using cellular data to verify this connection.")
     }
 
     func validateVerification(deviceID: String, challenge: UUID, token: Data?) -> Bool {
@@ -217,8 +225,8 @@ actor MacRendezvousController {
             } catch { publicationFailure = error.localizedDescription }
         }
         if published > 0 {
-            let state: CellularAccessState = verifiedAt == nil ? .configurationRequired : .available
-            currentStatus = makeStatus(state: state, diagnostic: verifiedAt == nil ? "Cellular route configured. Verify it from the paired iPhone." : nil, publishedUntil: expiry)
+            let verifying = verificationChallenge != nil && verifiedAt == nil
+            currentStatus = makeStatus(state: verifying ? .verifying : .available, diagnostic: verifying ? "Open Clive on the paired iPhone using cellular data to verify this connection." : nil, publishedUntil: expiry)
         } else {
             let diagnostic = eligible > 0
                 ? "Clive could not publish the cellular route to iCloud. \(publicationFailure ?? "Try again shortly.")"

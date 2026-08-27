@@ -1,36 +1,47 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "display-p3:0.08718,0.00000,0.10897,1.00000",
-      "display-p3:0.24237,0.00000,0.30140,1.00000"
-    ]
+      "display-p3:0.85045,0.39281,0.59595,1.00000",
+      "display-p3:0.80757,0.08221,0.46990,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
   },
   "groups" : [
     {
       "layers" : [
         {
           "fill" : {
-            "solid" : "extended-srgb:0.79608,0.18824,0.87843,1.00000"
+            "solid" : "extended-gray:1.00000,1.00000"
           },
-          "image-name" : "clive-wink.svg",
-          "name" : "clive-wink",
+          "glass" : true,
+          "image-name" : "clive-wink-byhand.svg",
+          "name" : "clive-wink-byhand",
           "position" : {
-            "scale" : 1.57,
+            "scale" : 0.88,
             "translation-in-points" : [
-              251,
-              3
+              0,
+              0
             ]
           }
         }
       ],
-      "name" : "Group",
+      "name" : "Current",
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5
       },
       "translucency" : {
-        "enabled" : true,
-        "value" : 0.3
+        "enabled" : false,
+        "value" : 0.5
       }
     }
   ],

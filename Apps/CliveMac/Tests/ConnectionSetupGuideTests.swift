@@ -2,6 +2,14 @@ import XCTest
 @testable import Clive
 
 final class ConnectionSetupGuideTests: XCTestCase {
+    func testRuntimeDoesNotStartForXCTestEnvironment() {
+        XCTAssertFalse(CompanionAppRuntime.shouldStartRuntime(environment: ["XCTestConfigurationFilePath": "/tmp/test.xctestconfiguration"]))
+    }
+
+    func testRuntimeStartsOutsideXCTestEnvironment() {
+        XCTAssertTrue(CompanionAppRuntime.shouldStartRuntime(environment: [:]))
+    }
+
     func testAutoPresentationOccursOnceWithoutAPairedIPhone() {
         var policy = ConnectionSetupAutoPresentationPolicy()
 
