@@ -241,11 +241,25 @@ enum SceneTransitionPolicy {
         retryTask?.cancel()
         if reconnecting { routeIndex = 0; attemptReconnect() }
         else if reconnectPolicy.shouldBeginRetryAfterRouteChange(hasOpened: hasOpened, reconnecting: reconnecting) { beginReconnect() }
-        else if hasOpened {
-            let activeDirectWAN = activeRouteKind == .publicIPv6 || activeRouteKind == .manualPublicEndpoint
-            let directWANWasRemoved = activeDirectWAN && !routes.contains { $0.kind == activeRouteKind }
-            if directWANWasRemoved || (activeRouteKind != .lan && routes.first?.kind == .lan) { beginReconnect() }
+        else if Self.shouldReconnectAfterRouteChange(activeRouteKind: activeRouteKind, newRoutes: routes, hasOpened: hasOpened) {
+            // Bonjour can report the LAN route disappearing before the cloud
+            // rendezvous refresh has supplied the cellular route. Keep the
+            // existing connection alive during that gap and refresh now;
+            // entering the waiting state here makes a usable session appear
+            // stuck and can cancel a handoff before its fallback is known.
+            guard !routes.isEmpty else {
+                lastRouteRefresh = now()
+                Task { await refreshRoutes() }
+                return
+            }
+            beginReconnect()
         }
+    }
+
+    nonisolated static func shouldReconnectAfterRouteChange(activeRouteKind: MacRouteKind?, newRoutes: [MacRoute], hasOpened: Bool) -> Bool {
+        guard hasOpened, let activeRouteKind else { return false }
+        let activeRouteWasRemoved = !newRoutes.contains { $0.kind == activeRouteKind }
+        return activeRouteWasRemoved || (activeRouteKind != .lan && newRoutes.first?.kind == .lan)
     }
 
     private func handleState(_ value: SessionClient.State) {
@@ -414,8 +428,8 @@ struct LocalStateResetter {
             state = .unsupportedLocalState
             return
         }
-        macs.start()
         macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
+        macs.start()
         selectedMacID = snapshot.selectedMacID
     }
 
@@ -429,8 +443,8 @@ struct LocalStateResetter {
             sessions = []
             catalogSessions = []
             state = .locked
-            macs.start()
             macs.onRoutesChanged = { [weak self] in self?.updateLiveSessionRoutes() }
+            macs.start()
         } catch {
             state = .unsupportedLocalState
         }

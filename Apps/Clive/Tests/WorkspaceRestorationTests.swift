@@ -134,6 +134,30 @@ final class WorkspaceRestorationTests: XCTestCase {
         )
     }
 
+    func testRemovingActiveLANRouteStartsCellularReconnect() {
+        XCTAssertTrue(WorkspaceSession.shouldReconnectAfterRouteChange(
+            activeRouteKind: .lan,
+            newRoutes: [MacRoute(host: "198.51.100.10", port: 64236, kind: .manualPublicEndpoint)],
+            hasOpened: true
+        ))
+    }
+
+    func testAddingPreferredLANRouteStartsReconnectFromWAN() {
+        XCTAssertTrue(WorkspaceSession.shouldReconnectAfterRouteChange(
+            activeRouteKind: .manualPublicEndpoint,
+            newRoutes: [MacRoute(host: "mac.local", port: 64236, kind: .lan)],
+            hasOpened: true
+        ))
+    }
+
+    func testRouteChangesDoNotReconnectBeforeSessionOpens() {
+        XCTAssertFalse(WorkspaceSession.shouldReconnectAfterRouteChange(
+            activeRouteKind: .lan,
+            newRoutes: [],
+            hasOpened: false
+        ))
+    }
+
     func testDestinationStoreRejectsUnsupportedVersion() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
