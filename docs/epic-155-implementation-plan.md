@@ -290,8 +290,9 @@ physical-device execution remains pending.
 - Automated tests cover framing, state transitions, retries, races, fencing,
   replay, expiry, revocation, disablement, and relay absence.
 - Physical-device tests cover Camera links, TestFlight fallback, biometric
-  cancellation, Wi-Fi/cellular transitions, private VPN discovery, backgrounding,
-  and Mac/iPhone handoff in both directions.
+  cancellation, Wi-Fi/cellular transitions, backgrounding, and Mac/iPhone
+  handoff in both directions. Private VPN setup and configured-VPN validation are
+  deferred beyond V1.
 - Failures are classified as blocking, known limitation, environmental failure,
   or deferred. Supported V1 failures block release.
 
@@ -339,7 +340,7 @@ Update this table as work lands. Link the implementation PR or commit in the
 | #166 Codex launcher | Design recorded | — |
 | #167 Existing-run handoff | Design recorded | — |
 | #168 Durable runs | Deferred | — |
-| #164 Verification | Automated matrix recorded; Wi-Fi→cellular validated, remaining physical validation pending | [`connectivity-verification.md`](connectivity-verification.md) |
+| #164 Verification | Automated matrix recorded; Wi-Fi→cellular validated, remaining physical validation pending; VPN deferred | [`connectivity-verification.md`](connectivity-verification.md) |
 | #165 Docs/release | Documentation recorded; partial physical evidence collected | [`release-readiness.md`](release-readiness.md) |
 
 ## V1 exclusions
