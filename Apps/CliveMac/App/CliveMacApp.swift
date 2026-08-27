@@ -8,6 +8,12 @@ enum ConnectionSetupGuideConfiguration {
     static let testFlightURL = URL(string: "https://testflight.apple.com/join/SUcN1FkH")!
 }
 
+enum CompanionAppRuntime {
+    static func shouldStartRuntime(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment["XCTestConfigurationFilePath"] == nil
+    }
+}
+
 struct ConnectionSetupAutoPresentationPolicy: Equatable {
     private var didPresent = false
 
@@ -122,7 +128,9 @@ struct CliveMacApp: App {
     init() {
         let model = CompanionModel()
         _model = StateObject(wrappedValue: model)
-        Task { @MainActor in model.start() }
+        if CompanionAppRuntime.shouldStartRuntime() {
+            Task { @MainActor in model.start() }
+        }
     }
 
     var body: some Scene {
