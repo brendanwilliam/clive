@@ -16,7 +16,14 @@ public enum CloudRendezvousError: LocalizedError, Sendable {
     }
 }
 
-public final class CloudRendezvousStore: @unchecked Sendable {
+public protocol CloudRendezvousProviding: Sendable {
+    func prepare() async throws -> String
+    func save(_ envelope: RendezvousEnvelope, recordName: String, recordType: String) async throws
+    func fetch(recordName: String) async throws -> RendezvousEnvelope?
+    func delete(recordName: String) async throws
+}
+
+public final class CloudRendezvousStore: CloudRendezvousProviding, @unchecked Sendable {
     public static let zoneName = "CliveRendezvousV1"
     public static let subscriptionID = "clive-rendezvous-v1"
     private let containerIdentifier: String
