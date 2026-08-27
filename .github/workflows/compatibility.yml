@@ -13,6 +13,7 @@ jobs:
     timeout-minutes: 30
     env:
       CLIVE_IOS_RESULT_BUNDLE: /private/tmp/clive-local-verify/ios-ci-test-results.xcresult
+      CLIVE_MAC_RESULT_BUNDLE: /private/tmp/clive-local-verify/macos-ci-test-results.xcresult
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,6 +46,15 @@ jobs:
 
       - name: Verify both platforms
         run: ./scripts/verify-local.sh
+
+      - name: Upload failed macOS test result bundle
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: failed-macos-test-results
+          path: /private/tmp/clive-local-verify/macos-ci-test-results.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload failed iOS test result bundle
         if: failure()

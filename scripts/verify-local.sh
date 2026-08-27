@@ -120,6 +120,19 @@ for failure in failures:
     fi
 }
 
+print_mac_test_diagnostics() {
+    local result_bundle=$1
+
+    echo "macOS result bundle: ${result_bundle}" >&2
+    if [[ ! -d ${result_bundle} ]]; then
+        echo "No macOS result bundle was produced." >&2
+        return
+    fi
+    echo "macOS test result summary:" >&2
+    xcrun xcresulttool get test-results summary --path "${result_bundle}" --compact >&2 ||
+        echo "Unable to summarize the macOS result bundle; inspect the artifact for details." >&2
+}
+
 raw_ios_destinations=$(xcodebuild \
     -project "${ROOT_DIR}/Apps/Clive/Clive.xcodeproj" \
     -scheme Clive \
@@ -167,6 +180,7 @@ xcrun simctl bootstatus "${IOS_DESTINATION_ID}" -b
 
 echo "Running shared tests alongside sequential macOS and iOS tests…"
 IOS_RESULT_BUNDLE=${CLIVE_IOS_RESULT_BUNDLE:-"${VERIFY_DIR}/ios-test-$(date +%Y%m%d-%H%M%S).xcresult"}
+MAC_RESULT_BUNDLE=${CLIVE_MAC_RESULT_BUNDLE:-"${VERIFY_DIR}/mac-test-$(date +%Y%m%d-%H%M%S).xcresult"}
 swift test --package-path "${ROOT_DIR}" >"${LOG_DIR}/swift-test.log" 2>&1 &
 swift_pid=$!
 if xcodebuild -quiet \
@@ -175,6 +189,7 @@ if xcodebuild -quiet \
     -configuration Debug \
     -destination platform=macOS \
     -derivedDataPath "${VERIFY_DIR}/mac-derived-data" \
+    -resultBundlePath "${MAC_RESULT_BUNDLE}" \
     "${signing_arguments[@]}" \
     SWIFT_ENABLE_EXPLICIT_MODULES=NO \
     CLANG_ENABLE_EXPLICIT_MODULES=NO \
@@ -213,6 +228,8 @@ for check in "swift:${swift_pid}:swift-test.log" "macOS:${mac_status}:mac-test.l
         tail -80 "${LOG_DIR}/${parts[3]}" >&2
         if [[ ${parts[1]} == iOS ]]; then
             print_ios_test_diagnostics "${IOS_RESULT_BUNDLE}"
+        elif [[ ${parts[1]} == macOS ]]; then
+            print_mac_test_diagnostics "${MAC_RESULT_BUNDLE}"
         fi
         failed=1
     fi
