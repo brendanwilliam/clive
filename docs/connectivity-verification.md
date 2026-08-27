@@ -39,7 +39,7 @@ signed macOS companion, a physical iPhone, and representative networks:
 | Camera-to-app QR pairing and explicit Mac approval | Sanitized pairing result and cancellation/retry result | Pending physical-device validation |
 | TestFlight fallback and pending-ticket resume | Missing-app fallback does not receive the URL fragment; resumed scan succeeds | Pending TestFlight validation |
 | Wi-Fi to direct cellular and cellular to Wi-Fi handoff | Stable session ID, preserved PTY, and no duplicated input | Wi-Fi→cellular validated on a physical iPhone with PR #189; cellular→Wi-Fi remains pending |
-| Private VPN discovery and fallback | Route selection and documented VPN limitations | Pending configured-VPN validation |
+| Private VPN discovery and fallback | Route selection and documented VPN limitations | Deferred; Clive does not provide VPN setup, and VPN-specific validation is outside V1 |
 | iPhone background/foreground reattachment | Replay offset and truncation behavior after foregrounding | Pending physical-device validation |
 | Mac-to-iPhone and iPhone-to-Mac takeover | Explicit user confirmation and single input owner | Pending physical-device validation |
 
@@ -54,7 +54,8 @@ was exercised on a physical iPhone over Wi-Fi and 5G. An existing terminal
 resumed after Wi-Fi was disabled, and newly created cellular terminals attached
 successfully. The test did not record terminal content or credentials. The
 reverse cellular-to-Wi-Fi transition and broader carrier/network matrix remain
-release-blocking validation work.
+release-blocking validation work. Private VPN setup and configured-VPN validation
+are explicitly deferred for a later release.
 
 ## V1 boundary
 

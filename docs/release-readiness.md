@@ -32,7 +32,7 @@ Before a supported V1 release, collect sanitized results for:
   fallback with pending-ticket resume;
 - Wi-Fi to cellular and cellular to Wi-Fi handoff with the same session ID,
   preserved PTY, and no duplicated input;
-- private VPN discovery and manual endpoint fallback;
+- manual endpoint fallback; private VPN setup and validation are deferred;
 - iPhone background/foreground reattachment, replay offset, and truncation;
 - Mac-to-iPhone and iPhone-to-Mac takeover with explicit confirmation and one
   input owner.
@@ -43,7 +43,8 @@ private keys, or full environment values in evidence or diagnostics.
 Current evidence: on 2026-08-26, PR [#189](https://github.com/brendanwilliam/clive/pull/189)
 was validated on a physical iPhone for Wi-Fi→cellular handoff and new cellular
 session attachment. The reverse cellular→Wi-Fi transition and the remaining
-physical-device, VPN, and takeover scenarios are still pending.
+physical-device and takeover scenarios are still pending. Private VPN setup and
+configured-VPN validation are deferred beyond V1.
 
 ## Upgrade, rollback, and recovery
 
