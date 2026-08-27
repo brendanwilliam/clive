@@ -299,8 +299,9 @@ Verification record: [`connectivity-verification.md`](connectivity-verification.
 
 ### #165 Documentation and release readiness
 
-Status: `[-]` V1 documentation and release checklist recorded; physical release
-evidence remains pending.
+Status: `[-]` V1 documentation and release checklist recorded; Wi-Fi→cellular
+physical evidence is recorded, while reverse handoff and broader release
+evidence remain pending.
 
 Required documentation updates:
 
@@ -331,15 +332,15 @@ Update this table as work lands. Link the implementation PR or commit in the
 | #157 QR links | Design recorded | — |
 | #158 CLI pairing | Design recorded | — |
 | #159 QR security | Design recorded | — |
-| #160 Route abstraction | Design recorded | — |
-| #161 Reattachment | Design recorded | — |
+| #160 Route abstraction | Implemented | [PR #179](https://github.com/brendanwilliam/clive/pull/179), [PR #186](https://github.com/brendanwilliam/clive/pull/186) |
+| #161 Reattachment | Implemented; cellular handoff fix included | [PR #180](https://github.com/brendanwilliam/clive/pull/180), [PR #189](https://github.com/brendanwilliam/clive/pull/189) |
 | #162 Relay design | ADR and threat model | [`relay-architecture-and-threat-model.md`](relay-architecture-and-threat-model.md) |
 | #163 Relay implementation | Deferred | — |
 | #166 Codex launcher | Design recorded | — |
 | #167 Existing-run handoff | Design recorded | — |
 | #168 Durable runs | Deferred | — |
-| #164 Verification | Automated matrix recorded; physical validation pending | [`connectivity-verification.md`](connectivity-verification.md) |
-| #165 Docs/release | Documentation and release checklist recorded; evidence pending | [`release-readiness.md`](release-readiness.md) |
+| #164 Verification | Automated matrix recorded; Wi-Fi→cellular validated, remaining physical validation pending | [`connectivity-verification.md`](connectivity-verification.md) |
+| #165 Docs/release | Documentation recorded; partial physical evidence collected | [`release-readiness.md`](release-readiness.md) |
 
 ## V1 exclusions
 

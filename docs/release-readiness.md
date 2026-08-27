@@ -40,6 +40,11 @@ Before a supported V1 release, collect sanitized results for:
 Do not include terminal output, prompts, commands, credentials, QR tickets,
 private keys, or full environment values in evidence or diagnostics.
 
+Current evidence: on 2026-08-26, PR [#189](https://github.com/brendanwilliam/clive/pull/189)
+was validated on a physical iPhone for Wi-Fi→cellular handoff and new cellular
+session attachment. The reverse cellular→Wi-Fi transition and the remaining
+physical-device, VPN, and takeover scenarios are still pending.
+
 ## Upgrade, rollback, and recovery
 
 The macOS cask and package update the companion and CLI together. A normal
