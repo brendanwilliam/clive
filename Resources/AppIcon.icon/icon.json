@@ -1,17 +1,88 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "display-p3:0.08718,0.00000,0.10897,1.00000",
-      "display-p3:0.24237,0.00000,0.30140,1.00000"
-    ]
+      "display-p3:0.91113,0.50699,0.68638,1.00000",
+      "display-p3:0.84521,0.18127,0.53613,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
   },
   "groups" : [
     {
       "layers" : [
         {
+          "blend-mode" : "normal",
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.90000,0.90000,0.90000,1.00000",
+              "extended-gray:1.00000,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.5,
+                "y" : 1
+              },
+              "stop" : {
+                "x" : 0.5,
+                "y" : 0.2879944359413914
+              }
+            }
+          },
+          "image-name" : "clive-wink-byhand.svg",
+          "name" : "clive-wink-byhand",
+          "position" : {
+            "scale" : 0.87,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "name" : "Current",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    },
+    {
+      "hidden" : true,
+      "layers" : [
+        {
+          "blend-mode" : "screen",
+          "fill" : {
+            "solid" : "extended-gray:1.00000,1.00000"
+          },
+          "glass" : true,
+          "hidden" : true,
+          "image-name" : "56577B3B-3468-4CF1-9D1F-09B7AEB0D449_1_201_a.jpeg",
+          "name" : "56577B3B-3468-4CF1-9D1F-09B7AEB0D449_1_201_a",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 0.88,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
           "fill" : {
             "solid" : "extended-srgb:0.79608,0.18824,0.87843,1.00000"
           },
+          "hidden" : true,
           "image-name" : "clive-wink.svg",
           "name" : "clive-wink",
           "position" : {
@@ -23,7 +94,7 @@
           }
         }
       ],
-      "name" : "Group",
+      "name" : "Legacy Elements",
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5
