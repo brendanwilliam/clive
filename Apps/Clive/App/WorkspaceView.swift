@@ -85,9 +85,9 @@ struct WorkspaceView: View {
             if state == .active { presentConnectionSetupGuideIfNeeded() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { coordinator.sceneWillLeaveForeground() }
-            else if coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
-            else if ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
+            if phase == .background { coordinator.sceneDidEnterBackground() }
+            else if phase == .active, coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
+            else if phase == .active, ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
         }
     }
 
