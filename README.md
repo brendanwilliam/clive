@@ -1,6 +1,7 @@
 # Clive
 
-[![CI](https://github.com/brendanwilliam/clive/actions/workflows/verify.yml/badge.svg)](https://github.com/brendanwilliam/clive/actions/workflows/verify.yml)
+[![Continuous integration](https://github.com/brendanwilliam/clive/actions/workflows/verify-develop.yml/badge.svg?branch=develop)](https://github.com/brendanwilliam/clive/actions/workflows/verify-develop.yml)
+[![Main compatibility](https://github.com/brendanwilliam/clive/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/brendanwilliam/clive/actions/workflows/verify.yml)
 [![Release](https://img.shields.io/github/v/release/brendanwilliam/clive?include_prereleases)](https://github.com/brendanwilliam/clive/releases)
 ![Platforms](https://img.shields.io/badge/platforms-iOS%2017%2B%20%7C%20macOS%2014%2B-0a84ff)
 ![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
@@ -13,11 +14,17 @@ Clive combines a native SwiftUI terminal client with a user-started macOS menu b
 > [!WARNING]
 > Clive is prerelease software. It has not completed every physical-device release gate; do not rely on it for unattended or production access.
 
-<p align="center">
-  <img src="docs/assets/ios-terminal.png" alt="Clive terminal on iPhone with its shortcut row and keyboard" width="330">
-</p>
+## Contents
 
-![Clive macOS companion showing sanitized disconnected state](docs/assets/macos-companion.png)
+- [Quick install for users](#quick-install-for-users)
+- [Install for local development](#install-for-local-development)
+  - [Install prerequisites](#1-install-prerequisites)
+  - [Clone and test the repository](#2-clone-and-test-the-repository)
+  - [Generate and open the app projects](#3-generate-and-open-the-app-projects)
+- [Architecture and security](#architecture-and-security)
+- [Troubleshooting](#troubleshooting)
+- [Project](#project)
+- [License and trademarks](#license-and-trademarks)
 
 ## Quick install for users
 
