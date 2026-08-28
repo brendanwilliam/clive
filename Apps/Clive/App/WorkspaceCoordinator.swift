@@ -188,7 +188,12 @@ enum SceneTransitionPolicy {
         self.refreshRoutes = refreshRoutes
         self.now = now; self.schedule = schedule
         self.localRendezvousCapability = localRendezvousCapability; self.onUpgrade = onUpgrade
-        client.onState = { [weak self] value in DispatchQueue.main.async { self?.handleState(value) } }
+        client.onState = { [weak self] value, generation in
+            DispatchQueue.main.async {
+                guard let self, Self.shouldApplyStateUpdate(generation: generation, currentGeneration: self.client.currentGeneration) else { return }
+                self.handleState(value)
+            }
+        }
         client.onAttachmentState = { [weak self] value in DispatchQueue.main.async { self?.attachmentState = value } }
         client.onActivityOutput = { [weak self] bytes in DispatchQueue.main.async {
             guard let self else { return }; self.accumulator.consume(bytes); self.preview = self.accumulator.preview; self.lastActivityAt = .now
@@ -284,6 +289,10 @@ enum SceneTransitionPolicy {
             retryTask?.cancel(); reconnecting = false
         default: break
         }
+    }
+
+    nonisolated static func shouldApplyStateUpdate(generation: Int, currentGeneration: Int) -> Bool {
+        generation == currentGeneration
     }
 
     func showReconnectNotice() {

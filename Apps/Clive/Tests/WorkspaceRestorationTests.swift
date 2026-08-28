@@ -274,6 +274,11 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertEqual(SessionClient.connectionAttemptTimeout, 60)
     }
 
+    func testStateUpdateFromSupersededConnectionAttemptIsIgnored() {
+        XCTAssertFalse(WorkspaceSession.shouldApplyStateUpdate(generation: 1, currentGeneration: 2))
+        XCTAssertTrue(WorkspaceSession.shouldApplyStateUpdate(generation: 2, currentGeneration: 2))
+    }
+
     func testReconnectBackoffIsImmediateThenBoundedAtFifteenSeconds() {
         let policy = SessionReconnectPolicy.standard
 
