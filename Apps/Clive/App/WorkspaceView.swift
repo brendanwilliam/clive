@@ -22,6 +22,46 @@ private extension View {
     }
 }
 
+private struct ClivePreviewBoundaryModifier: ViewModifier {
+    let label: String
+    let color: Color
+    let isVisible: Bool
+
+    func body(content: Content) -> some View {
+        #if DEBUG
+        if isVisible {
+            content
+                .overlay {
+                    RoundedRectangle(cornerRadius: 1)
+                        .stroke(color.opacity(0.9), lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
+                .overlay(alignment: .topLeading) {
+                    Text(label)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(.black.opacity(0.78), in: .rect(cornerRadius: 4))
+                        .padding(4)
+                        .allowsHitTesting(false)
+                }
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+private extension View {
+    /// Draws a Canvas-only boundary without changing the view's layout.
+    func clivePreviewBoundary(_ label: String, color: Color = .cyan, isVisible: Bool = true) -> some View {
+        modifier(ClivePreviewBoundaryModifier(label: label, color: color, isVisible: isVisible))
+    }
+}
+
 struct WorkspaceView: View {
     @Bindable var coordinator: WorkspaceCoordinator
     @Environment(\.scenePhase) private var scenePhase
@@ -47,12 +87,16 @@ struct WorkspaceView: View {
     init(
         coordinator: WorkspaceCoordinator,
         previewSidebarVisible: Bool = false,
-        previewRegularSidebar: Bool = false
+        previewRegularSidebar: Bool = false,
+        previewDebugBoundaries: Bool = false
     ) {
         self.coordinator = coordinator
+        self.previewDebugBoundaries = previewDebugBoundaries
         _sidebarOverlayVisible = State(initialValue: previewSidebarVisible)
         _sidebarVisibility = State(initialValue: previewRegularSidebar ? .all : .detailOnly)
     }
+
+    private let previewDebugBoundaries: Bool
 
     var body: some View {
         presentedWorkspace
@@ -213,7 +257,9 @@ struct WorkspaceView: View {
                 .padding(.horizontal, 16)
                 .frame(height: 60)
                 .zIndex(3)
+                .clivePreviewBoundary("Top button row", isVisible: previewDebugBoundaries)
             navigation
+                .clivePreviewBoundary("Terminal space", isVisible: previewDebugBoundaries)
         }
         .padding(.top, topSafeAreaInset)
     }
@@ -436,7 +482,8 @@ struct WorkspaceView: View {
                             openDrawer: { coordinator.showTerminalList() },
                             selectAdjacentTerminal: selectAdjacentTerminal,
                             runShortcut: coordinator.runShortcut,
-                            manageShortcuts: { coordinator.showShortcutSettings() }
+                            manageShortcuts: { coordinator.showShortcutSettings() },
+                            previewBoundaries: previewDebugBoundaries
                         )
                         .id(session.id)
                         sessionOverlay(session)
@@ -1232,25 +1279,30 @@ private struct PairingScannerPreview: View {
 }
 
 #Preview("Workspace — terminal") {
-    WorkspaceView(coordinator: ClivePreviewFixtures.workspace())
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(), previewDebugBoundaries: true)
+        .clivePreviewBoundary("Workspace")
 }
 
 #Preview("Workspace — compact drawer") {
-    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(), previewSidebarVisible: true)
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(), previewSidebarVisible: true, previewDebugBoundaries: true)
         .environment(\.horizontalSizeClass, .compact)
+        .clivePreviewBoundary("Workspace / compact drawer")
 }
 
 #Preview("Workspace — regular sidebar", traits: .fixedLayout(width: 1_024, height: 768)) {
-    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(), previewRegularSidebar: true)
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(), previewRegularSidebar: true, previewDebugBoundaries: true)
         .environment(\.horizontalSizeClass, .regular)
+        .clivePreviewBoundary("Workspace / regular sidebar")
 }
 
 #Preview("Workspace — replay warning") {
-    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(state: .active(UUID(), .resumed, true)))
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(state: .active(UUID(), .resumed, true)), previewDebugBoundaries: true)
+        .clivePreviewBoundary("Workspace / replay warning")
 }
 
 #Preview("Workspace — disconnected") {
-    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(state: .disconnected))
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(state: .disconnected), previewDebugBoundaries: true)
+        .clivePreviewBoundary("Workspace / disconnected")
 }
 
 #Preview("Terminal surface") {
@@ -1260,13 +1312,16 @@ private struct PairingScannerPreview: View {
         isSelected: true,
         shortcuts: [CLIShortcut(name: "Status", command: "git status --short")],
         openDrawer: {}, selectAdjacentTerminal: { _ in }, runShortcut: { _ in true }, manageShortcuts: {},
-        previewOutput: ClivePreviewFixtures.terminalOutput
+        previewOutput: ClivePreviewFixtures.terminalOutput,
+        previewBoundaries: true
     )
     .background(.black)
+    .clivePreviewBoundary("Terminal surface")
 }
 
 #Preview("Settings") {
     SettingsView(coordinator: ClivePreviewFixtures.workspace(), opensShortcutSettings: false)
+        .clivePreviewBoundary("Settings")
 }
 
 #Preview("Connection details — replay warning") {
@@ -1276,6 +1331,7 @@ private struct PairingScannerPreview: View {
             connection: PairedMac(id: "preview-mac", displayName: "Test Mac", serviceID: "preview", certificateFingerprint: String(repeating: "ab", count: 32), createdAt: .now)
         )
     }
+    .clivePreviewBoundary("Connection details / replay warning")
 }
 
 #Preview("Shortcuts — populated") {
@@ -1285,24 +1341,29 @@ private struct PairingScannerPreview: View {
             CLIShortcut(name: "Tests", command: "swift test")
         ]))
     }
+    .clivePreviewBoundary("Shortcuts / populated")
 }
 
 #Preview("Shortcuts — empty") {
     NavigationStack { ShortcutManagementView(preferences: ClivePreviewFixtures.preferences()) }
+        .clivePreviewBoundary("Shortcuts / empty")
 }
 
 #Preview("Shortcut editor — valid") {
     let shortcut = CLIShortcut(name: "Status", command: "git status")
     let preferences = ClivePreviewFixtures.preferences([shortcut])
     return NavigationStack { ShortcutEditorView(preferences: preferences, shortcutID: shortcut.id) }
+        .clivePreviewBoundary("Shortcut editor / valid")
 }
 
 #Preview("Shortcut editor — blank") {
     NavigationStack { ShortcutEditorView(preferences: ClivePreviewFixtures.preferences(), draft: ShortcutDraft()) }
+        .clivePreviewBoundary("Shortcut editor / blank")
 }
 
 #Preview("Shortcut editor — required fields") {
     NavigationStack { ShortcutEditorView(preferences: ClivePreviewFixtures.preferences(), draft: ShortcutDraft(), showsErrors: true) }
+        .clivePreviewBoundary("Shortcut editor / required fields")
 }
 
 #Preview("Shortcut editor — duplicates") {
@@ -1310,19 +1371,23 @@ private struct PairingScannerPreview: View {
     return NavigationStack {
         ShortcutEditorView(preferences: preferences, draft: ShortcutDraft(name: "status", command: "git status"), showsErrors: true)
     }
+    .clivePreviewBoundary("Shortcut editor / duplicates")
 }
 
 #Preview("Setup guide — initial") {
     NavigationStack { SetupGuideView(pairedMacs: PairedMacsModel.previewFixture(), pairMac: {}, dismiss: {}) }
+        .clivePreviewBoundary("Setup guide / initial")
 }
 
 #Preview("Setup guide — paired") {
     NavigationStack { SetupGuideView(pairedMacs: PairedMacsModel.previewFixture(success: true), pairMac: {}, dismiss: {}) }
+        .clivePreviewBoundary("Setup guide / paired")
 }
 
 #Preview("Setup guide — pairing failed") {
     NavigationStack { SetupGuideView(pairedMacs: PairedMacsModel.previewFixture(failure: "The pairing code expired."), pairMac: {}, dismiss: {}) }
+        .clivePreviewBoundary("Setup guide / pairing failed")
 }
 
-#Preview("Pairing scanner") { PairingScannerPreview() }
+#Preview("Pairing scanner") { PairingScannerPreview().clivePreviewBoundary("Pairing scanner") }
 #endif
