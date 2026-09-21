@@ -375,8 +375,8 @@ struct LocalStateResetter {
     enum PresentedScreen: Equatable { case terminalList, settings, shortcutSettings }
     enum Recovery: Equatable { case unavailableMac(String), noPairedMac, disconnected }
 
-    let macs = PairedMacsModel()
-    let preferences = AppPreferencesModel()
+    let macs: PairedMacsModel
+    let preferences: AppPreferencesModel
     var state: State = .locked
     var selectedMacID: String?
     var sessions: [WorkspaceSession] = []
@@ -414,7 +414,9 @@ struct LocalStateResetter {
         authenticationGracePolicy: AuthenticationGracePolicy = .standard,
         now: @escaping () -> Date = Date.init,
         localStateResetter: LocalStateResetter = LocalStateResetter(),
-        isUITestFixture: Bool = false
+        isUITestFixture: Bool = false,
+        preferences: AppPreferencesModel = AppPreferencesModel(),
+        macs: PairedMacsModel = PairedMacsModel()
     ) {
         self.authenticate = authenticate
         self.provideIdentity = provideIdentity
@@ -422,6 +424,8 @@ struct LocalStateResetter {
         self.now = now
         self.localStateResetter = localStateResetter
         self.isUITestFixture = isUITestFixture
+        self.preferences = preferences
+        self.macs = macs
         sessionCatalog.onSessions = { [weak self] sessions in
             DispatchQueue.main.async { self?.applyCatalog(sessions) }
         }
@@ -938,13 +942,16 @@ struct LocalStateResetter {
 
 #if DEBUG
     static func uiTestFixture() -> WorkspaceCoordinator {
-        let coordinator = WorkspaceCoordinator(authenticate: {}, provideIdentity: { throw CocoaError(.userCancelled) }, isUITestFixture: true)
+        let coordinator = WorkspaceCoordinator(
+            authenticate: {}, provideIdentity: { throw CocoaError(.userCancelled) }, isUITestFixture: true,
+            preferences: AppPreferencesModel(previewValue: AppPreferences(shortcuts: [CLIShortcut(name: "Status", command: "git status --short")])),
+            macs: PairedMacsModel(previewOnly: true)
+        )
         let mac = PairedMac(
             id: "ui-test-mac", displayName: "Test Mac", serviceID: "ui-test-service",
             certificateFingerprint: String(repeating: "ab", count: 32), createdAt: Date(timeIntervalSince1970: 0)
         )
         coordinator.macs.installUITestFixture(device: mac, route: MacRoute(host: "127.0.0.1", port: 8022))
-        coordinator.preferences.value = AppPreferences(shortcuts: [CLIShortcut(name: "Status", command: "git status --short")])
         coordinator.state = .active; coordinator.selectedMacID = mac.id
         coordinator.sessions = [
             WorkspaceSession(fixture: SessionDescriptor(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, label: "Shell 1"), state: .active(UUID(), .resumed, true)),
@@ -964,7 +971,11 @@ struct LocalStateResetter {
     }
 
     static func uiTestSetupGuideFixture() -> WorkspaceCoordinator {
-        let coordinator = WorkspaceCoordinator(authenticate: {}, provideIdentity: { throw CocoaError(.userCancelled) }, isUITestFixture: true)
+        let coordinator = WorkspaceCoordinator(
+            authenticate: {}, provideIdentity: { throw CocoaError(.userCancelled) }, isUITestFixture: true,
+            preferences: AppPreferencesModel(previewValue: AppPreferences()),
+            macs: PairedMacsModel(previewOnly: true)
+        )
         coordinator.state = .active
         coordinator.recovery = .noPairedMac
         return coordinator

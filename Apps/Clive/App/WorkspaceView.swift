@@ -44,6 +44,16 @@ struct WorkspaceView: View {
     @State private var terminalTitleVisible = true
     @Namespace private var toolbarControlTransition
 
+    init(
+        coordinator: WorkspaceCoordinator,
+        previewSidebarVisible: Bool = false,
+        previewRegularSidebar: Bool = false
+    ) {
+        self.coordinator = coordinator
+        _sidebarOverlayVisible = State(initialValue: previewSidebarVisible)
+        _sidebarVisibility = State(initialValue: previewRegularSidebar ? .all : .detailOnly)
+    }
+
     var body: some View {
         presentedWorkspace
     }
@@ -999,7 +1009,11 @@ private struct ShortcutManagementView: View {
                     Button(isEditing ? "Done" : "Edit", systemImage: isEditing ? "checkmark" : "pencil") {
                         isEditing.toggle()
                     }
-                    Button("Add", systemImage: "plus") { preferences.addShortcut() }
+                    NavigationLink {
+                        ShortcutEditorView(preferences: preferences, draft: ShortcutDraft())
+                    } label: {
+                        Label("Add", systemImage: "plus")
+                    }
                 }
                 .accessibilityIdentifier("shortcut-management-actions")
                 .foregroundStyle(.tint)
@@ -1011,27 +1025,54 @@ private struct ShortcutManagementView: View {
 
 private struct ShortcutEditorView: View {
     @Bindable var preferences: AppPreferencesModel
-    let shortcutID: UUID
+    @State private var draft: ShortcutDraft
+    @State private var attemptedSave = false
+    @Environment(\.dismiss) private var dismiss
+
+    init(preferences: AppPreferencesModel, shortcutID: UUID) {
+        self.preferences = preferences
+        let shortcut = preferences.value.shortcuts.first(where: { $0.id == shortcutID })
+            ?? CLIShortcut(id: shortcutID, name: "")
+        _draft = State(initialValue: ShortcutDraft(shortcut: shortcut))
+    }
+
+    init(preferences: AppPreferencesModel, draft: ShortcutDraft, showsErrors: Bool = false) {
+        self.preferences = preferences
+        _draft = State(initialValue: draft)
+        _attemptedSave = State(initialValue: showsErrors)
+    }
+
+    private var validation: ShortcutValidation { preferences.validation(for: draft) }
+
     var body: some View {
         Form {
-            TextField("Title", text: shortcutBinding(\.name))
-            TextField("Command", text: shortcutBinding(\.command), axis: .vertical)
-                .font(.body.monospaced())
-        }
-        .navigationTitle("Edit Shortcut")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-    private func shortcutBinding(_ id: UUID, _ keyPath: WritableKeyPath<CLIShortcut, String>) -> Binding<String> {
-        Binding(
-            get: { preferences.value.shortcuts.first(where: { $0.id == id })?[keyPath: keyPath] ?? "" },
-            set: { value in
-                guard let index = preferences.value.shortcuts.firstIndex(where: { $0.id == id }) else { return }
-                preferences.value.shortcuts[index][keyPath: keyPath] = value
+            Section {
+                TextField("Title", text: $draft.name)
+                if attemptedSave, let error = validation.titleError {
+                    Text(error).foregroundStyle(.red).font(.footnote)
+                }
             }
-        )
-    }
-    private func shortcutBinding(_ keyPath: WritableKeyPath<CLIShortcut, String>) -> Binding<String> {
-        shortcutBinding(shortcutID, keyPath)
+            Section {
+                TextField("Command", text: $draft.command, axis: .vertical)
+                    .font(.body.monospaced())
+                if attemptedSave, let error = validation.commandError {
+                    Text(error).foregroundStyle(.red).font(.footnote)
+                }
+            }
+        }
+        .navigationTitle(draft.id == nil ? "New Shortcut" : "Edit Shortcut")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    attemptedSave = true
+                    if preferences.commit(draft).isValid { dismiss() }
+                }
+            }
+        }
     }
 }
 
@@ -1152,3 +1193,136 @@ private struct ConnectionDetailsView: View {
         .navigationTitle("Connection Details")
     }
 }
+
+#if DEBUG
+private enum ClivePreviewFixtures {
+    @MainActor static func workspace(state: SessionClient.State? = nil) -> WorkspaceCoordinator {
+        let coordinator = WorkspaceCoordinator.uiTestFixture()
+        if let state { coordinator.sessions[0].state = state }
+        return coordinator
+    }
+
+    @MainActor static func preferences(_ shortcuts: [CLIShortcut] = []) -> AppPreferencesModel {
+        AppPreferencesModel(previewValue: AppPreferences(shortcuts: shortcuts))
+    }
+
+    static let terminalOutput = "Last login: Thu Jan 1 00:00:00\r\n% git status --short\r\n M Apps/Clive/App/WorkspaceView.swift\r\n% _"
+}
+
+private struct PairingScannerPreview: View {
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 24) {
+                Image(systemName: "qrcode.viewfinder")
+                    .font(.system(size: 72))
+                    .foregroundStyle(.white)
+                Text("Scan the pairing code on your Mac")
+                    .foregroundStyle(.white)
+                    .font(.headline)
+                Text("Camera capture is unavailable in previews.")
+                    .foregroundStyle(.white.opacity(0.75))
+                Button("Cancel") {}
+                    .buttonStyle(.bordered)
+                    .tint(.white)
+            }
+            .padding()
+        }
+    }
+}
+
+#Preview("Workspace — terminal") {
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace())
+}
+
+#Preview("Workspace — compact drawer") {
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(), previewSidebarVisible: true)
+        .environment(\.horizontalSizeClass, .compact)
+}
+
+#Preview("Workspace — regular sidebar", traits: .fixedLayout(width: 1_024, height: 768)) {
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(), previewRegularSidebar: true)
+        .environment(\.horizontalSizeClass, .regular)
+}
+
+#Preview("Workspace — replay warning") {
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(state: .active(UUID(), .resumed, true)))
+}
+
+#Preview("Workspace — disconnected") {
+    WorkspaceView(coordinator: ClivePreviewFixtures.workspace(state: .disconnected))
+}
+
+#Preview("Terminal surface") {
+    TerminalSurfaceView(
+        session: nil,
+        accessibilityIdentifier: "preview-terminal",
+        isSelected: true,
+        shortcuts: [CLIShortcut(name: "Status", command: "git status --short")],
+        openDrawer: {}, selectAdjacentTerminal: { _ in }, runShortcut: { _ in true }, manageShortcuts: {},
+        previewOutput: ClivePreviewFixtures.terminalOutput
+    )
+    .background(.black)
+}
+
+#Preview("Settings") {
+    SettingsView(coordinator: ClivePreviewFixtures.workspace(), opensShortcutSettings: false)
+}
+
+#Preview("Connection details — replay warning") {
+    NavigationStack {
+        ConnectionDetailsView(
+            coordinator: ClivePreviewFixtures.workspace(state: .active(UUID(), .resumed, true)),
+            connection: PairedMac(id: "preview-mac", displayName: "Test Mac", serviceID: "preview", certificateFingerprint: String(repeating: "ab", count: 32), createdAt: .now)
+        )
+    }
+}
+
+#Preview("Shortcuts — populated") {
+    NavigationStack {
+        ShortcutManagementView(preferences: ClivePreviewFixtures.preferences([
+            CLIShortcut(name: "Status", command: "git status --short"),
+            CLIShortcut(name: "Tests", command: "swift test")
+        ]))
+    }
+}
+
+#Preview("Shortcuts — empty") {
+    NavigationStack { ShortcutManagementView(preferences: ClivePreviewFixtures.preferences()) }
+}
+
+#Preview("Shortcut editor — valid") {
+    let shortcut = CLIShortcut(name: "Status", command: "git status")
+    let preferences = ClivePreviewFixtures.preferences([shortcut])
+    return NavigationStack { ShortcutEditorView(preferences: preferences, shortcutID: shortcut.id) }
+}
+
+#Preview("Shortcut editor — blank") {
+    NavigationStack { ShortcutEditorView(preferences: ClivePreviewFixtures.preferences(), draft: ShortcutDraft()) }
+}
+
+#Preview("Shortcut editor — required fields") {
+    NavigationStack { ShortcutEditorView(preferences: ClivePreviewFixtures.preferences(), draft: ShortcutDraft(), showsErrors: true) }
+}
+
+#Preview("Shortcut editor — duplicates") {
+    let preferences = ClivePreviewFixtures.preferences([CLIShortcut(name: "Status", command: "git status")])
+    return NavigationStack {
+        ShortcutEditorView(preferences: preferences, draft: ShortcutDraft(name: "status", command: "git status"), showsErrors: true)
+    }
+}
+
+#Preview("Setup guide — initial") {
+    NavigationStack { SetupGuideView(pairedMacs: PairedMacsModel.previewFixture(), pairMac: {}, dismiss: {}) }
+}
+
+#Preview("Setup guide — paired") {
+    NavigationStack { SetupGuideView(pairedMacs: PairedMacsModel.previewFixture(success: true), pairMac: {}, dismiss: {}) }
+}
+
+#Preview("Setup guide — pairing failed") {
+    NavigationStack { SetupGuideView(pairedMacs: PairedMacsModel.previewFixture(failure: "The pairing code expired."), pairMac: {}, dismiss: {}) }
+}
+
+#Preview("Pairing scanner") { PairingScannerPreview() }
+#endif

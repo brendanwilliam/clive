@@ -35,6 +35,7 @@ struct CliveApp: App {
     var body: some Scene {
         WindowGroup {
             WorkspaceView(coordinator: coordinator)
+                .preferredColorScheme(.dark)
         }
     }
 }

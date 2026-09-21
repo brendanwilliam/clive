@@ -16,6 +16,29 @@ struct TerminalSurfaceView: UIViewRepresentable {
     let selectAdjacentTerminal: (Bool) -> Void
     let runShortcut: (CLIShortcut) -> Bool
     let manageShortcuts: () -> Void
+    let previewOutput: String?
+
+    init(
+        session: SessionClient?,
+        accessibilityIdentifier: String,
+        isSelected: Bool,
+        shortcuts: [CLIShortcut],
+        openDrawer: @escaping () -> Void,
+        selectAdjacentTerminal: @escaping (Bool) -> Void,
+        runShortcut: @escaping (CLIShortcut) -> Bool,
+        manageShortcuts: @escaping () -> Void,
+        previewOutput: String? = nil
+    ) {
+        self.session = session
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.isSelected = isSelected
+        self.shortcuts = shortcuts
+        self.openDrawer = openDrawer
+        self.selectAdjacentTerminal = selectAdjacentTerminal
+        self.runShortcut = runShortcut
+        self.manageShortcuts = manageShortcuts
+        self.previewOutput = previewOutput
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -44,7 +67,9 @@ struct TerminalSurfaceView: UIViewRepresentable {
         terminal.keyboardDismissMode = TerminalSurfaceConfiguration.keyboardDismissMode
         terminal.scrollsToTop = TerminalSurfaceConfiguration.scrollsToTop
         context.coordinator.install(on: container)
-        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+        if let previewOutput {
+            terminal.feed(byteArray: ArraySlice(("\u{1b}[2 q" + previewOutput).utf8))
+        } else if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
             let fixtureOutput = (1...80).map { $0 == 80 ? "https://example.com" : "fixture line \($0)" }.joined(separator: "\r\n")
             terminal.feed(byteArray: ArraySlice(("\u{1b}[2 q" + fixtureOutput).utf8))
         }
