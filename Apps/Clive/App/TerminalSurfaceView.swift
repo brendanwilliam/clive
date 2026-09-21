@@ -395,13 +395,15 @@ struct TerminalSurfaceView: UIViewRepresentable {
     ) {
         let shortcutActions = shortcuts.map { shortcut in
             let command = shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines)
-            return UIAction(
+            let action = UIAction(
                 title: shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name,
                 image: UIImage(systemName: Self.shortcutSymbolName),
                 attributes: command.isEmpty ? .disabled : []
             ) { _ in
                 _ = run(shortcut)
             }
+            action.subtitle = ShortcutCommandPresentation.subtitle(for: command)
+            return action
         }
         let settings = UIAction(
             title: "Settings",

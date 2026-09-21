@@ -59,6 +59,18 @@ struct CLIShortcut: Codable, Equatable, Identifiable {
     }
 }
 
+enum ShortcutCommandPresentation {
+    static let defaultMaximumLength = 48
+
+    static func subtitle(for command: String, maximumLength: Int = defaultMaximumLength) -> String {
+        let normalized = command
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard normalized.count > maximumLength, maximumLength > 1 else { return normalized }
+        return String(normalized.prefix(maximumLength - 1)) + "…"
+    }
+}
+
 struct AppPreferences: Codable, Equatable {
     var allowsCellularConnections = false
     var shortcuts: [CLIShortcut] = []

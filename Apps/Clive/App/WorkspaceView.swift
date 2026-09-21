@@ -4,8 +4,7 @@ import UIKit
 
 private extension View {
     @ViewBuilder
-    func cliveGlassBackground<S: Shape>(in shape: S) -> some View {
-        if #available(iOS 26.0, *) {
+    func cliveGlassBackground<S: Shape>(in shape: S) -> some View {           if #available(iOS 26.0, *) {
             glassEffect(.regular, in: shape)
         } else {
             background(.thinMaterial, in: shape)
@@ -1032,8 +1031,18 @@ private struct ShortcutManagementView: View {
                 NavigationLink {
                     ShortcutEditorView(preferences: preferences, shortcutID: shortcut.id)
                 } label: {
-                    Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
-                        .foregroundStyle(.primary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name)
+                            .foregroundStyle(.primary)
+                        let commandSubtitle = ShortcutCommandPresentation.subtitle(for: shortcut.command)
+                        if !commandSubtitle.isEmpty {
+                            Text(commandSubtitle)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
                 }
             }
             .onDelete(perform: preferences.deleteShortcuts)

@@ -111,6 +111,7 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertTrue(controls.shortcutButton.showsMenuAsPrimaryAction)
         let actions = try! XCTUnwrap(controls.shortcutButton.menu?.children as? [UIAction])
         XCTAssertEqual(actions.map(\.title), ["Status", "Settings"])
+        XCTAssertEqual(actions.first?.subtitle, "git status --short")
         XCTAssertNotNil(actions.first?.image)
     }
 }

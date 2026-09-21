@@ -11,6 +11,14 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.shortcuts.isEmpty)
     }
 
+    func testShortcutCommandSubtitleNormalizesWhitespaceAndTruncatesTheTail() {
+        XCTAssertEqual(
+            ShortcutCommandPresentation.subtitle(for: "  git   status\n--short --branch  ", maximumLength: 19),
+            "git status --short…"
+        )
+        XCTAssertEqual(ShortcutCommandPresentation.subtitle(for: "pwd"), "pwd")
+    }
+
     func testStoreRoundTripsOrderedShortcuts() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
