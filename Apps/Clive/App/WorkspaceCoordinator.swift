@@ -957,6 +957,8 @@ struct LocalStateResetter {
             WorkspaceSession(fixture: SessionDescriptor(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, label: "Shell 1"), state: .active(UUID(), .resumed, true)),
             WorkspaceSession(fixture: SessionDescriptor(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, label: "Shell 2"), state: .active(UUID(), .created, false))
         ]
+        coordinator.sessions[0].preview = "git status --short --branch — working tree clean"
+        coordinator.sessions[1].preview = "swift test --filter WorkspaceNavigationPolicyTests"
         coordinator.catalogSessions = [
             CliveCore.SessionDescriptor(
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,

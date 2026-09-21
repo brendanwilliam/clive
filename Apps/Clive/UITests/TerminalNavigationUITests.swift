@@ -18,7 +18,7 @@ final class TerminalNavigationUITests: XCTestCase {
         app = nil
     }
 
-    func testTerminalTitleMenuDoesNotChangeSelectionAfterHorizontalDrag() {
+    func testTerminalPickerDoesNotChangeSelectionAfterHorizontalDrag() {
         let first = terminalSurface(firstID)
         XCTAssertTrue(first.waitForExistence(timeout: 3))
         XCTAssertEqual(first.value as? String, "Selected")
@@ -31,9 +31,8 @@ final class TerminalNavigationUITests: XCTestCase {
         )
         XCTAssertTrue(waitForSelection(of: first))
         title.tap()
-        XCTAssertTrue(app.buttons["Rename"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Disconnect"].exists)
-        XCTAssertTrue(app.buttons["Delete"].exists)
+        XCTAssertTrue(app.buttons["Shell 1"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Shell 2"].exists)
     }
 
     func testTerminalSidebarShowsTheSelectedTerminal() {
@@ -97,16 +96,16 @@ final class TerminalNavigationUITests: XCTestCase {
     func testHeaderPlacesSidebarTitleMenuAndNewTerminalOnOneRow() {
         let sidebar = app.buttons["terminal-sidebar-button"]
         let title = app.buttons["terminal-title-button"]
-        let add = app.buttons["new-terminal-button"]
+        let actions = app.buttons["terminal-actions-button"]
         XCTAssertTrue(sidebar.exists)
         XCTAssertTrue(title.exists)
-        XCTAssertTrue(add.exists)
+        XCTAssertTrue(actions.exists)
         XCTAssertEqual(sidebar.frame.midY, title.frame.midY, accuracy: 2)
-        XCTAssertEqual(title.frame.midY, add.frame.midY, accuracy: 2)
+        XCTAssertEqual(title.frame.midY, actions.frame.midY, accuracy: 2)
         XCTAssertLessThan(sidebar.frame.midX, title.frame.midX)
-        XCTAssertLessThan(title.frame.midX, add.frame.midX)
+        XCTAssertLessThan(title.frame.midX, actions.frame.midX)
         XCTAssertFalse(app.buttons["shortcuts-button"].exists)
-        XCTAssertFalse(app.buttons["Terminal actions"].exists)
+        XCTAssertTrue(actions.exists)
     }
 
     func testTerminalStartsBelowCompactNavigationBar() {
@@ -118,12 +117,12 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(terminal.frame.minY, title.frame.maxY)
     }
 
-    func testTerminalTitleMenuRenamesAndDeletesWithConfirmation() {
-        app.buttons["terminal-title-button"].tap()
+    func testTerminalActionsRenamesAndDeletesWithConfirmation() {
+        app.buttons["terminal-actions-button"].tap()
         app.buttons["Rename"].tap()
         XCTAssertTrue(app.staticTexts["Rename terminal"].waitForExistence(timeout: 2))
         app.buttons["Cancel"].tap()
-        app.buttons["terminal-title-button"].tap()
+        app.buttons["terminal-actions-button"].tap()
         app.buttons["Delete"].tap()
         XCTAssertTrue(app.staticTexts["Close terminal?"].waitForExistence(timeout: 2))
         app.buttons["Cancel"].tap()

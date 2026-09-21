@@ -13,6 +13,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     let isSelected: Bool
     let shortcuts: [CLIShortcut]
     let openDrawer: () -> Void
+    let createTerminal: () -> Void
     let selectAdjacentTerminal: (Bool) -> Void
     let runShortcut: (CLIShortcut) -> Bool
     let manageShortcuts: () -> Void
@@ -25,6 +26,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         isSelected: Bool,
         shortcuts: [CLIShortcut],
         openDrawer: @escaping () -> Void,
+        createTerminal: @escaping () -> Void = {},
         selectAdjacentTerminal: @escaping (Bool) -> Void,
         runShortcut: @escaping (CLIShortcut) -> Bool,
         manageShortcuts: @escaping () -> Void,
@@ -36,6 +38,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         self.isSelected = isSelected
         self.shortcuts = shortcuts
         self.openDrawer = openDrawer
+        self.createTerminal = createTerminal
         self.selectAdjacentTerminal = selectAdjacentTerminal
         self.runShortcut = runShortcut
         self.manageShortcuts = manageShortcuts
@@ -48,6 +51,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             session: session,
             shortcuts: shortcuts,
             openDrawer: openDrawer,
+            createTerminal: createTerminal,
             selectAdjacentTerminal: selectAdjacentTerminal,
             runShortcut: runShortcut,
             manageShortcuts: manageShortcuts
@@ -85,6 +89,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         context.coordinator.session = session
         context.coordinator.shortcuts = shortcuts
         context.coordinator.openDrawer = openDrawer
+        context.coordinator.createTerminal = createTerminal
         context.coordinator.selectAdjacentTerminal = selectAdjacentTerminal
         context.coordinator.runShortcut = runShortcut
         context.coordinator.manageShortcuts = manageShortcuts
@@ -102,18 +107,21 @@ struct TerminalSurfaceView: UIViewRepresentable {
         var session: SessionClient?
         var shortcuts: [CLIShortcut]
         var openDrawer: () -> Void
+        var createTerminal: () -> Void
         var selectAdjacentTerminal: (Bool) -> Void
         var runShortcut: (CLIShortcut) -> Bool
         var manageShortcuts: () -> Void
         private weak var container: TerminalSurfaceContainer?
         private var accessory: TerminalKeyboardAccessory?
         private var edgeObserver: TerminalLeftEdgeObserver?
+        private var rightEdgeObserver: TerminalRightEdgeObserver?
         private var horizontalSwitchObserver: TerminalHorizontalSwitchObserver?
 
         init(
             session: SessionClient?,
             shortcuts: [CLIShortcut],
             openDrawer: @escaping () -> Void,
+            createTerminal: @escaping () -> Void,
             selectAdjacentTerminal: @escaping (Bool) -> Void,
             runShortcut: @escaping (CLIShortcut) -> Bool,
             manageShortcuts: @escaping () -> Void
@@ -121,6 +129,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             self.session = session
             self.shortcuts = shortcuts
             self.openDrawer = openDrawer
+            self.createTerminal = createTerminal
             self.selectAdjacentTerminal = selectAdjacentTerminal
             self.runShortcut = runShortcut
             self.manageShortcuts = manageShortcuts
@@ -139,6 +148,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 manage: manageShortcuts
             )
             edgeObserver = TerminalLeftEdgeObserver.install(on: container.terminal) { [weak self] in self?.openDrawer() }
+            rightEdgeObserver = TerminalRightEdgeObserver.install(on: container.terminal) { [weak self] in self?.createTerminal() }
             horizontalSwitchObserver = TerminalHorizontalSwitchObserver.install(on: container.terminal) { [weak self] forward in
                 self?.selectAdjacentTerminal(forward)
             }
@@ -494,6 +504,31 @@ enum TerminalSurfaceConfiguration {
     @objc private func handle(_ gesture: UIScreenEdgePanGestureRecognizer) {
         if gesture.state == .began { open() }
     }
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { view != nil }
+}
+
+@MainActor private final class TerminalRightEdgeObserver: NSObject, UIGestureRecognizerDelegate {
+    private weak var view: TerminalView?
+    private let create: () -> Void
+    private lazy var gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handle(_:)))
+
+    static func install(on view: TerminalView, create: @escaping () -> Void) -> TerminalRightEdgeObserver {
+        let observer = TerminalRightEdgeObserver(view: view, create: create)
+        observer.gesture.edges = .right
+        observer.gesture.delegate = observer
+        view.addGestureRecognizer(observer.gesture)
+        return observer
+    }
+
+    private init(view: TerminalView, create: @escaping () -> Void) {
+        self.view = view
+        self.create = create
+    }
+
+    @objc private func handle(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        if gesture.state == .began { create() }
+    }
+
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { view != nil }
 }
 

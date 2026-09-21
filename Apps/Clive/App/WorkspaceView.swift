@@ -316,14 +316,13 @@ struct WorkspaceView: View {
     }
 
     private var terminalHeader: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 8) {
             terminalSidebarButton
-            Spacer()
             if !coordinator.sessions.isEmpty, terminalTitleVisible {
                 terminalTitleMenu
                     .transition(.move(edge: .top))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer()
             terminalActions
         }
     }
@@ -342,35 +341,47 @@ struct WorkspaceView: View {
     }
 
     private var terminalActions: some View {
-        Button { navigate { coordinator.addShell() } } label: { Image(systemName: "plus") }
-            .frame(width: 44, height: 44)
-            .foregroundStyle(.white)
-            .background {
-                Color.clear.cliveGlassBackground(in: Circle())
+        Menu {
+            Button("New terminal", systemImage: "plus") {
+                navigate { coordinator.addShell() }
             }
-            .clipShape(Circle())
-            .accessibilityLabel("New Terminal")
-            .accessibilityIdentifier("new-terminal-button")
-            .matchedGeometryEffect(id: "new-terminal", in: toolbarControlTransition)
+            if let session = coordinator.selectedSession {
+                Divider()
+                Button("Rename", systemImage: "pencil") { beginRename(session) }
+                if ConnectionPresentation.status(for: session.state) == .connected {
+                    Button("Disconnect", systemImage: "network.slash") { coordinator.disconnect(session) }
+                } else {
+                    Button("Reconnect", systemImage: "arrow.clockwise") { coordinator.reconnect(session) }
+                }
+                Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.title3.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .foregroundStyle(.white)
+                .background {
+                    Color.clear.cliveGlassBackground(in: Circle())
+                }
+                .clipShape(Circle())
+        }
+        .accessibilityLabel("Terminal actions")
+        .accessibilityIdentifier("terminal-actions-button")
+        .matchedGeometryEffect(id: "terminal-actions", in: toolbarControlTransition)
     }
 
     private var terminalTitleMenu: some View {
-        Button {
-            terminalMenuVisible.toggle()
-        } label: {
-            Text(coordinator.selectedSession?.descriptor.label ?? "No terminal")
-                .lineLimit(1)
-                .font(.subheadline)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .frame(minHeight: 44)
-                .frame(maxWidth: 240)
-                .background {
-                    Color.clear.cliveGlassBackground(in: Capsule())
-                }
+        Button { terminalMenuVisible.toggle() } label: {
+            TerminalTitleSubtitleView(
+                title: coordinator.selectedSession?.descriptor.label ?? "No terminal",
+                subtitle: coordinator.selectedSession.flatMap { terminalOutputSubtitle(for: $0) },
+                titleColor: .white,
+                showsChevron: true
+            )
+            .frame(minHeight: 44, alignment: .leading)
+            .frame(maxWidth: 280, alignment: .leading)
         }
         .buttonStyle(.plain)
-        .disabled(coordinator.selectedSession == nil)
         .accessibilityLabel("Terminal title")
         .accessibilityIdentifier("terminal-title-button")
         .popover(
@@ -378,10 +389,16 @@ struct WorkspaceView: View {
             attachmentAnchor: .rect(.bounds),
             arrowEdge: .top
         ) {
-            if let session = coordinator.selectedSession {
-                terminalPopoverActions(for: session)
-                    .presentationCompactAdaptation(.popover)
-            }
+            TerminalPickerPopover(
+                sessions: coordinator.sessions,
+                selectedSessionID: coordinator.selectedSessionID,
+                subtitle: { terminalOutputSubtitle(for: $0) },
+                select: { session in
+                    coordinator.selectSession(session.id)
+                    terminalMenuVisible = false
+                }
+            )
+            .presentationCompactAdaptation(.popover)
         }
     }
 
@@ -479,6 +496,7 @@ struct WorkspaceView: View {
                             isSelected: true,
                             shortcuts: coordinator.preferences.value.shortcuts,
                             openDrawer: { coordinator.showTerminalList() },
+                            createTerminal: { navigate { coordinator.addShell() } },
                             selectAdjacentTerminal: selectAdjacentTerminal,
                             runShortcut: coordinator.runShortcut,
                             manageShortcuts: { coordinator.showShortcutSettings() },
@@ -500,7 +518,6 @@ struct WorkspaceView: View {
             HStack(spacing: 0) {
                 terminalSidebarButton
                 Spacer(minLength: 0)
-                terminalActions
             }
             .padding(.horizontal, 16)
             .frame(height: 60)
@@ -609,7 +626,16 @@ struct WorkspaceView: View {
             HStack(spacing: 12) {
                 terminalStatusIcon(for: session.state)
                     .accessibilityIdentifier("terminal-status-\(session.id.uuidString)")
-                Text(session.descriptor.label)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(session.descriptor.label)
+                        .lineLimit(1)
+                    if let subtitle = terminalOutputSubtitle(for: session) {
+                        Text(subtitle)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
                 Spacer(minLength: 4)
             }
         }
@@ -671,47 +697,6 @@ struct WorkspaceView: View {
         Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
     }
 
-    private func terminalPopoverActions(for session: WorkspaceSession) -> some View {
-        VStack(spacing: 0) {
-            terminalPopoverButton("Rename", systemImage: "pencil") {
-                beginRename(session)
-            }
-            if ConnectionPresentation.status(for: session.state) == .connected {
-                terminalPopoverButton("Disconnect", systemImage: "network.slash") {
-                    coordinator.disconnect(session)
-                }
-            } else {
-                terminalPopoverButton("Reconnect", systemImage: "arrow.clockwise") {
-                    coordinator.reconnect(session)
-                }
-            }
-            terminalPopoverButton("Delete", systemImage: "trash", role: .destructive) {
-                deleteTarget = session
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 8)
-        .frame(width: 236)
-    }
-
-    private func terminalPopoverButton(
-        _ title: String,
-        systemImage: String,
-        role: ButtonRole? = nil,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(role: role) {
-            terminalMenuVisible = false
-            action()
-        } label: {
-            Label(title, systemImage: systemImage)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(role == .destructive ? Color.red : Color.primary)
-    }
-
     @ViewBuilder private func terminalSessionSwipeActions(for session: WorkspaceSession) -> some View {
         Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = session }
         if ConnectionPresentation.status(for: session.state) == .connected {
@@ -731,6 +716,13 @@ struct WorkspaceView: View {
             .foregroundStyle(terminalStatusColor(for: presentation.health))
             .frame(width: 20, height: 20)
             .accessibilityLabel(presentation.text)
+    }
+
+    private func terminalOutputSubtitle(for session: WorkspaceSession) -> String? {
+        guard let preview = session.preview, !preview.isEmpty else { return nil }
+        let maximumLength = 52
+        guard preview.count > maximumLength else { return preview }
+        return String(preview.prefix(maximumLength - 1)) + "…"
     }
 
     private func terminalStatusText(for state: SessionClient.State, attachment: AttachmentState?) -> String {
@@ -1018,6 +1010,73 @@ private struct SettingsView: View {
         } message: {
             Text("The Mac must be online. Clive will revoke this iPhone on the Mac before removing the connection from this phone.")
         }
+    }
+}
+
+private struct TerminalTitleSubtitleView: View {
+    let title: String
+    let subtitle: String?
+    let titleColor: Color
+    let showsChevron: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .foregroundStyle(titleColor)
+                    .lineLimit(1)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            if showsChevron {
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(titleColor)
+            }
+        }
+    }
+}
+
+private struct TerminalPickerPopover: View {
+    let sessions: [WorkspaceSession]
+    let selectedSessionID: UUID?
+    let subtitle: (WorkspaceSession) -> String?
+    let select: (WorkspaceSession) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(sessions) { session in
+                    Button { select(session) } label: {
+                        HStack(spacing: 12) {
+                            TerminalTitleSubtitleView(
+                                title: session.descriptor.label,
+                                subtitle: subtitle(session),
+                                titleColor: .primary,
+                                showsChevron: false
+                            )
+                            Spacer(minLength: 8)
+                            if session.id == selectedSessionID {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 14)
+                }
+            }
+            .padding(.vertical, 8)
+        }
+        .frame(width: 300)
+        .frame(maxHeight: 360)
     }
 }
 
