@@ -11,6 +11,8 @@ let package = Package(
         .executable(name: "clive", targets: ["CliveDaemon"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/apple/swift-certificates.git", exact: "1.20.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", exact: "4.5.1"),
         .package(url: "https://github.com/apple/swift-certificates.git", exact: "1.19.4"),
         .package(url: "https://github.com/apple/swift-crypto.git", exact: "4.5.2"),
     ],
