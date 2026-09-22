@@ -284,7 +284,7 @@ final class TerminalNavigationUITests: XCTestCase {
     }
 
     private func waitForTerminalSidebar(timeout: TimeInterval = 3) -> Bool {
-        app.staticTexts["Clive Sessions"].waitForExistence(timeout: timeout)
+        app.staticTexts["Test Mac"].waitForExistence(timeout: timeout)
     }
     private func waitForSelection(of terminal: XCUIElement, timeout: TimeInterval = 4) -> Bool {
         let predicate = NSPredicate(format: "value == %@", "Selected")

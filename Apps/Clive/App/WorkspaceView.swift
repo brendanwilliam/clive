@@ -103,7 +103,8 @@ struct WorkspaceView: View {
         GeometryReader { proxy in
             terminalWorkspace(
                 availableWidth: proxy.size.width,
-                topSafeAreaInset: proxy.safeAreaInsets.top
+                topSafeAreaInset: proxy.safeAreaInsets.top,
+                bottomSafeAreaInset: proxy.safeAreaInsets.bottom
             )
                 .ignoresSafeArea(.container, edges: [.top, .bottom])
         }
@@ -201,7 +202,8 @@ struct WorkspaceView: View {
 
     @ViewBuilder private func terminalWorkspace(
         availableWidth: CGFloat,
-        topSafeAreaInset: CGFloat
+        topSafeAreaInset: CGFloat,
+        bottomSafeAreaInset: CGFloat
     ) -> some View {
         if horizontalSizeClass == .compact {
             ZStack(alignment: .topLeading) {
@@ -216,7 +218,7 @@ struct WorkspaceView: View {
                         .contentShape(.rect)
                         .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { sidebarOverlayVisible = false } }
                         .zIndex(1)
-                    terminalSidebar(topSafeAreaInset: topSafeAreaInset)
+                    terminalSidebar(topSafeAreaInset: topSafeAreaInset, bottomSafeAreaInset: bottomSafeAreaInset)
                         .frame(width: min(320, availableWidth * 0.84))
                         .frame(maxHeight: .infinity, alignment: .top)
                         .clipShape(.rect(bottomTrailingRadius: 18, topTrailingRadius: 18))
@@ -228,7 +230,7 @@ struct WorkspaceView: View {
         } else {
             HStack(spacing: 0) {
                 if sidebarVisibility != .detailOnly {
-                    terminalSidebar(topSafeAreaInset: topSafeAreaInset)
+                    terminalSidebar(topSafeAreaInset: topSafeAreaInset, bottomSafeAreaInset: bottomSafeAreaInset)
                         .frame(minWidth: 260, idealWidth: 320, maxWidth: 380)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .transition(.move(edge: .leading))
@@ -502,20 +504,20 @@ struct WorkspaceView: View {
         }
     }
 
-    private func terminalSidebar(topSafeAreaInset: CGFloat) -> some View {
+    private func terminalSidebar(topSafeAreaInset: CGFloat, bottomSafeAreaInset: CGFloat = 0) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
                 drawerSettingsButton
+                Text(coordinator.selectedMac?.displayName ?? "No Mac connected")
+                    .font(.headline)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("drawer-device-title")
                 Spacer(minLength: 0)
                 terminalSidebarButton
             }
             .padding(.horizontal, 16)
             .frame(height: 60)
-            Text("Clive Sessions")
-                .font(.title.weight(.bold))
-                .padding(.horizontal, 12)
-                .padding(.top, 16)
-                .padding(.bottom, 8)
             List {
                 Section {
                     if connectedSessions.isEmpty {
@@ -557,9 +559,22 @@ struct WorkspaceView: View {
                     Label("Add connection", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity, alignment: .leading).padding(16)
                 }
             }
+            Button {
+                coordinator.dismissPresentedScreen()
+                navigate { coordinator.addShell() }
+            } label: {
+                Label("New terminal", systemImage: "plus")
+                    .font(.headline)
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity, minHeight: DrawerRowRevealPolicy.minimumRowHeight, alignment: .leading)
+                    .padding(.horizontal, 16)
+            }
+            .disabled(coordinator.selectedMac == nil)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 12)
+            .padding(.bottom, bottomSafeAreaInset + (keyboardVisible ? 0 : TerminalSurfaceConfiguration.bottomControlSafeAreaSpacing))
         }
         .padding(.top, topSafeAreaInset)
-        .safeAreaPadding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
         .background {
             Color.clear.cliveClearGlassBackground(in: Rectangle())
@@ -1052,16 +1067,16 @@ private struct TerminalPickerPopover: View {
                                 showsChevron: false
                             )
                             Spacer(minLength: 8)
-                            if session.id == selectedSessionID {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.tint)
-                            }
                         }
                         .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal, 14)
+                    .background(
+                        session.id == selectedSessionID ? Color.accentColor.opacity(0.14) : .clear,
+                        in: RoundedRectangle(cornerRadius: 10)
+                    )
                 }
             }
             .padding(.vertical, 8)

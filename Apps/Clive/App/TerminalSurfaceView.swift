@@ -183,6 +183,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private let controls = TerminalBottomControls()
     private var terminalBottomToKeyboardGuide: NSLayoutConstraint!
     private var terminalBottomToControls: NSLayoutConstraint!
+    private var controlsBottomToKeyboardGuide: NSLayoutConstraint!
 
     #if DEBUG
     private let previewTintView = UIView()
@@ -208,6 +209,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         terminal.addGestureRecognizer(focusGesture)
         terminalBottomToKeyboardGuide = terminal.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor)
         terminalBottomToControls = terminal.bottomAnchor.constraint(equalTo: controls.topAnchor)
+        controlsBottomToKeyboardGuide = controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor, constant: -(TerminalSurfaceConfiguration.bottomControlSafeAreaSpacing - 2))
         NSLayoutConstraint.activate([
             terminal.topAnchor.constraint(equalTo: topAnchor), terminal.leadingAnchor.constraint(equalTo: leadingAnchor), terminal.trailingAnchor.constraint(equalTo: trailingAnchor),
             // Keep the terminal above the complete bottom control row in both
@@ -215,7 +217,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             // terminal output.
             terminalBottomToControls,
             controls.leadingAnchor.constraint(equalTo: leadingAnchor), controls.trailingAnchor.constraint(equalTo: trailingAnchor),
-            controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor), controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
+            controlsBottomToKeyboardGuide, controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
         ])
         #if DEBUG
         NSLayoutConstraint.activate([
@@ -274,6 +276,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     private func setKeyboardVisible(_ visible: Bool) {
         controls.setKeyboardVisible(visible)
+        controlsBottomToKeyboardGuide.constant = visible ? 0 : -(TerminalSurfaceConfiguration.bottomControlSafeAreaSpacing - 2)
         if visible {
             terminalBottomToKeyboardGuide.isActive = false
             terminalBottomToControls.isActive = true
@@ -475,6 +478,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
 @MainActor
 enum TerminalSurfaceConfiguration {
+    static let bottomControlSafeAreaSpacing: CGFloat = 24
     static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     static let scrollsToTop = false
     static let contentPadding: CGFloat = 2
