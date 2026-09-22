@@ -79,7 +79,6 @@ struct WorkspaceView: View {
     @State private var keyboardVisible = false
     @State private var keyboardWasVisibleBeforeSidebar = false
     @State private var terminalMenuVisible = false
-    @State private var terminalTitleVisible = true
     @Namespace private var toolbarControlTransition
 
     init(
@@ -122,12 +121,6 @@ struct WorkspaceView: View {
             keyboardVisible = frame.minY < UIScreen.main.bounds.height && frame.maxY > 0
         }
         .onChange(of: coordinator.preferences.value.allowsCellularConnections) { _, _ in coordinator.cellularPreferenceChanged() }
-        .onChange(of: sidebarIsVisible) { _, isVisible in
-            guard !isVisible else { return }
-            withAnimation(.easeOut(duration: 0.2)) {
-                terminalTitleVisible = true
-            }
-        }
         .onChange(of: coordinator.presentedScreen) { _, screen in
             guard screen == .terminalList else { return }
             openSidebar()
@@ -317,9 +310,8 @@ struct WorkspaceView: View {
     private var terminalHeader: some View {
         HStack(spacing: 8) {
             terminalSidebarButton
-            if !coordinator.sessions.isEmpty, terminalTitleVisible {
+            if !coordinator.sessions.isEmpty {
                 terminalTitleMenu
-                    .transition(.move(edge: .top))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             terminalActions
@@ -366,7 +358,6 @@ struct WorkspaceView: View {
         }
         .accessibilityLabel("Terminal actions")
         .accessibilityIdentifier("terminal-actions-button")
-        .matchedGeometryEffect(id: "terminal-actions", in: toolbarControlTransition)
     }
 
     private var terminalTitleMenu: some View {
@@ -375,7 +366,7 @@ struct WorkspaceView: View {
                 title: coordinator.selectedSession?.descriptor.label ?? "No terminal",
                 subtitle: coordinator.selectedSession.flatMap { terminalOutputSubtitle(for: $0) },
                 titleColor: .white,
-                showsChevron: true
+                showsChevron: false
             )
             .frame(minHeight: 44, alignment: .leading)
             .frame(maxWidth: 280, alignment: .leading)
@@ -462,7 +453,6 @@ struct WorkspaceView: View {
 
     private func openSidebar() {
         terminalMenuVisible = false
-        terminalTitleVisible = false
         keyboardWasVisibleBeforeSidebar = keyboardVisible
         dismissKeyboard()
         if horizontalSizeClass == .compact {
