@@ -16,6 +16,7 @@ struct TerminalInputControlPolicy {
 final class TerminalKeyboardAccessory: UIView {
     private enum Modifier: String { case shift, control, option, command }
     private static let compactControlSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+    private static let enterSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
     private let send: (Data) -> Void
     private let scrollView = UIScrollView()
     private let row = UIStackView()
@@ -60,17 +61,21 @@ final class TerminalKeyboardAccessory: UIView {
         enterButton.setImage(
             UIImage(
                 systemName: "arrow.turn.down.left",
-                withConfiguration: Self.compactControlSymbolConfiguration
+                withConfiguration: Self.enterSymbolConfiguration
             ),
             for: .normal
         )
+        enterButton.setTitle("Enter", for: .normal)
+        enterButton.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 15), maximumPointSize: 22)
+        enterButton.translatesAutoresizingMaskIntoConstraints = false
+        enterButton.semanticContentAttribute = .forceRightToLeft
         enterButton.layer.cornerRadius = 22
         enterButton.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
         addSubview(scrollView)
         addSubview(compactStack)
+        addSubview(enterButton)
         scrollView.addSubview(row)
         compactStack.addArrangedSubview(directionsGroup)
-        compactStack.addArrangedSubview(enterButton)
         directionsGroup.contentView.addSubview(directionsStack)
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor), scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -81,10 +86,12 @@ final class TerminalKeyboardAccessory: UIView {
             row.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
             row.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
             compactStack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            compactStack.topAnchor.constraint(equalTo: topAnchor),
             compactStack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            compactStack.heightAnchor.constraint(equalToConstant: 88),
             compactStack.widthAnchor.constraint(equalToConstant: 44),
             directionsGroup.heightAnchor.constraint(equalToConstant: 88),
+            enterButton.bottomAnchor.constraint(equalTo: bottomAnchor),
+            enterButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 92),
             enterButton.heightAnchor.constraint(equalToConstant: 44),
             directionsStack.leadingAnchor.constraint(equalTo: directionsGroup.contentView.leadingAnchor),
             directionsStack.trailingAnchor.constraint(equalTo: directionsGroup.contentView.trailingAnchor),
@@ -102,11 +109,14 @@ final class TerminalKeyboardAccessory: UIView {
         rebuildRow()
     }
 
+    var compactEnterButton: UIView { enterButton }
+
     private func rebuildRow() {
         row.arrangedSubviews.forEach { row.removeArrangedSubview($0); $0.removeFromSuperview() }
         directionsStack.arrangedSubviews.forEach { directionsStack.removeArrangedSubview($0); $0.removeFromSuperview() }
         scrollView.isHidden = !expanded
         compactStack.isHidden = expanded
+        enterButton.isHidden = expanded
         guard expanded else {
             [
                 ("arrow.up", "up", "Up", "\u{1b}[A"),

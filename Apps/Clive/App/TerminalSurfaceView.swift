@@ -293,7 +293,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private let shortcutsGroup = UIVisualEffectView(effect: nil)
     private let rowHost = UIView()
     private var compactKeyRowTrailing: NSLayoutConstraint!
-    private var compactKeyRowWidth: NSLayoutConstraint!
+    private var compactKeyRowLeading: NSLayoutConstraint!
     private var expandedKeyRowLeading: NSLayoutConstraint!
     private var expandedKeyRowTrailing: NSLayoutConstraint!
     private var controlsHeight: NSLayoutConstraint!
@@ -313,7 +313,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             $0.translatesAutoresizingMaskIntoConstraints = false
             $0.layer.cornerRadius = 22
             $0.layer.cornerCurve = .continuous
-            $0.clipsToBounds = true
+            $0.clipsToBounds = $0 !== keyRowGroup
             addSubview($0)
         }
         keyboardButton.accessibilityIdentifier = "terminal-keyboard-button"
@@ -334,16 +334,16 @@ struct TerminalSurfaceView: UIViewRepresentable {
             shortcutButton.leadingAnchor.constraint(equalTo: shortcutsGroup.contentView.leadingAnchor), shortcutButton.trailingAnchor.constraint(equalTo: shortcutsGroup.contentView.trailingAnchor), shortcutButton.topAnchor.constraint(equalTo: shortcutsGroup.contentView.topAnchor), shortcutButton.bottomAnchor.constraint(equalTo: shortcutsGroup.contentView.bottomAnchor),
             rowHost.leadingAnchor.constraint(equalTo: keyRowGroup.contentView.leadingAnchor), rowHost.trailingAnchor.constraint(equalTo: keyRowGroup.contentView.trailingAnchor), rowHost.topAnchor.constraint(equalTo: keyRowGroup.contentView.topAnchor), rowHost.bottomAnchor.constraint(equalTo: keyRowGroup.contentView.bottomAnchor),
         ])
+        compactKeyRowLeading = keyRowGroup.leadingAnchor.constraint(equalTo: shortcutsGroup.trailingAnchor, constant: 4)
         compactKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8)
-        compactKeyRowWidth = keyRowGroup.widthAnchor.constraint(equalToConstant: 44)
         expandedKeyRowLeading = keyRowGroup.leadingAnchor.constraint(equalTo: shortcutsGroup.trailingAnchor, constant: 4)
         expandedKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: keyboardGroup.leadingAnchor, constant: -4)
         controlsHeight = heightAnchor.constraint(equalToConstant: 144)
         keyRowHeight = keyRowGroup.heightAnchor.constraint(equalToConstant: 140)
         NSLayoutConstraint.activate([
             keyRowGroup.centerYAnchor.constraint(equalTo: centerYAnchor), keyRowHeight,
+            compactKeyRowLeading,
             compactKeyRowTrailing,
-            compactKeyRowWidth,
             controlsHeight,
         ])
         shortcutButton.setImage(
@@ -370,7 +370,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func installKeyRow(_ row: TerminalKeyboardAccessory) {
         keyRow = row; row.translatesAutoresizingMaskIntoConstraints = false; rowHost.addSubview(row)
-        NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo: rowHost.leadingAnchor), row.trailingAnchor.constraint(equalTo: rowHost.trailingAnchor), row.topAnchor.constraint(equalTo: rowHost.topAnchor), row.bottomAnchor.constraint(equalTo: rowHost.bottomAnchor)])
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: rowHost.leadingAnchor), row.trailingAnchor.constraint(equalTo: rowHost.trailingAnchor),
+            row.topAnchor.constraint(equalTo: rowHost.topAnchor), row.bottomAnchor.constraint(equalTo: rowHost.bottomAnchor),
+            row.compactEnterButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+        ])
     }
 
     #if DEBUG
@@ -441,14 +445,16 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyboardGroup.isHidden = !expanded
         keyRow?.setKeyboardVisible(expanded)
         keyRowGroup.isHidden = false
-        controlsHeight.constant = compact ? 144 : 48
-        keyRowHeight.constant = compact ? 140 : 44
+        // Compact mode reserves only the shared bottom button row. The arrow
+        // strip intentionally overflows upward from that row into the terminal.
+        controlsHeight.constant = 48
+        keyRowHeight.constant = 44
         if expanded {
-            NSLayoutConstraint.deactivate([compactKeyRowTrailing, compactKeyRowWidth])
+            NSLayoutConstraint.deactivate([compactKeyRowLeading, compactKeyRowTrailing])
             NSLayoutConstraint.activate([expandedKeyRowLeading, expandedKeyRowTrailing])
         } else {
             NSLayoutConstraint.deactivate([expandedKeyRowLeading, expandedKeyRowTrailing])
-            NSLayoutConstraint.activate([compactKeyRowTrailing, compactKeyRowWidth])
+            NSLayoutConstraint.activate([compactKeyRowLeading, compactKeyRowTrailing])
         }
         if compact {
             keyRowGroup.effect = nil

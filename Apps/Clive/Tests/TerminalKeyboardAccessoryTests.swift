@@ -78,7 +78,11 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
             XCTAssertGreaterThan(controls.keyRowControlFrame.width, 0)
             XCTAssertLessThan(controls.shortcutsControlFrame.maxX, controls.keyRowControlFrame.minX)
             XCTAssertEqual(controls.keyRowControlFrame.maxX, controls.frame.width - 8, accuracy: 0.5)
-            XCTAssertEqual((accessoryButton(in: controls, identifier: "enter") as? TerminalKeyButton)?.backgroundColor, .white)
+            let enter = try XCTUnwrap(accessoryButton(in: controls, identifier: "enter") as? TerminalKeyButton)
+            XCTAssertEqual(enter.backgroundColor, .white)
+            XCTAssertEqual(enter.title(for: .normal), "Enter")
+            XCTAssertEqual(controls.keyRowControlFrame.height, 44, accuracy: 0.5)
+            XCTAssertEqual(enter.convert(enter.bounds, to: controls).midX, controls.bounds.midX, accuracy: 0.5)
 
             controls.setKeyboardVisible(true)
             controls.layoutIfNeeded()

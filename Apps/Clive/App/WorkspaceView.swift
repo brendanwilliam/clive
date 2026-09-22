@@ -28,8 +28,7 @@ private struct ClivePreviewBoundaryModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         #if DEBUG
-        if isVisible {
-            content
+        if isVisible {               content
                 .overlay {
                     RoundedRectangle(cornerRadius: 1)
                         .stroke(color.opacity(0.9), lineWidth: 1)
@@ -516,8 +515,9 @@ struct WorkspaceView: View {
     private func terminalSidebar(topSafeAreaInset: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
-                terminalSidebarButton
+                drawerSettingsButton
                 Spacer(minLength: 0)
+                terminalSidebarButton
             }
             .padding(.horizontal, 16)
             .frame(height: 60)
@@ -561,22 +561,7 @@ struct WorkspaceView: View {
             .listStyle(.plain)
             .listRowSpacing(DrawerRowRevealPolicy.rowSpacing)
             .scrollContentBackground(.hidden)
-            if let current = coordinator.selectedMac {
-                Divider()
-                HStack(spacing: 12) {
-                    Button { navigate { coordinator.showSettings() } } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "laptopcomputer").frame(width: 38, height: 38)
-                    Text(current.displayName)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
-                            Spacer(minLength: 8)
-                        }
-                    }.buttonStyle(.plain).accessibilityIdentifier("drawer-settings-button")
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 10)
-            } else {
+            if coordinator.selectedMac == nil {
                 Divider()
                 Button { coordinator.dismissPresentedScreen(); showingScanner = true } label: {
                     Label("Add connection", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity, alignment: .leading).padding(16)
@@ -589,6 +574,22 @@ struct WorkspaceView: View {
         .background {
             Color.clear.cliveClearGlassBackground(in: Rectangle())
         }
+    }
+
+    private var drawerSettingsButton: some View {
+        Button { navigate { coordinator.showSettings() } } label: {
+            Image(systemName: "gearshape")
+                .font(.title3)
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background {
+                    Color.clear.cliveGlassBackground(in: Circle())
+                }
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
+        .accessibilityIdentifier("drawer-settings-button")
     }
 
     private var connectedSessions: [WorkspaceSession] {
