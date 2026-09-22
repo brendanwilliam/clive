@@ -37,11 +37,13 @@ final class TerminalKeyboardAccessory: UIView {
         row.translatesAutoresizingMaskIntoConstraints = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        compactStack.axis = .vertical
-        compactStack.spacing = 8
+        compactStack.axis = .horizontal
+        compactStack.spacing = 0
+        compactStack.distribution = .equalCentering
         compactStack.translatesAutoresizingMaskIntoConstraints = false
-        directionsStack.axis = .vertical
-        directionsStack.distribution = .fillEqually
+        directionsStack.axis = .horizontal
+        directionsStack.distribution = .equalSpacing
+        directionsStack.spacing = 8
         directionsStack.translatesAutoresizingMaskIntoConstraints = false
         directionsGroup.translatesAutoresizingMaskIntoConstraints = false
         directionsGroup.layer.cornerRadius = 22
@@ -67,13 +69,17 @@ final class TerminalKeyboardAccessory: UIView {
         )
         enterButton.setTitle("Enter", for: .normal)
         enterButton.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 15), maximumPointSize: 22)
+        enterButton.contentEdgeInsets = .zero
+        enterButton.titleEdgeInsets = .zero
+        enterButton.imageEdgeInsets = .zero
+        enterButton.setContentHuggingPriority(.required, for: .horizontal)
+        enterButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         enterButton.translatesAutoresizingMaskIntoConstraints = false
         enterButton.semanticContentAttribute = .forceRightToLeft
         enterButton.layer.cornerRadius = 22
         enterButton.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
         addSubview(scrollView)
         addSubview(compactStack)
-        addSubview(enterButton)
         scrollView.addSubview(row)
         compactStack.addArrangedSubview(directionsGroup)
         directionsGroup.contentView.addSubview(directionsStack)
@@ -85,13 +91,17 @@ final class TerminalKeyboardAccessory: UIView {
             row.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
             row.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
             row.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
-            compactStack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            compactStack.centerXAnchor.constraint(equalTo: centerXAnchor),
             compactStack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            compactStack.heightAnchor.constraint(equalToConstant: 88),
-            compactStack.widthAnchor.constraint(equalToConstant: 44),
-            directionsGroup.heightAnchor.constraint(equalToConstant: 88),
-            enterButton.bottomAnchor.constraint(equalTo: bottomAnchor),
-            enterButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 92),
+            compactStack.heightAnchor.constraint(equalToConstant: 44),
+            compactStack.widthAnchor.constraint(equalToConstant: 192),
+            directionsGroup.heightAnchor.constraint(equalToConstant: 44),
+            // The compact group has fixed arrow and Enter widths so the stack
+            // cannot stretch the center key to fill the available row.
+            directionsGroup.widthAnchor.constraint(equalToConstant: 192),
+            // Keep the compact center group tight; the expanded keyboard row
+            // does not use this button.
+            enterButton.widthAnchor.constraint(equalToConstant: 100),
             enterButton.heightAnchor.constraint(equalToConstant: 44),
             directionsStack.leadingAnchor.constraint(equalTo: directionsGroup.contentView.leadingAnchor),
             directionsStack.trailingAnchor.constraint(equalTo: directionsGroup.contentView.trailingAnchor),
@@ -118,12 +128,11 @@ final class TerminalKeyboardAccessory: UIView {
         compactStack.isHidden = expanded
         enterButton.isHidden = expanded
         guard expanded else {
-            [
-                ("arrow.up", "up", "Up", "\u{1b}[A"),
-                ("arrow.down", "down", "Down", "\u{1b}[B"),
-            ].forEach { title, identifier, label, input in
-                directionsStack.addArrangedSubview(makeSymbolButton(symbolName: title, identifier: identifier, label: label, input: input))
-            }
+            directionsStack.addArrangedSubview(makeSymbolButton(symbolName: "arrow.down", identifier: "down", label: "Down", input: "\u{1b}[B"))
+            directionsStack.addArrangedSubview(enterButton)
+            directionsStack.addArrangedSubview(makeSymbolButton(symbolName: "arrow.up", identifier: "up", label: "Up", input: "\u{1b}[A"))
+            directionsStack.arrangedSubviews.first?.widthAnchor.constraint(equalToConstant: 38).isActive = true
+            directionsStack.arrangedSubviews.last?.widthAnchor.constraint(equalToConstant: 38).isActive = true
             return
         }
         let keys: [(String, String, String, String?)] = expanded

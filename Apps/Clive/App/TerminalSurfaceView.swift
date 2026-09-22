@@ -210,9 +210,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
         terminalBottomToControls = terminal.bottomAnchor.constraint(equalTo: controls.topAnchor)
         NSLayoutConstraint.activate([
             terminal.topAnchor.constraint(equalTo: topAnchor), terminal.leadingAnchor.constraint(equalTo: leadingAnchor), terminal.trailingAnchor.constraint(equalTo: trailingAnchor),
-            // In compact mode, the arrow strip floats over the terminal. When the
-            // keyboard is expanded, preserve the existing control-bar spacing.
-            terminalBottomToKeyboardGuide,
+            // Keep the terminal above the complete bottom control row in both
+            // compact and keyboard modes. Compact controls no longer float over
+            // terminal output.
+            terminalBottomToControls,
             controls.leadingAnchor.constraint(equalTo: leadingAnchor), controls.trailingAnchor.constraint(equalTo: trailingAnchor),
             controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor), controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
         ])
@@ -277,8 +278,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
             terminalBottomToKeyboardGuide.isActive = false
             terminalBottomToControls.isActive = true
         } else {
-            terminalBottomToControls.isActive = false
-            terminalBottomToKeyboardGuide.isActive = true
+            terminalBottomToKeyboardGuide.isActive = false
+            terminalBottomToControls.isActive = true
         }
     }
 }
@@ -335,7 +336,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             rowHost.leadingAnchor.constraint(equalTo: keyRowGroup.contentView.leadingAnchor), rowHost.trailingAnchor.constraint(equalTo: keyRowGroup.contentView.trailingAnchor), rowHost.topAnchor.constraint(equalTo: keyRowGroup.contentView.topAnchor), rowHost.bottomAnchor.constraint(equalTo: keyRowGroup.contentView.bottomAnchor),
         ])
         compactKeyRowLeading = keyRowGroup.leadingAnchor.constraint(equalTo: shortcutsGroup.trailingAnchor, constant: 4)
-        compactKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8)
+        compactKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: keyboardGroup.leadingAnchor, constant: -4)
         expandedKeyRowLeading = keyRowGroup.leadingAnchor.constraint(equalTo: shortcutsGroup.trailingAnchor, constant: 4)
         expandedKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: keyboardGroup.leadingAnchor, constant: -4)
         controlsHeight = heightAnchor.constraint(equalToConstant: 144)
@@ -373,7 +374,6 @@ struct TerminalSurfaceView: UIViewRepresentable {
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: rowHost.leadingAnchor), row.trailingAnchor.constraint(equalTo: rowHost.trailingAnchor),
             row.topAnchor.constraint(equalTo: rowHost.topAnchor), row.bottomAnchor.constraint(equalTo: rowHost.bottomAnchor),
-            row.compactEnterButton.centerXAnchor.constraint(equalTo: centerXAnchor),
         ])
     }
 
@@ -441,12 +441,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyboardButton.accessibilityLabel = keyboardVisible ? "Hide keyboard" : "Show keyboard"
         let expanded = policy.state == .keyboard
         let compact = policy.state == .compact
-        keyboardButton.isHidden = !expanded
-        keyboardGroup.isHidden = !expanded
+        keyboardButton.isHidden = false
+        keyboardGroup.isHidden = false
         keyRow?.setKeyboardVisible(expanded)
         keyRowGroup.isHidden = false
-        // Compact mode reserves only the shared bottom button row. The arrow
-        // strip intentionally overflows upward from that row into the terminal.
+        // Compact mode uses the same fixed-height row as the keyboard button;
+        // terminal output ends above it rather than rendering underneath it.
         controlsHeight.constant = 48
         keyRowHeight.constant = 44
         if expanded {

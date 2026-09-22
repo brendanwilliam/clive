@@ -14,7 +14,7 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertEqual(policy.state, .compact)
     }
 
-    func testToolbarStartsWithVerticallyStackedDownUpAndSeparateEnter() throws {
+    func testToolbarStartsWithHorizontalDownEnterUpControls() throws {
         let accessory = TerminalKeyboardAccessory(send: { _ in })
         for identifier in ["down", "up", "enter"] {
             XCTAssertNotNil(accessory.descendant(withIdentifier: identifier))
@@ -72,16 +72,17 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
             controls.layoutIfNeeded()
 
             XCTAssertFalse(controls.keyRowControlFrame.intersects(controls.shortcutsControlFrame))
-            XCTAssertFalse(controls.isKeyboardControlVisible)
+            XCTAssertTrue(controls.isKeyboardControlVisible)
             XCTAssertTrue(controls.isKeyRowControlVisible)
             XCTAssertTrue(controls.isShortcutsControlVisible)
             XCTAssertGreaterThan(controls.keyRowControlFrame.width, 0)
             XCTAssertLessThan(controls.shortcutsControlFrame.maxX, controls.keyRowControlFrame.minX)
-            XCTAssertEqual(controls.keyRowControlFrame.maxX, controls.frame.width - 8, accuracy: 0.5)
+            XCTAssertEqual(controls.keyRowControlFrame.maxX, controls.keyboardControlFrame.minX - 4, accuracy: 0.5)
             let enter = try XCTUnwrap(accessoryButton(in: controls, identifier: "enter") as? TerminalKeyButton)
             XCTAssertEqual(enter.backgroundColor, .white)
             XCTAssertEqual(enter.title(for: .normal), "Enter")
             XCTAssertEqual(controls.keyRowControlFrame.height, 44, accuracy: 0.5)
+            XCTAssertEqual(enter.bounds.width, 100, accuracy: 0.5)
             XCTAssertEqual(enter.convert(enter.bounds, to: controls).midX, controls.bounds.midX, accuracy: 0.5)
 
             controls.setKeyboardVisible(true)
