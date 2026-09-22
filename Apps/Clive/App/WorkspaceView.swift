@@ -131,7 +131,7 @@ struct WorkspaceView: View {
             if state == .active { presentConnectionSetupGuideIfNeeded() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { coordinator.sceneWillLeaveForeground() }
+            if phase == .background { coordinator.sceneDidEnterBackground() }
             else if coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
             else if ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
         }

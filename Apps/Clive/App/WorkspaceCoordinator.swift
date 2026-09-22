@@ -243,9 +243,11 @@ enum SceneTransitionPolicy {
         let changed = newRoutes != routes
         routes = newRoutes
         guard changed else { return }
-        retryTask?.cancel()
-        if reconnecting { routeIndex = 0; attemptReconnect() }
-        else if reconnectPolicy.shouldBeginRetryAfterRouteChange(hasOpened: hasOpened, reconnecting: reconnecting) { beginReconnect() }
+        if reconnecting {
+            // The current attempt or its scheduled retry will observe the new
+            // routes. Do not cancel an in-flight connection for route metadata
+            // churn; that creates a second reconnect race during handoff.
+        } else if reconnectPolicy.shouldBeginRetryAfterRouteChange(hasOpened: hasOpened, reconnecting: reconnecting) { beginReconnect() }
         else if Self.shouldReconnectAfterRouteChange(activeRouteKind: activeRouteKind, newRoutes: routes, hasOpened: hasOpened) {
             // Bonjour can report the LAN route disappearing before the cloud
             // rendezvous refresh has supplied the cellular route. Keep the
@@ -281,6 +283,8 @@ enum SceneTransitionPolicy {
         }
         switch value {
         case .networkError, .disconnected:
+            reconnectNoticeTask?.cancel()
+            showsReconnectNotice = false
             if reconnecting { advanceReconnect() }
             else if routeIndex + 1 < routes.count {
                 routeIndex += 1; connectCurrentRoute()
@@ -770,11 +774,11 @@ struct LocalStateResetter {
         Task { await macs.refreshRendezvous(); startFreshTerminal(on: mac) }
     }
 
-    func sceneWillLeaveForeground() {
+    func sceneDidEnterBackground() {
         guard SceneTransitionPolicy.shouldSuspendLiveSessions(
             isSceneActive: isSceneActive,
             hasCapturedForeground: hasCapturedForeground,
-            authenticationInFlight: authenticationInFlight
+            authenticationInFlight: false
         ) else { return }
         isSceneActive = false
         hasCapturedForeground = true
