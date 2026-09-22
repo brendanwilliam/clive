@@ -208,7 +208,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
         focusGesture.cancelsTouchesInView = false
         terminal.addGestureRecognizer(focusGesture)
         terminalBottomToKeyboardGuide = terminal.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor)
-        terminalBottomToControls = terminal.bottomAnchor.constraint(equalTo: controls.topAnchor)
+        terminalBottomToControls = terminal.bottomAnchor.constraint(
+            equalTo: controls.topAnchor,
+            constant: -TerminalSurfaceConfiguration.bottomControlTopSpacing
+        )
         controlsBottomToKeyboardGuide = controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor, constant: -(TerminalSurfaceConfiguration.bottomControlSafeAreaSpacing - 2))
         NSLayoutConstraint.activate([
             terminal.topAnchor.constraint(equalTo: topAnchor), terminal.leadingAnchor.constraint(equalTo: leadingAnchor), terminal.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -478,6 +481,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
 @MainActor
 enum TerminalSurfaceConfiguration {
+    static let bottomControlTopSpacing: CGFloat = 12
     static let bottomControlSafeAreaSpacing: CGFloat = 24
     static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     static let scrollsToTop = false
