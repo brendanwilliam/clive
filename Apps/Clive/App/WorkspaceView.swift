@@ -312,12 +312,15 @@ struct WorkspaceView: View {
     private var terminalHeader: some View {
         HStack(spacing: 8) {
             terminalSidebarButton
-            if !coordinator.sessions.isEmpty {
+            if coordinator.sessions.isEmpty {
+                Spacer(minLength: 0)
+            } else {
                 terminalTitleMenu
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             terminalActions
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var connectionPresentation: ConnectionStatusPresentation {
