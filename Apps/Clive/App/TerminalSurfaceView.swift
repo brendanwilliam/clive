@@ -13,15 +13,45 @@ struct TerminalSurfaceView: UIViewRepresentable {
     let isSelected: Bool
     let shortcuts: [CLIShortcut]
     let openDrawer: () -> Void
+    let createTerminal: () -> Void
     let selectAdjacentTerminal: (Bool) -> Void
     let runShortcut: (CLIShortcut) -> Bool
     let manageShortcuts: () -> Void
+    let previewOutput: String?
+    let previewBoundaries: Bool
+
+    init(
+        session: SessionClient?,
+        accessibilityIdentifier: String,
+        isSelected: Bool,
+        shortcuts: [CLIShortcut],
+        openDrawer: @escaping () -> Void,
+        createTerminal: @escaping () -> Void = {},
+        selectAdjacentTerminal: @escaping (Bool) -> Void,
+        runShortcut: @escaping (CLIShortcut) -> Bool,
+        manageShortcuts: @escaping () -> Void,
+        previewOutput: String? = nil,
+        previewBoundaries: Bool = false
+    ) {
+        self.session = session
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.isSelected = isSelected
+        self.shortcuts = shortcuts
+        self.openDrawer = openDrawer
+        self.createTerminal = createTerminal
+        self.selectAdjacentTerminal = selectAdjacentTerminal
+        self.runShortcut = runShortcut
+        self.manageShortcuts = manageShortcuts
+        self.previewOutput = previewOutput
+        self.previewBoundaries = previewBoundaries
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             session: session,
             shortcuts: shortcuts,
             openDrawer: openDrawer,
+            createTerminal: createTerminal,
             selectAdjacentTerminal: selectAdjacentTerminal,
             runShortcut: runShortcut,
             manageShortcuts: manageShortcuts
@@ -30,6 +60,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> TerminalSurfaceContainer {
         let container = TerminalSurfaceContainer()
+        container.setPreviewBoundaries(previewBoundaries)
         let terminal = container.terminal
         terminal.terminalDelegate = context.coordinator
         // SwiftTerm installs its own TerminalAccessory by default. Clive owns the
@@ -44,11 +75,16 @@ struct TerminalSurfaceView: UIViewRepresentable {
         terminal.keyboardDismissMode = TerminalSurfaceConfiguration.keyboardDismissMode
         terminal.scrollsToTop = TerminalSurfaceConfiguration.scrollsToTop
         context.coordinator.install(on: container)
-        if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+        if let previewOutput {
+            terminal.feed(byteArray: ArraySlice(("\u{1b}[2 q" + previewOutput).utf8))
+        } else if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
             let fixtureOutput = (1...80).map { $0 == 80 ? "https://example.com" : "fixture line \($0)" }.joined(separator: "\r\n")
             terminal.feed(byteArray: ArraySlice(("\u{1b}[2 q" + fixtureOutput).utf8))
         }
-        session?.onOutput = { [weak terminal] data in DispatchQueue.main.async { terminal?.feed(byteArray: ArraySlice(data)) } }
+        session?.onOutput = { [weak terminal, weak session] data, generation in DispatchQueue.main.async {
+            guard generation == session?.currentGeneration else { return }
+            terminal?.feed(byteArray: ArraySlice(data))
+        } }
         return container
     }
 
@@ -56,6 +92,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         context.coordinator.session = session
         context.coordinator.shortcuts = shortcuts
         context.coordinator.openDrawer = openDrawer
+        context.coordinator.createTerminal = createTerminal
         context.coordinator.selectAdjacentTerminal = selectAdjacentTerminal
         context.coordinator.runShortcut = runShortcut
         context.coordinator.manageShortcuts = manageShortcuts
@@ -64,6 +101,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             run: runShortcut,
             manage: manageShortcuts
         )
+        uiView.setPreviewBoundaries(previewBoundaries)
         uiView.terminal.accessibilityIdentifier = accessibilityIdentifier
         uiView.terminal.accessibilityValue = isSelected ? "Selected" : "Not selected"
     }
@@ -72,18 +110,21 @@ struct TerminalSurfaceView: UIViewRepresentable {
         var session: SessionClient?
         var shortcuts: [CLIShortcut]
         var openDrawer: () -> Void
+        var createTerminal: () -> Void
         var selectAdjacentTerminal: (Bool) -> Void
         var runShortcut: (CLIShortcut) -> Bool
         var manageShortcuts: () -> Void
         private weak var container: TerminalSurfaceContainer?
         private var accessory: TerminalKeyboardAccessory?
         private var edgeObserver: TerminalLeftEdgeObserver?
+        private var rightEdgeObserver: TerminalRightEdgeObserver?
         private var horizontalSwitchObserver: TerminalHorizontalSwitchObserver?
 
         init(
             session: SessionClient?,
             shortcuts: [CLIShortcut],
             openDrawer: @escaping () -> Void,
+            createTerminal: @escaping () -> Void,
             selectAdjacentTerminal: @escaping (Bool) -> Void,
             runShortcut: @escaping (CLIShortcut) -> Bool,
             manageShortcuts: @escaping () -> Void
@@ -91,6 +132,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             self.session = session
             self.shortcuts = shortcuts
             self.openDrawer = openDrawer
+            self.createTerminal = createTerminal
             self.selectAdjacentTerminal = selectAdjacentTerminal
             self.runShortcut = runShortcut
             self.manageShortcuts = manageShortcuts
@@ -109,6 +151,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
                 manage: manageShortcuts
             )
             edgeObserver = TerminalLeftEdgeObserver.install(on: container.terminal) { [weak self] in self?.openDrawer() }
+            rightEdgeObserver = TerminalRightEdgeObserver.install(on: container.terminal) { [weak self] in self?.createTerminal() }
             horizontalSwitchObserver = TerminalHorizontalSwitchObserver.install(on: container.terminal) { [weak self] forward in
                 self?.selectAdjacentTerminal(forward)
             }
@@ -141,22 +184,55 @@ struct TerminalSurfaceView: UIViewRepresentable {
     var onKeyboardRequested: (() -> Void)?
     var onKeyboardDismissRequested: (() -> Void)?
     private let controls = TerminalBottomControls()
+    private var terminalBottomToKeyboardGuide: NSLayoutConstraint!
+    private var terminalBottomToControls: NSLayoutConstraint!
+    private var controlsBottomToKeyboardGuide: NSLayoutConstraint!
+
+    #if DEBUG
+    private let previewTintView = UIView()
+    #endif
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         terminal.translatesAutoresizingMaskIntoConstraints = false
         controls.translatesAutoresizingMaskIntoConstraints = false
         addSubview(terminal)
+        #if DEBUG
+        previewTintView.translatesAutoresizingMaskIntoConstraints = false
+        // Deliberately stronger than the boundary tint so the preview-only
+        // terminal region is easy to distinguish from the surrounding layout.
+        previewTintView.backgroundColor = UIColor.systemCyan.withAlphaComponent(0.14)
+        previewTintView.isHidden = true
+        previewTintView.isUserInteractionEnabled = false
+        addSubview(previewTintView)
+        #endif
         addSubview(controls)
         let focusGesture = UITapGestureRecognizer(target: self, action: #selector(focusTerminal))
         focusGesture.cancelsTouchesInView = false
         terminal.addGestureRecognizer(focusGesture)
+        terminalBottomToKeyboardGuide = terminal.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor)
+        terminalBottomToControls = terminal.bottomAnchor.constraint(
+            equalTo: controls.topAnchor,
+            constant: -TerminalSurfaceConfiguration.bottomControlTopSpacing
+        )
+        controlsBottomToKeyboardGuide = controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor, constant: -(TerminalSurfaceConfiguration.bottomControlSafeAreaSpacing - 2))
         NSLayoutConstraint.activate([
             terminal.topAnchor.constraint(equalTo: topAnchor), terminal.leadingAnchor.constraint(equalTo: leadingAnchor), terminal.trailingAnchor.constraint(equalTo: trailingAnchor),
-            terminal.bottomAnchor.constraint(equalTo: controls.topAnchor),
+            // Keep the terminal above the complete bottom control row in both
+            // compact and keyboard modes. Compact controls no longer float over
+            // terminal output.
+            terminalBottomToControls,
             controls.leadingAnchor.constraint(equalTo: leadingAnchor), controls.trailingAnchor.constraint(equalTo: trailingAnchor),
-            controls.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor), controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
+            controlsBottomToKeyboardGuide, controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
         ])
+        #if DEBUG
+        NSLayoutConstraint.activate([
+            previewTintView.topAnchor.constraint(equalTo: terminal.topAnchor),
+            previewTintView.leadingAnchor.constraint(equalTo: terminal.leadingAnchor),
+            previewTintView.trailingAnchor.constraint(equalTo: terminal.trailingAnchor),
+            previewTintView.bottomAnchor.constraint(equalTo: terminal.bottomAnchor),
+        ])
+        #endif
         controls.onKeyboard = { [weak self] shown in shown ? self?.onKeyboardDismissRequested?() : self?.onKeyboardRequested?() }
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(dismissKeyboardRequested), name: .terminalKeyboardDismissRequested, object: nil)
@@ -182,6 +258,13 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func installKeyRow(_ row: TerminalKeyboardAccessory) { controls.installKeyRow(row) }
 
+    func setPreviewBoundaries(_ visible: Bool) {
+        controls.setPreviewBoundaries(visible)
+        #if DEBUG
+        previewTintView.isHidden = !visible
+        #endif
+    }
+
     func configureShortcutMenu(
         _ shortcuts: [CLIShortcut],
         run: @escaping (CLIShortcut) -> Bool,
@@ -194,7 +277,19 @@ struct TerminalSurfaceView: UIViewRepresentable {
         guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
               let window else { return }
         let keyboardVisible = window.convert(frame, from: nil).intersects(window.bounds) && frame.minY < window.bounds.height
-        controls.setKeyboardVisible(keyboardVisible)
+        setKeyboardVisible(keyboardVisible)
+    }
+
+    private func setKeyboardVisible(_ visible: Bool) {
+        controls.setKeyboardVisible(visible)
+        controlsBottomToKeyboardGuide.constant = visible ? 0 : -(TerminalSurfaceConfiguration.bottomControlSafeAreaSpacing - 2)
+        if visible {
+            terminalBottomToKeyboardGuide.isActive = false
+            terminalBottomToControls.isActive = true
+        } else {
+            terminalBottomToKeyboardGuide.isActive = false
+            terminalBottomToControls.isActive = true
+        }
     }
 }
 
@@ -208,7 +303,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private let shortcutsGroup = UIVisualEffectView(effect: nil)
     private let rowHost = UIView()
     private var compactKeyRowTrailing: NSLayoutConstraint!
-    private var compactKeyRowWidth: NSLayoutConstraint!
+    private var compactKeyRowLeading: NSLayoutConstraint!
     private var expandedKeyRowLeading: NSLayoutConstraint!
     private var expandedKeyRowTrailing: NSLayoutConstraint!
     private var controlsHeight: NSLayoutConstraint!
@@ -217,6 +312,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private var keyboardVisible = false
     private var policy = TerminalInputControlPolicy()
 
+    #if DEBUG
+    private let previewBoundaryLabel = UILabel()
+    #endif
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
@@ -224,7 +323,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
             $0.translatesAutoresizingMaskIntoConstraints = false
             $0.layer.cornerRadius = 22
             $0.layer.cornerCurve = .continuous
-            $0.clipsToBounds = true
+            $0.clipsToBounds = $0 !== keyRowGroup
             addSubview($0)
         }
         keyboardButton.accessibilityIdentifier = "terminal-keyboard-button"
@@ -245,16 +344,16 @@ struct TerminalSurfaceView: UIViewRepresentable {
             shortcutButton.leadingAnchor.constraint(equalTo: shortcutsGroup.contentView.leadingAnchor), shortcutButton.trailingAnchor.constraint(equalTo: shortcutsGroup.contentView.trailingAnchor), shortcutButton.topAnchor.constraint(equalTo: shortcutsGroup.contentView.topAnchor), shortcutButton.bottomAnchor.constraint(equalTo: shortcutsGroup.contentView.bottomAnchor),
             rowHost.leadingAnchor.constraint(equalTo: keyRowGroup.contentView.leadingAnchor), rowHost.trailingAnchor.constraint(equalTo: keyRowGroup.contentView.trailingAnchor), rowHost.topAnchor.constraint(equalTo: keyRowGroup.contentView.topAnchor), rowHost.bottomAnchor.constraint(equalTo: keyRowGroup.contentView.bottomAnchor),
         ])
-        compactKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8)
-        compactKeyRowWidth = keyRowGroup.widthAnchor.constraint(equalToConstant: 44)
+        compactKeyRowLeading = keyRowGroup.leadingAnchor.constraint(equalTo: shortcutsGroup.trailingAnchor, constant: 4)
+        compactKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: keyboardGroup.leadingAnchor, constant: -4)
         expandedKeyRowLeading = keyRowGroup.leadingAnchor.constraint(equalTo: shortcutsGroup.trailingAnchor, constant: 4)
         expandedKeyRowTrailing = keyRowGroup.trailingAnchor.constraint(equalTo: keyboardGroup.leadingAnchor, constant: -4)
         controlsHeight = heightAnchor.constraint(equalToConstant: 144)
         keyRowHeight = keyRowGroup.heightAnchor.constraint(equalToConstant: 140)
         NSLayoutConstraint.activate([
             keyRowGroup.centerYAnchor.constraint(equalTo: centerYAnchor), keyRowHeight,
+            compactKeyRowLeading,
             compactKeyRowTrailing,
-            compactKeyRowWidth,
             controlsHeight,
         ])
         shortcutButton.setImage(
@@ -281,8 +380,36 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
     func installKeyRow(_ row: TerminalKeyboardAccessory) {
         keyRow = row; row.translatesAutoresizingMaskIntoConstraints = false; rowHost.addSubview(row)
-        NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo: rowHost.leadingAnchor), row.trailingAnchor.constraint(equalTo: rowHost.trailingAnchor), row.topAnchor.constraint(equalTo: rowHost.topAnchor), row.bottomAnchor.constraint(equalTo: rowHost.bottomAnchor)])
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: rowHost.leadingAnchor), row.trailingAnchor.constraint(equalTo: rowHost.trailingAnchor),
+            row.topAnchor.constraint(equalTo: rowHost.topAnchor), row.bottomAnchor.constraint(equalTo: rowHost.bottomAnchor),
+        ])
     }
+
+    #if DEBUG
+    func setPreviewBoundaries(_ visible: Bool) {
+        layer.borderColor = UIColor.systemCyan.withAlphaComponent(0.9).cgColor
+        layer.borderWidth = visible ? 1 : 0
+        guard visible, previewBoundaryLabel.superview == nil else { return }
+
+        previewBoundaryLabel.translatesAutoresizingMaskIntoConstraints = false
+        previewBoundaryLabel.text = "Bottom buttons"
+        previewBoundaryLabel.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+        previewBoundaryLabel.textColor = .systemCyan
+        previewBoundaryLabel.backgroundColor = UIColor.black.withAlphaComponent(0.78)
+        previewBoundaryLabel.layer.cornerRadius = 4
+        previewBoundaryLabel.layer.masksToBounds = true
+        previewBoundaryLabel.isUserInteractionEnabled = false
+        addSubview(previewBoundaryLabel)
+        NSLayoutConstraint.activate([
+            previewBoundaryLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            previewBoundaryLabel.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+        ])
+    }
+    #else
+    func setPreviewBoundaries(_: Bool) {}
+    #endif
+
     func setKeyboardVisible(_ visible: Bool) { keyboardVisible = visible; policy.keyboardChanged(visible: visible); updateAppearance() }
     func configureShortcutMenu(
         shortcuts: [CLIShortcut],
@@ -291,13 +418,15 @@ struct TerminalSurfaceView: UIViewRepresentable {
     ) {
         let shortcutActions = shortcuts.map { shortcut in
             let command = shortcut.command.trimmingCharacters(in: .whitespacesAndNewlines)
-            return UIAction(
+            let action = UIAction(
                 title: shortcut.name.isEmpty ? "Unnamed shortcut" : shortcut.name,
                 image: UIImage(systemName: Self.shortcutSymbolName),
                 attributes: command.isEmpty ? .disabled : []
             ) { _ in
                 _ = run(shortcut)
             }
+            action.subtitle = ShortcutCommandPresentation.subtitle(for: command)
+            return action
         }
         let settings = UIAction(
             title: "Settings",
@@ -321,18 +450,20 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyboardButton.accessibilityLabel = keyboardVisible ? "Hide keyboard" : "Show keyboard"
         let expanded = policy.state == .keyboard
         let compact = policy.state == .compact
-        keyboardButton.isHidden = !expanded
-        keyboardGroup.isHidden = !expanded
+        keyboardButton.isHidden = false
+        keyboardGroup.isHidden = false
         keyRow?.setKeyboardVisible(expanded)
         keyRowGroup.isHidden = false
-        controlsHeight.constant = compact ? 144 : 48
-        keyRowHeight.constant = compact ? 140 : 44
+        // Compact mode uses the same fixed-height row as the keyboard button;
+        // terminal output ends above it rather than rendering underneath it.
+        controlsHeight.constant = 48
+        keyRowHeight.constant = 44
         if expanded {
-            NSLayoutConstraint.deactivate([compactKeyRowTrailing, compactKeyRowWidth])
+            NSLayoutConstraint.deactivate([compactKeyRowLeading, compactKeyRowTrailing])
             NSLayoutConstraint.activate([expandedKeyRowLeading, expandedKeyRowTrailing])
         } else {
             NSLayoutConstraint.deactivate([expandedKeyRowLeading, expandedKeyRowTrailing])
-            NSLayoutConstraint.activate([compactKeyRowTrailing, compactKeyRowWidth])
+            NSLayoutConstraint.activate([compactKeyRowLeading, compactKeyRowTrailing])
         }
         if compact {
             keyRowGroup.effect = nil
@@ -353,6 +484,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
 
 @MainActor
 enum TerminalSurfaceConfiguration {
+    static let bottomControlTopSpacing: CGFloat = 12
+    static let bottomControlSafeAreaSpacing: CGFloat = 24
     static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     static let scrollsToTop = false
     static let contentPadding: CGFloat = 2
@@ -388,6 +521,31 @@ enum TerminalSurfaceConfiguration {
     @objc private func handle(_ gesture: UIScreenEdgePanGestureRecognizer) {
         if gesture.state == .began { open() }
     }
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { view != nil }
+}
+
+@MainActor private final class TerminalRightEdgeObserver: NSObject, UIGestureRecognizerDelegate {
+    private weak var view: TerminalView?
+    private let create: () -> Void
+    private lazy var gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handle(_:)))
+
+    static func install(on view: TerminalView, create: @escaping () -> Void) -> TerminalRightEdgeObserver {
+        let observer = TerminalRightEdgeObserver(view: view, create: create)
+        observer.gesture.edges = .right
+        observer.gesture.delegate = observer
+        view.addGestureRecognizer(observer.gesture)
+        return observer
+    }
+
+    private init(view: TerminalView, create: @escaping () -> Void) {
+        self.view = view
+        self.create = create
+    }
+
+    @objc private func handle(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        if gesture.state == .began { create() }
+    }
+
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { view != nil }
 }
 

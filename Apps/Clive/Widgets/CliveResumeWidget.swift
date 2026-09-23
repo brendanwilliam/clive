@@ -100,3 +100,29 @@ struct CliveResumeWidget: Widget {
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
+
+#if DEBUG
+#Preview("New terminal — small", as: .systemSmall) {
+    CliveResumeWidget()
+} timeline: {
+    TerminalEntry(date: .now, action: newTerminalAction, title: "New terminal")
+}
+
+#Preview("Saved shortcut — small", as: .systemSmall) {
+    CliveResumeWidget()
+} timeline: {
+    TerminalEntry(date: .now, action: "preview-status", title: "Status")
+}
+
+#Preview("New terminal — medium", as: .systemMedium) {
+    CliveResumeWidget()
+} timeline: {
+    TerminalEntry(date: .now, action: newTerminalAction, title: "New terminal")
+}
+
+#Preview("Saved shortcut — medium", as: .systemMedium) {
+    CliveResumeWidget()
+} timeline: {
+    TerminalEntry(date: .now, action: "preview-status", title: "Status")
+}
+#endif

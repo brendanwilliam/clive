@@ -10,6 +10,16 @@ The terminal menu manages active shells, while the connection menu switches pair
 
 The generated project embeds a configurable terminal widget and publishes the **Resume Terminal** App Shortcut. A widget can start a new terminal or run one saved CLI shortcut in a new terminal. The app group shares only shortcut names and opaque IDs with the widget; command text, Mac details, output, certificates, and tokens remain in the app. Every widget launch returns to the biometric gate, creates a fresh TLS/PTY session in the configured default directory, and only then runs the selected command.
 
+## SwiftUI previews
+
+Open `Clive.xcodeproj`, select a SwiftUI file, and choose **Editor > Canvas** to find the
+named preview groups for the workspace, setup, settings, shortcuts, pairing scanner, and
+Resume Terminal widget. Use Canvas controls to change device, appearance, and widget size;
+choose **Resume** when a preview is paused. Preview fixtures are DEBUG-only and use fixed,
+in-memory data, so they never pair, authenticate, start the camera, access Keychain, write
+preferences, or publish widget timelines. Extend `ClivePreviewFixtures` (or the widget
+timeline entries) when adding a state, rather than calling a live service from a preview.
+
 Run the iOS unit tests after generating the project:
 
 ```sh

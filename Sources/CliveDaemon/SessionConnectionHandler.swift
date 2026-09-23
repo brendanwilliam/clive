@@ -4,6 +4,7 @@ import Network
 
 /// One authenticated TLS connection attaches to a daemon-owned PTY.
 final class SessionConnectionHandler: @unchecked Sendable {
+    static let firstFrameTimeout: TimeInterval = 10
     let identifier = UUID()
     private let deviceID: String
     private let peerCertificate: Data?
@@ -11,20 +12,23 @@ final class SessionConnectionHandler: @unchecked Sendable {
     private let localCapability: RendezvousCapability?
     private let sessions: TerminalSessionManager
     private let queue: DispatchQueue
+    private let firstFrameTimeout: TimeInterval
     private var framed: FramedConnection?
     private var sessionID: UUID?
     private var clientSessionID: UUID?
     private var opening = false
     private var subscribed = false
     private var closed = false
+    private var firstFrameDeadline: DispatchWorkItem?
     private let onClosed: @Sendable (UUID) -> Void
     private let validateGate: @Sendable (String, Data?) async -> Bool
     private let upgradePeer: @Sendable (String, Data, RendezvousCapability) async -> Void
     private let revokePeer: @Sendable (String, UUID) async -> Bool
     private let verifyReachability: @Sendable (String, UUID, Data?) async -> Bool
 
-    init(deviceID: String, peerCertificate: Data? = nil, requiresWANGate: Bool = false, localCapability: RendezvousCapability? = nil, sessions: TerminalSessionManager, queue: DispatchQueue, validateGate: @escaping @Sendable (String, Data?) async -> Bool = { _, _ in true }, upgradePeer: @escaping @Sendable (String, Data, RendezvousCapability) async -> Void = { _, _, _ in }, revokePeer: @escaping @Sendable (String, UUID) async -> Bool = { _, _ in false }, verifyReachability: @escaping @Sendable (String, UUID, Data?) async -> Bool = { _, _, _ in false }, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }) {
+    init(deviceID: String, peerCertificate: Data? = nil, requiresWANGate: Bool = false, localCapability: RendezvousCapability? = nil, sessions: TerminalSessionManager, queue: DispatchQueue, firstFrameTimeout: TimeInterval = SessionConnectionHandler.firstFrameTimeout, validateGate: @escaping @Sendable (String, Data?) async -> Bool = { _, _ in true }, upgradePeer: @escaping @Sendable (String, Data, RendezvousCapability) async -> Void = { _, _, _ in }, revokePeer: @escaping @Sendable (String, UUID) async -> Bool = { _, _ in false }, verifyReachability: @escaping @Sendable (String, UUID, Data?) async -> Bool = { _, _, _ in false }, onClosed: @escaping @Sendable (UUID) -> Void = { _ in }) {
         self.deviceID = deviceID; self.sessions = sessions; self.queue = queue
+        self.firstFrameTimeout = firstFrameTimeout
         self.peerCertificate = peerCertificate; self.requiresWANGate = requiresWANGate; self.localCapability = localCapability
         self.validateGate = validateGate; self.upgradePeer = upgradePeer
         self.revokePeer = revokePeer
@@ -38,10 +42,17 @@ final class SessionConnectionHandler: @unchecked Sendable {
         }, onClosed: { [weak self] in self?.close() })
         self.framed = framed
         framed.start(alreadyStarted: true)
+        let deadline = DispatchWorkItem { [weak self] in
+            guard let self, !self.closed, !self.opening, self.sessionID == nil, !self.subscribed else { return }
+            self.close()
+        }
+        firstFrameDeadline = deadline
+        queue.asyncAfter(deadline: .now() + firstFrameTimeout, execute: deadline)
     }
 
     func close(terminateSession: Bool = false) {
         guard !closed else { return }; closed = true
+        firstFrameDeadline?.cancel(); firstFrameDeadline = nil
         framed?.cancel(); framed = nil
         if subscribed { sessions.unsubscribe(identifier: identifier); subscribed = false }
         if let clientSessionID {
@@ -54,7 +65,9 @@ final class SessionConnectionHandler: @unchecked Sendable {
     func revoke() { queue.async { [weak self] in self?.fail(.revoked, "This iPhone was revoked") } }
 
     private func handle(_ frame: ProtocolFrame) {
+        guard !closed else { return }
         if sessionID == nil {
+            firstFrameDeadline?.cancel(); firstFrameDeadline = nil
             if subscribed, frame.kind == .sessionTerminateMany {
                 guard let request = try? ProtocolPayload.decode(SessionTerminateManyRequest.self, from: frame.payload),
                       request.isValid else { return fail(.protocolError, "Invalid bulk termination request") }
@@ -122,7 +135,6 @@ final class SessionConnectionHandler: @unchecked Sendable {
                     queue.async { [weak self] in self?.fail(.authenticationFailed, "Cellular access is disabled or the rendezvous record expired") }
                     return
                 }
-                if let certificate = peerCertificate, let capability = request.rendezvousCapability { await upgradePeer(deviceID, certificate, capability) }
                 queue.async { [weak self] in self?.finishOpening(request: request) }
             }
             return
@@ -145,6 +157,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
     }
 
     private func finishReachability(challenge: UUID, succeeded: Bool) {
+        guard !closed else { return }
         guard succeeded, let data = try? ProtocolPayload.encode(ReachabilityVerified(challenge: challenge)) else {
             return fail(.authenticationFailed, "The cellular verification challenge is invalid or expired")
         }
@@ -152,6 +165,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
     }
 
     private func finishRevocation(succeeded: Bool) {
+        guard !closed else { return }
         guard succeeded else { return fail(.protocolError, "Unable to revoke this iPhone") }
         framed?.send(ProtocolFrame(kind: .pairingRevoked)) { [weak self] _ in self?.close() }
     }
@@ -190,6 +204,9 @@ final class SessionConnectionHandler: @unchecked Sendable {
                 framed?.send(ProtocolFrame(kind: .terminalOutput, payload: try ProtocolPayload.encode(chunk)))
             }
             print("Session: shell opened.")
+            if let certificate = peerCertificate, let capability = request.rendezvousCapability {
+                Task { [deviceID, upgradePeer] in await upgradePeer(deviceID, certificate, capability) }
+            }
         } catch PTYProcessError.invalidWorkingDirectory {
             fail(.workingDirectoryUnavailable, "The configured working directory is unavailable. Choose another directory in Settings.")
         } catch {
@@ -199,6 +216,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
     }
 
     private func finishAttach(request: SessionAttachRequest) {
+        guard !closed else { return }
         do {
             guard let attachment = try sessions.attachExisting(deviceID: deviceID, serverSessionID: request.serverSessionID, size: request.initialSize, attachmentID: identifier, attachmentKind: .iPhone, lastReceivedOffset: request.lastReceivedOffset, output: { [weak self] chunk, completion in
                 guard let self else { completion(); return }; self.queue.async { self.sendOutput(chunk, completion: completion) }
@@ -223,6 +241,7 @@ final class SessionConnectionHandler: @unchecked Sendable {
     }
 
     private func finishListSubscription(allowed: Bool) {
+        guard !closed else { return }
         guard allowed else { return fail(.authenticationFailed, "Cellular access is disabled or the rendezvous record expired") }
         opening = false; subscribed = true
         sessions.subscribe(deviceID: deviceID, identifier: identifier) { [weak self] descriptors in

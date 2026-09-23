@@ -11,6 +11,14 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.shortcuts.isEmpty)
     }
 
+    func testShortcutCommandSubtitleNormalizesWhitespaceAndTruncatesTheTail() {
+        XCTAssertEqual(
+            ShortcutCommandPresentation.subtitle(for: "  git   status\n--short --branch  ", maximumLength: 19),
+            "git status --short…"
+        )
+        XCTAssertEqual(ShortcutCommandPresentation.subtitle(for: "pwd"), "pwd")
+    }
+
     func testStoreRoundTripsOrderedShortcuts() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -96,5 +104,71 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertFalse(model.saveShortcut(name: "status", command: "pwd"))
         XCTAssertFalse(model.saveShortcut(name: "Working directory", command: " git status "))
         XCTAssertEqual(model.value.shortcuts.count, 1)
+    }
+
+    @MainActor
+    func testDraftValidationReportsRequiredFieldsAndDoesNotPersist() {
+        let model = previewModel()
+
+        let validation = model.commit(ShortcutDraft(name: " ", command: " "))
+
+        XCTAssertEqual(validation.titleError, "Enter a title.")
+        XCTAssertEqual(validation.commandError, "Enter a command.")
+        XCTAssertTrue(model.value.shortcuts.isEmpty)
+    }
+
+    @MainActor
+    func testNewDraftDoesNotPersistUntilCommitted() {
+        let model = previewModel()
+        _ = ShortcutDraft(name: "Status", command: "git status") // A cancelled editor owns only this value.
+
+        XCTAssertTrue(model.value.shortcuts.isEmpty)
+    }
+
+    @MainActor
+    func testDraftValidationExcludesTheShortcutBeingEdited() {
+        let shortcut = CLIShortcut(name: "Status", command: "git status")
+        let model = previewModel(shortcuts: [shortcut])
+
+        let validation = model.commit(ShortcutDraft(id: shortcut.id, name: " Status ", command: " git status "))
+
+        XCTAssertTrue(validation.isValid)
+        XCTAssertEqual(model.value.shortcuts, [shortcut])
+    }
+
+    @MainActor
+    func testDraftCommitRejectsDuplicateTitleAndCommandAtomically() {
+        let original = CLIShortcut(name: "Status", command: "git status")
+        let model = previewModel(shortcuts: [original])
+
+        XCTAssertFalse(model.commit(ShortcutDraft(name: "status", command: "pwd")).isValid)
+        XCTAssertFalse(model.commit(ShortcutDraft(name: "Home", command: " git status ")).isValid)
+        XCTAssertEqual(model.value.shortcuts, [original])
+    }
+
+    @MainActor
+    func testDraftCommitUpdatesExistingShortcutAndPreservesDefaultNormalization() {
+        let shortcut = CLIShortcut(name: "Status", command: "git status")
+        let model = previewModel(shortcuts: [shortcut], defaultID: shortcut.id)
+
+        XCTAssertTrue(model.commit(ShortcutDraft(id: shortcut.id, name: " Branches ", command: " git branch ")).isValid)
+
+        XCTAssertEqual(model.value.shortcuts, [CLIShortcut(id: shortcut.id, name: "Branches", command: "git branch")])
+        XCTAssertEqual(model.value.newTerminalDefaultShortcutID, shortcut.id)
+    }
+
+    @MainActor
+    private func previewModel(shortcuts: [CLIShortcut] = [], defaultID: UUID? = nil) -> AppPreferencesModel {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        return AppPreferencesModel(store: AppPreferencesStore(rootURL: root)).also { model in
+            model.value = AppPreferences(shortcuts: shortcuts, newTerminalDefaultShortcutID: defaultID)
+        }
+    }
+}
+
+private extension AppPreferencesModel {
+    func also(_ configure: (AppPreferencesModel) -> Void) -> AppPreferencesModel {
+        configure(self)
+        return self
     }
 }

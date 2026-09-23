@@ -59,6 +59,18 @@ struct CLIShortcut: Codable, Equatable, Identifiable {
     }
 }
 
+enum ShortcutCommandPresentation {
+    static let defaultMaximumLength = 48
+
+    static func subtitle(for command: String, maximumLength: Int = defaultMaximumLength) -> String {
+        let normalized = command
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard normalized.count > maximumLength, maximumLength > 1 else { return normalized }
+        return String(normalized.prefix(maximumLength - 1)) + "…"
+    }
+}
+
 struct AppPreferences: Codable, Equatable {
     var allowsCellularConnections = false
     var shortcuts: [CLIShortcut] = []
@@ -130,35 +142,52 @@ struct AppPreferencesStore {
 @MainActor @Observable final class AppPreferencesModel {
     var value: AppPreferences {
         didSet {
-            try? store.save(value)
-            WidgetShortcutStore.save(value.shortcuts)
+            persist(value)
         }
     }
 
     private let store: AppPreferencesStore
+    private let persist: (AppPreferences) -> Void
 
     init(store: AppPreferencesStore = AppPreferencesStore()) {
         self.store = store
         value = (try? store.load()) ?? AppPreferences()
-        WidgetShortcutStore.save(value.shortcuts)
+        persist = { value in
+            try? store.save(value)
+            WidgetShortcutStore.save(value.shortcuts)
+        }
+        persist(value)
     }
 
-    func addShortcut() {
-        value.shortcuts.append(CLIShortcut(name: "New shortcut", command: ""))
+    #if DEBUG
+    init(previewValue: AppPreferences) {
+        store = AppPreferencesStore(rootURL: FileManager.default.temporaryDirectory)
+        value = previewValue
+        persist = { _ in }
+    }
+    #endif
+
+    func validation(for draft: ShortcutDraft) -> ShortcutValidation {
+        ShortcutValidation(draft: draft, existing: value.shortcuts)
+    }
+
+    @discardableResult
+    func commit(_ draft: ShortcutDraft) -> ShortcutValidation {
+        let validation = validation(for: draft)
+        guard validation.isValid else { return validation }
+        let shortcut = CLIShortcut(id: draft.id ?? UUID(), name: validation.name, command: validation.command)
+        if let id = draft.id, let index = value.shortcuts.firstIndex(where: { $0.id == id }) {
+            value.shortcuts[index] = shortcut
+        } else {
+            value.shortcuts.append(shortcut)
+        }
+        value.normalizeDefaultSelection()
+        return validation
     }
 
     @discardableResult
     func saveShortcut(name: String, command: String) -> Bool {
-        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !command.isEmpty else { return false }
-        let duplicate = value.shortcuts.contains {
-            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).localizedCaseInsensitiveCompare(name) == .orderedSame ||
-            $0.command.trimmingCharacters(in: .whitespacesAndNewlines) == command
-        }
-        guard !duplicate else { return false }
-        value.shortcuts.append(CLIShortcut(name: name, command: command))
-        return true
+        commit(ShortcutDraft(name: name, command: command)).isValid
     }
 
     func deleteShortcuts(at offsets: IndexSet) {
@@ -172,17 +201,56 @@ struct AppPreferencesStore {
         deleteShortcuts(at: IndexSet(integer: index))
     }
 
-    func updateShortcut(id: UUID, name: String, command: String) {
-        guard let index = value.shortcuts.firstIndex(where: { $0.id == id }) else { return }
-        value.shortcuts[index].name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        value.shortcuts[index].command = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        value.normalizeDefaultSelection()
-    }
-
     func moveShortcuts(from offsets: IndexSet, to destination: Int) {
         value.shortcuts.move(fromOffsets: offsets, toOffset: destination)
     }
 
+}
+
+struct ShortcutDraft: Equatable {
+    var id: UUID?
+    var name: String
+    var command: String
+
+    init(id: UUID? = nil, name: String = "", command: String = "") {
+        self.id = id
+        self.name = name
+        self.command = command
+    }
+
+    init(shortcut: CLIShortcut) {
+        self.init(id: shortcut.id, name: shortcut.name, command: shortcut.command)
+    }
+}
+
+struct ShortcutValidation: Equatable {
+    let name: String
+    let command: String
+    let titleError: String?
+    let commandError: String?
+
+    init(draft: ShortcutDraft, existing: [CLIShortcut]) {
+        let normalizedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCommand = draft.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        let others = existing.filter { $0.id != draft.id }
+        let titleError: String?
+        if normalizedName.isEmpty { titleError = "Enter a title." }
+        else if others.contains(where: { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).localizedCaseInsensitiveCompare(normalizedName) == .orderedSame }) {
+            titleError = "A shortcut already uses this title."
+        } else { titleError = nil }
+
+        let commandError: String?
+        if normalizedCommand.isEmpty { commandError = "Enter a command." }
+        else if others.contains(where: { $0.command.trimmingCharacters(in: .whitespacesAndNewlines) == normalizedCommand }) {
+            commandError = "A shortcut already uses this command."
+        } else { commandError = nil }
+        name = normalizedName
+        command = normalizedCommand
+        self.titleError = titleError
+        self.commandError = commandError
+    }
+
+    var isValid: Bool { titleError == nil && commandError == nil }
 }
 
 enum WidgetShortcutStore {

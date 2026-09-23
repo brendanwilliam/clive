@@ -5,6 +5,7 @@ import Network
 import Security
 
 final class PairingClient: @unchecked Sendable {
+    static let maximumResponseTimeout: TimeInterval = 60
     enum Error: Swift.Error { case certificateChanged, invalidAcceptance, protocolViolation }
     private let queue = DispatchQueue(label: "com.clive.pairing")
 
@@ -21,12 +22,40 @@ final class PairingClient: @unchecked Sendable {
         }, queue)
         guard let port = NWEndpoint.Port(rawValue: ticket.port) else { throw PairingTicketValidationError.invalidPort }
         let connection = NWConnection(host: NWEndpoint.Host(ticket.endpoint), port: port, using: NWParameters(tls: options, tcp: NWProtocolTCP.Options()))
+        let exchangeBox = ExchangeBox()
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 let exchange = Exchange(connection: connection, ticket: ticket, identity: identity, rendezvousCapability: rendezvousCapability, pin: pin, continuation: continuation, queue: queue)
+                exchangeBox.install(exchange)
                 exchange.start()
             }
-        }, onCancel: { connection.cancel() })
+        }, onCancel: { exchangeBox.cancel() })
+    }
+
+    static func responseTimeout(for ticket: PairingTicket, now: Date = .now) -> TimeInterval {
+        min(maximumResponseTimeout, max(0, ticket.expiresAt.timeIntervalSince(now)))
+    }
+
+    private final class ExchangeBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var exchange: Exchange?
+        private var cancelled = false
+
+        func install(_ exchange: Exchange) {
+            let shouldCancel = lock.withLock { () -> Bool in
+                self.exchange = exchange
+                return cancelled
+            }
+            if shouldCancel { exchange.cancel() }
+        }
+
+        func cancel() {
+            let exchange = lock.withLock { () -> Exchange? in
+                cancelled = true
+                return self.exchange
+            }
+            exchange?.cancel()
+        }
     }
 
     private final class PinResult: @unchecked Sendable { private let lock = NSLock(); private var value = false; var mismatch: Bool { get { lock.withLock { value } } set { lock.withLock { value = newValue } } } }
@@ -36,22 +65,33 @@ final class PairingClient: @unchecked Sendable {
         let rendezvousCapability: RendezvousCapability?
         let continuation: CheckedContinuation<PairedMac, Swift.Error>; let queue: DispatchQueue; let pin: PinResult
         var decoder = FrameDecoder(); var completed = false
+        private var requestSent = false
+        private var deadline: DispatchWorkItem?
         init(connection: NWConnection, ticket: PairingTicket, identity: IPhoneIdentity, rendezvousCapability: RendezvousCapability?, pin: PinResult, continuation: CheckedContinuation<PairedMac, Swift.Error>, queue: DispatchQueue) {
             self.connection = connection; self.ticket = ticket; self.identity = identity; self.rendezvousCapability = rendezvousCapability; self.pin = pin; self.continuation = continuation; self.queue = queue
         }
         func start() {
+            let remaining = PairingClient.responseTimeout(for: ticket)
+            guard remaining > 0 else { finish(.failure(PairingTicketValidationError.expired)); return }
             // NWConnection retains its state handler. Keep the exchange alive through the TLS
             // handshake and break the retain cycle in finish after the result is delivered.
             connection.stateUpdateHandler = { state in
                 switch state {
-                case .ready: self.sendRequest(); self.receive()
+                case .ready:
+                    guard !self.completed, !self.requestSent else { return }
+                    self.requestSent = true
+                    self.sendRequest(); self.receive()
                 case .failed(let error): self.finish(.failure(self.pin.mismatch ? Error.certificateChanged : error))
                 case .cancelled: if !self.completed { self.finish(.failure(URLError(.cancelled))) }
                 default: break
                 }
             }
             connection.start(queue: queue)
+            let deadline = DispatchWorkItem { [weak self] in self?.finish(.failure(URLError(.timedOut))) }
+            self.deadline = deadline
+            queue.asyncAfter(deadline: .now() + remaining, execute: deadline)
         }
+        func cancel() { queue.async { self.finish(.failure(URLError(.cancelled))) } }
         func sendRequest() {
             let request = PairingRequest(oneTimeSecret: ticket.oneTimeSecret, deviceID: identity.deviceID, deviceName: identity.displayName, certificate: identity.certificate, rendezvousCapability: rendezvousCapability)
             guard let payload = try? ProtocolPayload.encode(request), let bytes = try? ProtocolFrame(kind: .pairingRequest, payload: payload).encoded() else { finish(.failure(Error.protocolViolation)); return }
@@ -59,7 +99,7 @@ final class PairingClient: @unchecked Sendable {
         }
         func receive() {
             connection.receive(minimumIncompleteLength: 1, maximumLength: ProtocolFrame.defaultMaximumPayloadSize + 7) { [weak self] data, _, complete, error in
-                guard let self else { return }
+                guard let self, !self.completed else { return }
                 do {
                     let frames = try decoder.append(data ?? Data())
                     guard frames.count <= 1 else { throw Error.protocolViolation }
@@ -70,6 +110,7 @@ final class PairingClient: @unchecked Sendable {
             }
         }
         func accept(_ frame: ProtocolFrame) throws {
+            guard ticket.expiresAt >= .now else { throw PairingTicketValidationError.expired }
             guard frame.kind == .pairingAccept else { throw Error.protocolViolation }
             let acceptance = try ProtocolPayload.decode(PairingAcceptance.self, from: frame.payload)
             let fingerprint = Fingerprint.sha256(of: acceptance.certificate)
@@ -79,6 +120,7 @@ final class PairingClient: @unchecked Sendable {
         func finish(_ result: Result<PairedMac, Swift.Error>) {
             guard !completed else { return }
             completed = true
+            deadline?.cancel(); deadline = nil
             connection.stateUpdateHandler = nil
             connection.cancel()
             continuation.resume(with: result)

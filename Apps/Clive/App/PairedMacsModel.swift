@@ -10,14 +10,20 @@ final class PairedMacsModel {
     private(set) var wanRoutes: [String: [MacRoute]] = [:]
     private(set) var rendezvousDiagnostics: [String: String] = [:]
     var state: State = .idle
-    private let store = PairedMacStore()
-    private let discovery = BonjourDiscovery()
+    private let store: PairedMacStore
+    private let discovery: BonjourDiscovery
     private var records: [PairedMac] = []
-    private let rendezvous = try? IPhoneRendezvousService()
+    private let rendezvous: IPhoneRendezvousService?
     private(set) var localRendezvousCapability: RendezvousCapability?
     private(set) var lastPairingTimestamp: Date?
     private var cloudObserver: NSObjectProtocol?
     var onRoutesChanged: (() -> Void)?
+
+    init(previewOnly: Bool = false) {
+        store = PairedMacStore()
+        discovery = BonjourDiscovery()
+        rendezvous = previewOnly ? nil : try? IPhoneRendezvousService()
+    }
 
     func start() {
         do { records = try store.load() } catch { state = .failed("Paired Mac records could not be read.") }
@@ -79,10 +85,37 @@ final class PairedMacsModel {
     }
 
 #if DEBUG
+    static func previewFixture(success: Bool = false, failure: String? = nil) -> PairedMacsModel {
+        let model = PairedMacsModel(previewOnly: true)
+        guard success || failure != nil else { return model }
+        let mac = PairedMac(
+            id: "preview-mac", displayName: "Test Mac", serviceID: "preview-service",
+            certificateFingerprint: String(repeating: "ab", count: 32), createdAt: .now
+        )
+        model.installPreviewFixture(
+            device: mac,
+            route: MacRoute(host: "127.0.0.1", port: 8022),
+            lastPairingTimestamp: success ? Date(timeIntervalSince1970: 0) : nil,
+            failure: failure
+        )
+        return model
+    }
+
     func installUITestFixture(device: PairedMac, route: MacRoute) {
+        installPreviewFixture(device: device, route: route)
+    }
+
+    func installPreviewFixture(
+        device: PairedMac,
+        route: MacRoute,
+        lastPairingTimestamp: Date? = nil,
+        failure: String? = nil
+    ) {
         records = [device]
         devices = [device]
         routes = [device.serviceID: route]
+        self.lastPairingTimestamp = lastPairingTimestamp
+        state = failure.map(State.failed) ?? .idle
     }
 #endif
 }
