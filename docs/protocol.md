@@ -53,7 +53,7 @@ Frames have a bounded maximum size and an explicit protocol version. The Mac rej
 
 ## Session lifecycle
 
-Each authenticated device ID and stable client session ID maps to one PTY and login shell. A PTY has at most one terminal attachment. Network loss and ordinary navigation detach that attachment; after the final detach the Mac retains the shell for 30 minutes. Detached output does not extend the timer. Up to 1 MiB of output is replayed in order, with oldest bytes discarded and truncation reported. Output is offset-tagged; a bounded slow consumer is evicted without suspending the PTY.
+Each authenticated device ID and stable client session ID maps to one PTY and login shell. A PTY has at most one terminal attachment. Network loss and ordinary navigation detach that attachment; after the final detach the Mac retains the shell for 90 minutes. Detached output does not extend the timer. Up to 1 MiB of output is replayed in order, with oldest bytes discarded and truncation reported. Output is offset-tagged; a bounded slow consumer is evicted without suspending the PTY.
 
 Every input frame is written atomically on the session queue. The active attachment owns the terminal viewport. Explicit `session.terminate`, shell exit, grace expiry, revocation, and daemon shutdown terminate the PTY everywhere. Shell exit sends `session.close` to the current attachment. The iOS app persists only opaque session IDs and labels, never terminal contents.
 

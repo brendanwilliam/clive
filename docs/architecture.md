@@ -27,7 +27,7 @@ it is unavailable in V1 and is not an authorization or terminal-data endpoint.
 2. The iOS app displays only discovered Macs that are already paired; unpaired devices are eligible only for the explicit pairing flow.
 3. A paired phone unlocks its private key through LocalAuthentication, resolves the Mac over Bonjour, and opens a TLS connection.
 4. Both sides verify the peer certificate against the pairing record before any application messages are processed.
-5. The Mac allocates one PTY and starts `/bin/zsh -l`; raw terminal bytes flow in framed, encrypted messages. A lost transport may reattach to that PTY for 30 minutes after biometric authorization, without persisting screen contents.
+5. The Mac allocates one PTY and starts `/bin/zsh -l`; raw terminal bytes flow in framed, encrypted messages. A lost transport may reattach to that PTY for 90 minutes after biometric authorization, without persisting screen contents.
 
 ## macOS CLI contract
 

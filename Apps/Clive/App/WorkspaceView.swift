@@ -132,8 +132,8 @@ struct WorkspaceView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { coordinator.sceneDidEnterBackground() }
-            else if coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
-            else if ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
+            else if phase == .active, coordinator.state != .active { Task { ExternalLaunchRequestStore().consumePending(); await coordinator.sceneDidBecomeActive() } }
+            else if phase == .active, ExternalLaunchRequestStore().consumePending() { coordinator.handleExternalLaunch() }
         }
     }
 

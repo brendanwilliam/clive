@@ -293,12 +293,12 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertTrue(policy.expectsResumption(hasOpened: true))
     }
 
-    func testReconnectDeadlineIsThirtyMinutes() {
+    func testReconnectDeadlineIsNinetyMinutes() {
         let policy = SessionReconnectPolicy.standard
         let start = Date(timeIntervalSince1970: 1_000)
 
-        XCTAssertFalse(policy.isExpired(startedAt: start, now: start.addingTimeInterval(1_799)))
-        XCTAssertTrue(policy.isExpired(startedAt: start, now: start.addingTimeInterval(1_800)))
+        XCTAssertFalse(policy.isExpired(startedAt: start, now: start.addingTimeInterval(5_399)))
+        XCTAssertTrue(policy.isExpired(startedAt: start, now: start.addingTimeInterval(5_400)))
     }
 
     @MainActor

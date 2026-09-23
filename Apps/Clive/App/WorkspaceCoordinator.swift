@@ -113,7 +113,7 @@ struct SessionReconnectPolicy: Equatable {
     let detachmentDeadline: TimeInterval
     let cloudRefreshInterval: TimeInterval
 
-    init(retryDelays: [TimeInterval] = [1, 2, 4, 8, 15], detachmentDeadline: TimeInterval = 30 * 60, cloudRefreshInterval: TimeInterval = 30) {
+    init(retryDelays: [TimeInterval] = [1, 2, 4, 8, 15], detachmentDeadline: TimeInterval = 90 * 60, cloudRefreshInterval: TimeInterval = 30) {
         self.retryDelays = retryDelays
         self.detachmentDeadline = detachmentDeadline
         self.cloudRefreshInterval = cloudRefreshInterval
@@ -178,7 +178,7 @@ enum SceneTransitionPolicy {
     private let now: () -> Date
     private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never>
 
-    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, initialCommand: String? = nil, localRendezvousCapability: RendezvousCapability?, refreshRoutes: @escaping @MainActor () async -> Void = {}, now: @escaping () -> Date = Date.init, schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never> = { delay, action in Task { try? await Task.sleep(for: .seconds(delay)); guard !Task.isCancelled else { return }; await action() } }, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
+    init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, initialCommand: String? = nil, localRendezvousCapability: RendezvousCapability?, refreshRoutes: @escaping @MainActor () async -> Void = {}, now: @escaping () -> Date = Date.init, schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never> = { delay, action in Task { try? await Task.sleep(for: .seconds(delay)); guard !Task.isCancelled else { return }; action() } }, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
         self.descriptor = descriptor
         self.id = descriptor.id
         self.routes = routes
@@ -259,6 +259,7 @@ enum SceneTransitionPolicy {
                 Task { await refreshRoutes() }
                 return
             }
+            retryTask?.cancel()
             beginReconnect()
         }
     }
