@@ -1,4 +1,5 @@
 import Foundation
+import CliveCore
 import XCTest
 @testable import Clive
 
@@ -274,6 +275,41 @@ final class WorkspaceRestorationTests: XCTestCase {
         XCTAssertEqual(SessionClient.connectionAttemptTimeout, 60)
     }
 
+    func testSessionHandshakeSendsOnceAndCompletesOnce() {
+        var attempt = SessionAttemptState()
+
+        XCTAssertTrue(attempt.beginHandshake())
+        XCTAssertFalse(attempt.beginHandshake())
+        XCTAssertTrue(attempt.open())
+        XCTAssertFalse(attempt.open())
+        XCTAssertTrue(attempt.finish())
+        XCTAssertFalse(attempt.finish())
+    }
+
+    func testSessionTimeoutOrCancellationPreventsLaterOpen() {
+        var attempt = SessionAttemptState()
+        XCTAssertTrue(attempt.beginHandshake())
+        XCTAssertTrue(attempt.finish())
+        XCTAssertFalse(attempt.open())
+        XCTAssertFalse(attempt.beginHandshake())
+        XCTAssertFalse(attempt.finish())
+    }
+
+    func testCatalogRejectsMalformedInitialResultAndUnsolicitedTermination() throws {
+        var response = SessionCatalogResponseState()
+        let malformed = ProtocolFrame(kind: .sessionListResult, payload: Data("bad".utf8))
+        let unsolicited = ProtocolFrame(kind: .sessionTerminateManyResult, payload: try ProtocolPayload.encode(SessionTerminateManyResult(terminatedSessionIDs: [])))
+
+        XCTAssertThrowsError(try response.accept(malformed, awaitingTermination: false))
+        XCTAssertFalse(response.receivedInitialList)
+        XCTAssertThrowsError(try response.accept(unsolicited, awaitingTermination: true))
+        let valid = ProtocolFrame(kind: .sessionListResult, payload: try ProtocolPayload.encode(SessionListResult(sessions: [])))
+        if case .sessions(let sessions) = try response.accept(valid, awaitingTermination: false) {
+            XCTAssertTrue(sessions.isEmpty)
+        } else { XCTFail("Expected catalog sessions") }
+        XCTAssertTrue(response.receivedInitialList)
+    }
+
     func testStateUpdateFromSupersededConnectionAttemptIsIgnored() {
         XCTAssertFalse(WorkspaceSession.shouldApplyStateUpdate(generation: 1, currentGeneration: 2))
         XCTAssertTrue(WorkspaceSession.shouldApplyStateUpdate(generation: 2, currentGeneration: 2))
@@ -288,7 +324,8 @@ final class WorkspaceRestorationTests: XCTestCase {
     func testInitialConnectionRetriesWithoutRequiringResumption() {
         let policy = SessionReconnectPolicy.standard
 
-        XCTAssertTrue(policy.shouldBeginRetryAfterRouteChange(hasOpened: false, reconnecting: false))
+        XCTAssertTrue(policy.shouldBeginRetryAfterRouteChange(hasOpened: false, reconnecting: false, attemptInFlight: false))
+        XCTAssertFalse(policy.shouldBeginRetryAfterRouteChange(hasOpened: false, reconnecting: false, attemptInFlight: true))
         XCTAssertFalse(policy.expectsResumption(hasOpened: false))
         XCTAssertTrue(policy.expectsResumption(hasOpened: true))
     }
@@ -297,8 +334,10 @@ final class WorkspaceRestorationTests: XCTestCase {
         let policy = SessionReconnectPolicy.standard
         let start = Date(timeIntervalSince1970: 1_000)
 
-        XCTAssertFalse(policy.isExpired(startedAt: start, now: start.addingTimeInterval(5_399)))
-        XCTAssertTrue(policy.isExpired(startedAt: start, now: start.addingTimeInterval(5_400)))
+        XCTAssertFalse(policy.isExpired(startedAt: start, now: start.addingTimeInterval(5_399), hasOpened: true))
+        XCTAssertTrue(policy.isExpired(startedAt: start, now: start.addingTimeInterval(5_400), hasOpened: true))
+        XCTAssertFalse(policy.isExpired(startedAt: start, now: start.addingTimeInterval(1_799), hasOpened: false))
+        XCTAssertTrue(policy.isExpired(startedAt: start, now: start.addingTimeInterval(1_800), hasOpened: false))
     }
 
     @MainActor

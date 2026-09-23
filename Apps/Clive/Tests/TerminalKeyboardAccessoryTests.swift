@@ -64,7 +64,7 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertEqual(sent, [Data([0x03])])
     }
 
-    func testBottomControlsDoNotOverlapAtCompactIPhoneOrRegularIPadWidths() {
+    func testBottomControlsDoNotOverlapAtCompactIPhoneOrRegularIPadWidths() throws {
         for width: CGFloat in [320, 834] {
             let controls = TerminalBottomControls()
             controls.installKeyRow(TerminalKeyboardAccessory(send: { _ in }))

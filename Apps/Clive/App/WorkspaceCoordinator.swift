@@ -111,11 +111,13 @@ struct SessionReconnectPolicy: Equatable {
     static let standard = SessionReconnectPolicy()
     let retryDelays: [TimeInterval]
     let detachmentDeadline: TimeInterval
+    let initialConnectionDeadline: TimeInterval
     let cloudRefreshInterval: TimeInterval
 
-    init(retryDelays: [TimeInterval] = [1, 2, 4, 8, 15], detachmentDeadline: TimeInterval = 90 * 60, cloudRefreshInterval: TimeInterval = 30) {
+    init(retryDelays: [TimeInterval] = [1, 2, 4, 8, 15], detachmentDeadline: TimeInterval = 90 * 60, initialConnectionDeadline: TimeInterval = 30 * 60, cloudRefreshInterval: TimeInterval = 30) {
         self.retryDelays = retryDelays
         self.detachmentDeadline = detachmentDeadline
+        self.initialConnectionDeadline = initialConnectionDeadline
         self.cloudRefreshInterval = cloudRefreshInterval
     }
 
@@ -123,9 +125,11 @@ struct SessionReconnectPolicy: Equatable {
         retryDelays[min(max(cycle, 0), retryDelays.count - 1)]
     }
 
-    func shouldBeginRetryAfterRouteChange(hasOpened: Bool, reconnecting: Bool) -> Bool { !hasOpened && !reconnecting }
+    func shouldBeginRetryAfterRouteChange(hasOpened: Bool, reconnecting: Bool, attemptInFlight: Bool) -> Bool { !hasOpened && !reconnecting && !attemptInFlight }
     func expectsResumption(hasOpened: Bool) -> Bool { hasOpened }
-    func isExpired(startedAt: Date, now: Date) -> Bool { now.timeIntervalSince(startedAt) >= detachmentDeadline }
+    func isExpired(startedAt: Date, now: Date, hasOpened: Bool) -> Bool {
+        now.timeIntervalSince(startedAt) >= (hasOpened ? detachmentDeadline : initialConnectionDeadline)
+    }
     func shouldRefreshCloud(lastRefresh: Date?, now: Date) -> Bool { lastRefresh.map { now.timeIntervalSince($0) >= cloudRefreshInterval } ?? true }
 }
 
@@ -161,12 +165,14 @@ enum SceneTransitionPolicy {
     private let device: PairedMac?
     private let identity: IPhoneIdentity?
     private var routeIndex = 0
+    private var attemptedRouteKind: MacRouteKind?
     private var initialCommand: InitialCommandBuffer
     private let localRendezvousCapability: RendezvousCapability?
     private let onUpgrade: (Data, RendezvousCapability) -> Void
     private(set) var activeRouteKind: MacRouteKind?
     private var hasOpened = false
     private var reconnecting = false
+    private var attemptInFlight = false
     private var reconnectStartedAt: Date?
     private var retryIndex = 0
     private var retryTask: Task<Void, Never>?
@@ -176,17 +182,19 @@ enum SceneTransitionPolicy {
     private let reconnectPolicy = SessionReconnectPolicy.standard
     private let reconnectNoticePolicy = SessionReconnectNoticePolicy.standard
     private let now: () -> Date
+    private let initialConnectionStartedAt: Date
     private let schedule: (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never>
 
     init(descriptor: SessionDescriptor, device: PairedMac, routes: [MacRoute], identity: IPhoneIdentity, initialCommand: String? = nil, localRendezvousCapability: RendezvousCapability?, refreshRoutes: @escaping @MainActor () async -> Void = {}, now: @escaping () -> Date = Date.init, schedule: @escaping (TimeInterval, @escaping @MainActor () -> Void) -> Task<Void, Never> = { delay, action in Task { try? await Task.sleep(for: .seconds(delay)); guard !Task.isCancelled else { return }; action() } }, onUpgrade: @escaping (Data, RendezvousCapability) -> Void) {
         self.descriptor = descriptor
         self.id = descriptor.id
+        self.hasOpened = descriptor.serverSessionID != nil
         self.routes = routes
         self.device = device
         self.identity = identity
         self.initialCommand = InitialCommandBuffer(initialCommand)
         self.refreshRoutes = refreshRoutes
-        self.now = now; self.schedule = schedule
+        self.now = now; self.initialConnectionStartedAt = now(); self.schedule = schedule
         self.localRendezvousCapability = localRendezvousCapability; self.onUpgrade = onUpgrade
         client.onState = { [weak self] value, generation in
             DispatchQueue.main.async {
@@ -194,11 +202,18 @@ enum SceneTransitionPolicy {
                 self.handleState(value)
             }
         }
-        client.onAttachmentState = { [weak self] value in DispatchQueue.main.async { self?.attachmentState = value } }
-        client.onActivityOutput = { [weak self] bytes in DispatchQueue.main.async {
-            guard let self else { return }; self.accumulator.consume(bytes); self.preview = self.accumulator.preview; self.lastActivityAt = .now
+        client.onAttachmentState = { [weak self] value, generation in DispatchQueue.main.async {
+            guard let self, generation == self.client.currentGeneration else { return }
+            self.attachmentState = value
         } }
-        client.onRendezvousUpgrade = { certificate, capability in DispatchQueue.main.async { onUpgrade(certificate, capability) } }
+        client.onActivityOutput = { [weak self] bytes, generation in DispatchQueue.main.async {
+            guard let self, generation == self.client.currentGeneration else { return }
+            self.accumulator.consume(bytes); self.preview = self.accumulator.preview; self.lastActivityAt = .now
+        } }
+        client.onRendezvousUpgrade = { [weak self] certificate, capability, generation in DispatchQueue.main.async {
+            guard let self, generation == self.client.currentGeneration else { return }
+            onUpgrade(certificate, capability)
+        } }
         connectCurrentRoute()
     }
 
@@ -207,7 +222,7 @@ enum SceneTransitionPolicy {
         self.descriptor = descriptor; id = descriptor.id; routes = []
         device = nil; identity = nil
         initialCommand = InitialCommandBuffer(nil); localRendezvousCapability = nil
-        refreshRoutes = {}; now = Date.init
+        refreshRoutes = {}; now = Date.init; initialConnectionStartedAt = .now
         self.schedule = schedule; onUpgrade = { _, _ in }
         self.state = state; activeRouteKind = route; hasOpened = true; lastActivityAt = .now
     }
@@ -216,13 +231,14 @@ enum SceneTransitionPolicy {
     func noteInput() { lastActivityAt = .now }
     func run(command: String) { client.sendInput(ShortcutExecutionPolicy.payload(for: command)); noteInput() }
     func clearTransientActivity() { accumulator.clear(); preview = nil; lastActivityAt = nil }
-    func close() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); clearTransientActivity(); client.close() }
-    func terminate() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); clearTransientActivity(); client.terminate() }
-    func detach() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); client.detach() }
+    func close() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); attemptInFlight = false; clearTransientActivity(); client.close() }
+    func terminate() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); attemptInFlight = false; clearTransientActivity(); client.terminate() }
+    func detach() { retryTask?.cancel(); reconnectNoticeTask?.cancel(); attemptInFlight = false; client.detach() }
     func disconnect() {
         retryTask?.cancel()
         reconnectNoticeTask?.cancel()
         reconnecting = false
+        attemptInFlight = false
         client.close()
         state = .disconnected
     }
@@ -230,6 +246,7 @@ enum SceneTransitionPolicy {
         retryTask?.cancel()
         reconnectNoticeTask?.cancel()
         reconnecting = false
+        attemptInFlight = false
         routeIndex = 0
         guard !routes.isEmpty else {
             state = .reconnecting(waitingForWiFi: true)
@@ -243,11 +260,12 @@ enum SceneTransitionPolicy {
         let changed = newRoutes != routes
         routes = newRoutes
         guard changed else { return }
+        guard !attemptInFlight else { return }
         if reconnecting {
             // The current attempt or its scheduled retry will observe the new
             // routes. Do not cancel an in-flight connection for route metadata
             // churn; that creates a second reconnect race during handoff.
-        } else if reconnectPolicy.shouldBeginRetryAfterRouteChange(hasOpened: hasOpened, reconnecting: reconnecting) { beginReconnect() }
+        } else if reconnectPolicy.shouldBeginRetryAfterRouteChange(hasOpened: hasOpened, reconnecting: reconnecting, attemptInFlight: attemptInFlight) { beginReconnect() }
         else if Self.shouldReconnectAfterRouteChange(activeRouteKind: activeRouteKind, newRoutes: routes, hasOpened: hasOpened) {
             // Bonjour can report the LAN route disappearing before the cloud
             // rendezvous refresh has supplied the cellular route. Keep the
@@ -272,10 +290,14 @@ enum SceneTransitionPolicy {
 
     private func handleState(_ value: SessionClient.State) {
         state = value
+        switch value {
+        case .connecting, .reconnecting: break
+        default: attemptInFlight = false
+        }
         if case .active(let serverSessionID, let disposition, _) = value {
             descriptor.serverSessionID = serverSessionID
             retryTask?.cancel(); reconnecting = false; reconnectStartedAt = nil; retryIndex = 0; hasOpened = true
-            activeRouteKind = routes[routeIndex].kind
+            activeRouteKind = attemptedRouteKind
             if let command = initialCommand.take() {
                 client.sendInput(Data((command + "\r").utf8))
                 noteInput()
@@ -309,7 +331,7 @@ enum SceneTransitionPolicy {
     }
 
     private func beginReconnect() {
-        reconnecting = true; reconnectStartedAt = now(); retryIndex = 0; routeIndex = 0
+        reconnecting = true; reconnectStartedAt = hasOpened ? now() : initialConnectionStartedAt; retryIndex = 0; routeIndex = 0
         attemptReconnect()
     }
 
@@ -321,7 +343,7 @@ enum SceneTransitionPolicy {
 
     private func attemptReconnect() {
         guard reconnecting else { return }
-        guard let started = reconnectStartedAt, !reconnectPolicy.isExpired(startedAt: started, now: now()) else {
+        guard let started = reconnectStartedAt, !reconnectPolicy.isExpired(startedAt: started, now: now(), hasOpened: hasOpened) else {
             reconnecting = false; state = .resumeUnavailable; return
         }
         guard !routes.isEmpty else { state = .reconnecting(waitingForWiFi: true); scheduleRetry(); return }
@@ -344,7 +366,9 @@ enum SceneTransitionPolicy {
 
     private func connectCurrentRoute(expectsResumption: Bool = false) {
         guard let device, let identity, routes.indices.contains(routeIndex) else { return }
+        attemptInFlight = true
         let route = routes[routeIndex]
+        attemptedRouteKind = route.kind
         client.connect(host: route.host, port: route.port, pinnedFingerprint: device.certificateFingerprint, identity: identity.identity, clientSessionID: descriptor.id, serverSessionID: descriptor.serverSessionID, size: TerminalSize(columns: 80, rows: 24), rendezvousCapability: localRendezvousCapability, wanGateToken: route.wanGateToken, expectsResumption: expectsResumption)
     }
 }
@@ -431,8 +455,17 @@ struct LocalStateResetter {
         self.isUITestFixture = isUITestFixture
         self.preferences = preferences
         self.macs = macs
-        sessionCatalog.onSessions = { [weak self] sessions in
-            DispatchQueue.main.async { self?.applyCatalog(sessions) }
+        sessionCatalog.onSessions = { [weak self] sessions, generation in
+            DispatchQueue.main.async {
+                guard let self, generation == self.sessionCatalog.currentGeneration else { return }
+                self.applyCatalog(sessions)
+            }
+        }
+        sessionCatalog.onFailure = { [weak self] generation in
+            DispatchQueue.main.async {
+                guard let self, generation == self.sessionCatalog.currentGeneration else { return }
+                self.catalogSessions.removeAll()
+            }
         }
     }
 

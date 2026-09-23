@@ -28,6 +28,7 @@ The pairing endpoint accepts only one successful exchange. Expired, consumed, or
 - TLS errors, certificate changes, protocol-version incompatibility, or missing biometric authorization terminate the attempt before shell creation.
 - The app sends `session.open` only after mutual TLS completes. The Mac responds with `session.opened` containing an opaque session ID, a `created` or `resumed` disposition, and a replay-truncation flag. These current fields are required.
 - One TLS connection is either a foreground `session.list` subscription or one terminal attachment. Catalog subscriptions never count as terminal attachments.
+- The iPhone requires a valid `session.opened` or initial `session.list.result` within 60 seconds of starting each connection. A bulk termination request waits at most 15 seconds for its response. Pairing waits at most 60 seconds and never beyond the ticket expiry. The Mac closes a mutually authenticated connection that sends no valid first application frame within 10 seconds.
 
 ## Framing
 

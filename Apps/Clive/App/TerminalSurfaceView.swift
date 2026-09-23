@@ -81,7 +81,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
             let fixtureOutput = (1...80).map { $0 == 80 ? "https://example.com" : "fixture line \($0)" }.joined(separator: "\r\n")
             terminal.feed(byteArray: ArraySlice(("\u{1b}[2 q" + fixtureOutput).utf8))
         }
-        session?.onOutput = { [weak terminal] data in DispatchQueue.main.async { terminal?.feed(byteArray: ArraySlice(data)) } }
+        session?.onOutput = { [weak terminal, weak session] data, generation in DispatchQueue.main.async {
+            guard generation == session?.currentGeneration else { return }
+            terminal?.feed(byteArray: ArraySlice(data))
+        } }
         return container
     }
 
