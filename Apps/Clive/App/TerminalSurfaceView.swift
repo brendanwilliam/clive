@@ -604,11 +604,11 @@ extension TerminalColorPreference {
         SwiftTerm.Color(red: UInt16(red) * 257, green: UInt16(green) * 257, blue: UInt16(blue) * 257)
     }
 
-    var swiftUIColor: Color {
-        Color(.sRGB, red: Double(red) / 255, green: Double(green) / 255, blue: Double(blue) / 255)
+    var swiftUIColor: SwiftUI.Color {
+        SwiftUI.Color(.sRGB, red: Double(red) / 255, green: Double(green) / 255, blue: Double(blue) / 255)
     }
 
-    init(color: Color) {
+    init(color: SwiftUI.Color) {
         let uiColor = UIColor(color)
         var red: CGFloat = 1
         var green: CGFloat = 1
