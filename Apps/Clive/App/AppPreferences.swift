@@ -71,31 +71,109 @@ enum ShortcutCommandPresentation {
     }
 }
 
+enum TerminalThemePreset: String, Codable, CaseIterable, Hashable, Identifiable {
+    case cliveDark
+    case dracula
+    case solarizedDark
+    case solarizedLight
+    case custom
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .cliveDark: return "Clive Dark"
+        case .dracula: return "Dracula"
+        case .solarizedDark: return "Solarized Dark"
+        case .solarizedLight: return "Solarized Light"
+        case .custom: return "Custom"
+        }
+    }
+}
+
+struct TerminalColorPreference: Codable, Equatable {
+    var red: UInt8
+    var green: UInt8
+    var blue: UInt8
+
+    init(red: UInt8, green: UInt8, blue: UInt8) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
+
+    init(hex: UInt32) {
+        red = UInt8((hex >> 16) & 0xFF)
+        green = UInt8((hex >> 8) & 0xFF)
+        blue = UInt8(hex & 0xFF)
+    }
+
+    static let white = TerminalColorPreference(red: 255, green: 255, blue: 255)
+    static let black = TerminalColorPreference(red: 0, green: 0, blue: 0)
+    static let cliveANSIPalette: [TerminalColorPreference] = palette([
+        0x000000, 0xC23621, 0x25BC24, 0xADAD27,
+        0x492EE1, 0xD338D3, 0x33BBC8, 0xCBCCCD,
+        0x818383, 0xFC391F, 0x31E722, 0xEAEC23,
+        0x5833FF, 0xF935F8, 0x14F0F0, 0xE9EBEB,
+    ])
+
+    private static func palette(_ values: [UInt32]) -> [TerminalColorPreference] {
+        values.map { TerminalColorPreference(hex: $0) }
+    }
+}
+
 struct AppPreferences: Codable, Equatable {
     var allowsCellularConnections = false
     var shortcuts: [CLIShortcut] = []
     var newTerminalDefaultShortcutID: UUID?
+    var terminalTheme: TerminalThemePreset = .cliveDark
+    var customTerminalForeground = TerminalColorPreference.white
+    var customTerminalBackground = TerminalColorPreference.black
+    var customTerminalPalette = TerminalColorPreference.cliveANSIPalette
 
     private enum CodingKeys: String, CodingKey {
         case allowsCellularConnections, shortcuts, newTerminalDefaultShortcutID
+        case terminalTheme, customTerminalForeground, customTerminalBackground, customTerminalPalette
     }
 
-    init(allowsCellularConnections: Bool = false, shortcuts: [CLIShortcut] = [], newTerminalDefaultShortcutID: UUID? = nil) {
+    init(
+        allowsCellularConnections: Bool = false,
+        shortcuts: [CLIShortcut] = [],
+        newTerminalDefaultShortcutID: UUID? = nil,
+        terminalTheme: TerminalThemePreset = .cliveDark,
+        customTerminalForeground: TerminalColorPreference = .white,
+        customTerminalBackground: TerminalColorPreference = .black,
+        customTerminalPalette: [TerminalColorPreference] = TerminalColorPreference.cliveANSIPalette
+    ) {
         self.allowsCellularConnections = allowsCellularConnections
-        self.shortcuts = shortcuts; self.newTerminalDefaultShortcutID = newTerminalDefaultShortcutID
+        self.shortcuts = shortcuts
+        self.newTerminalDefaultShortcutID = newTerminalDefaultShortcutID
+        self.terminalTheme = terminalTheme
+        self.customTerminalForeground = customTerminalForeground
+        self.customTerminalBackground = customTerminalBackground
+        self.customTerminalPalette = customTerminalPalette
         normalizeDefaultSelection()
+        normalizeTerminalPalette()
     }
 
     init(from decoder: Decoder) throws {
         try rejectUnknownKeys(
             in: decoder,
-            allowed: ["allowsCellularConnections", "shortcuts", "newTerminalDefaultShortcutID"]
+            allowed: [
+                "allowsCellularConnections", "shortcuts", "newTerminalDefaultShortcutID",
+                "terminalTheme", "customTerminalForeground", "customTerminalBackground", "customTerminalPalette"
+            ]
         )
         let values = try decoder.container(keyedBy: CodingKeys.self)
         allowsCellularConnections = try values.decode(Bool.self, forKey: .allowsCellularConnections)
         shortcuts = try values.decode([CLIShortcut].self, forKey: .shortcuts)
         newTerminalDefaultShortcutID = try values.decodeIfPresent(UUID.self, forKey: .newTerminalDefaultShortcutID)
+        terminalTheme = try values.decodeIfPresent(TerminalThemePreset.self, forKey: .terminalTheme) ?? .cliveDark
+        customTerminalForeground = try values.decodeIfPresent(TerminalColorPreference.self, forKey: .customTerminalForeground) ?? .white
+        customTerminalBackground = try values.decodeIfPresent(TerminalColorPreference.self, forKey: .customTerminalBackground) ?? .black
+        customTerminalPalette = try values.decodeIfPresent([TerminalColorPreference].self, forKey: .customTerminalPalette) ?? TerminalColorPreference.cliveANSIPalette
         normalizeDefaultSelection()
+        normalizeTerminalPalette()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -103,12 +181,22 @@ struct AppPreferences: Codable, Equatable {
         try values.encode(allowsCellularConnections, forKey: .allowsCellularConnections)
         try values.encode(shortcuts, forKey: .shortcuts)
         try values.encodeIfPresent(newTerminalDefaultShortcutID, forKey: .newTerminalDefaultShortcutID)
+        try values.encode(terminalTheme, forKey: .terminalTheme)
+        try values.encode(customTerminalForeground, forKey: .customTerminalForeground)
+        try values.encode(customTerminalBackground, forKey: .customTerminalBackground)
+        try values.encode(customTerminalPalette, forKey: .customTerminalPalette)
     }
 
     mutating func normalizeDefaultSelection() {
         guard let selected = newTerminalDefaultShortcutID else { return }
         if !shortcuts.contains(where: { $0.id == selected && !$0.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
             newTerminalDefaultShortcutID = nil
+        }
+    }
+
+    mutating func normalizeTerminalPalette() {
+        if customTerminalPalette.count != 16 {
+            customTerminalPalette = TerminalColorPreference.cliveANSIPalette
         }
     }
 }
@@ -134,6 +222,7 @@ struct AppPreferencesStore {
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
         var sanitized = preferences
         sanitized.normalizeDefaultSelection()
+        sanitized.normalizeTerminalPalette()
         try JSONEncoder().encode(sanitized).write(to: url, options: [.atomic, .completeFileProtection])
     }
     func remove() throws { if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) } }
