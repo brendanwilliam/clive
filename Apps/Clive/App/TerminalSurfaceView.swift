@@ -89,6 +89,9 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: TerminalSurfaceContainer, context: Context) {
+        if context.coordinator.session !== session || uiView.terminal.accessibilityIdentifier != accessibilityIdentifier || !isSelected {
+            uiView.cancelActionWheel()
+        }
         context.coordinator.session = session
         context.coordinator.shortcuts = shortcuts
         context.coordinator.openDrawer = openDrawer
@@ -179,11 +182,16 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
 }
 
-@MainActor final class TerminalSurfaceContainer: UIView {
+@MainActor final class TerminalSurfaceContainer: UIView, UIGestureRecognizerDelegate {
     let terminal = TerminalView(frame: .zero)
     var onKeyboardRequested: (() -> Void)?
     var onKeyboardDismissRequested: (() -> Void)?
     private let controls = TerminalBottomControls()
+    private let swipeHint = UILabel()
+    private var keyRow: TerminalKeyboardAccessory?
+    private var actionWheel: ActionWheelView?
+    private var wheelPreview: ActionWheelPreview?
+    private let nearbyArrowPan = UIPanGestureRecognizer()
     private var terminalBottomToKeyboardGuide: NSLayoutConstraint!
     private var terminalBottomToControls: NSLayoutConstraint!
     private var controlsBottomToKeyboardGuide: NSLayoutConstraint!
@@ -207,9 +215,27 @@ struct TerminalSurfaceView: UIViewRepresentable {
         addSubview(previewTintView)
         #endif
         addSubview(controls)
+        swipeHint.attributedText = TerminalKeyboardAccessory.makeSwipeHint()
+        swipeHint.accessibilityIdentifier = "enter-swipe-hint"
+        swipeHint.textColor = .secondaryLabel
+        swipeHint.tintColor = .secondaryLabel
+        swipeHint.font = UIFontMetrics(forTextStyle: .caption2).scaledFont(for: .systemFont(ofSize: 10, weight: .medium), maximumPointSize: 14)
+        swipeHint.adjustsFontForContentSizeCategory = true
+        swipeHint.adjustsFontSizeToFitWidth = true
+        swipeHint.minimumScaleFactor = 0.72
+        swipeHint.textAlignment = .center
+        swipeHint.isAccessibilityElement = false
+        swipeHint.isUserInteractionEnabled = false
+        swipeHint.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(swipeHint)
         let focusGesture = UITapGestureRecognizer(target: self, action: #selector(focusTerminal))
         focusGesture.cancelsTouchesInView = false
         terminal.addGestureRecognizer(focusGesture)
+        nearbyArrowPan.addTarget(self, action: #selector(nearbyArrowChanged(_:)))
+        nearbyArrowPan.delegate = self
+        nearbyArrowPan.cancelsTouchesInView = false
+        addGestureRecognizer(nearbyArrowPan)
+        terminal.panGestureRecognizer.require(toFail: nearbyArrowPan)
         terminalBottomToKeyboardGuide = terminal.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor)
         terminalBottomToControls = terminal.bottomAnchor.constraint(
             equalTo: controls.topAnchor,
@@ -224,6 +250,9 @@ struct TerminalSurfaceView: UIViewRepresentable {
             terminalBottomToControls,
             controls.leadingAnchor.constraint(equalTo: leadingAnchor), controls.trailingAnchor.constraint(equalTo: trailingAnchor),
             controlsBottomToKeyboardGuide, controls.heightAnchor.constraint(greaterThanOrEqualToConstant: 48),
+            swipeHint.topAnchor.constraint(equalTo: controls.bottomAnchor, constant: 4),
+            swipeHint.centerXAnchor.constraint(equalTo: controls.centerXAnchor),
+            swipeHint.widthAnchor.constraint(equalToConstant: 206),
         ])
         #if DEBUG
         NSLayoutConstraint.activate([
@@ -244,8 +273,37 @@ struct TerminalSurfaceView: UIViewRepresentable {
         NotificationCenter.default.removeObserver(self)
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { cancelActionWheel() }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        positionActionWheel()
+    }
+
     @objc private func focusTerminal() {
         _ = terminal.becomeFirstResponder()
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard gestureRecognizer === nearbyArrowPan,
+              let button = keyRow?.compactEnterButton, !button.isHidden else { return false }
+        let frame = button.convert(button.bounds, to: self)
+        return TerminalNearbyArrowPolicy.accepts(touch.location(in: self), around: frame, within: bounds)
+    }
+
+    @objc private func nearbyArrowChanged(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.state == .ended,
+              let button = keyRow?.compactEnterButton, !button.isHidden else { return }
+        sendNearbyArrow(for: gesture.translation(in: self))
+    }
+
+    func sendNearbyArrow(for displacement: CGPoint) {
+        guard let button = keyRow?.compactEnterButton, !button.isHidden,
+              let key = TerminalNearbyArrowPolicy.key(for: displacement) else { return }
+        keyRow?.sendDirectionalKey(key)
     }
 
     @objc private func restoreKeyboardRequested() {
@@ -256,7 +314,65 @@ struct TerminalSurfaceView: UIViewRepresentable {
         onKeyboardDismissRequested?()
     }
 
-    func installKeyRow(_ row: TerminalKeyboardAccessory) { controls.installKeyRow(row) }
+    func installKeyRow(_ row: TerminalKeyboardAccessory) {
+        keyRow = row
+        controls.installKeyRow(row)
+        row.wheelChanged = { [weak self] preview in
+            self?.updateActionWheel(preview)
+        }
+    }
+
+    func cancelActionWheel() {
+        keyRow?.cancelWheel()
+        actionWheel?.removeFromSuperview()
+        actionWheel = nil
+        wheelPreview = nil
+    }
+
+    private func updateActionWheel(_ preview: ActionWheelPreview?) {
+        wheelPreview = preview
+        guard preview != nil else {
+            actionWheel?.removeFromSuperview()
+            actionWheel = nil
+            return
+        }
+        if actionWheel == nil {
+            let wheel = ActionWheelView(frame: CGRect(x: 0, y: 0, width: ActionWheelView.diameter, height: ActionWheelView.diameter))
+            wheel.accessibilityIdentifier = "terminal-action-wheel"
+            wheel.alpha = 0
+            addSubview(wheel)
+            actionWheel = wheel
+            positionActionWheel()
+            wheel.transform = CGAffineTransform(scaleX: 0.65, y: 0.65)
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
+                wheel.alpha = 1
+                wheel.transform = .identity
+            }
+        } else {
+            positionActionWheel()
+        }
+    }
+
+    private func positionActionWheel() {
+        guard let wheel = actionWheel, let button = keyRow?.compactEnterButton else { return }
+        let center = button.convert(CGPoint(x: button.bounds.midX, y: button.bounds.midY), to: self)
+        let safe = safeAreaInsets
+        let radius = wheel.bounds.width / 2
+        let minimumX = radius + safe.left
+        let maximumX = max(minimumX, bounds.width - safe.right - radius)
+        let minimumY = radius + safe.top
+        let maximumY = max(minimumY, bounds.height - safe.bottom - radius)
+        wheel.center = CGPoint(x: min(max(center.x, minimumX), maximumX),
+                               y: min(max(center.y, minimumY), maximumY))
+        if let wheelPreview {
+            // The wheel can shift to stay inside the safe area. Draw the drag
+            // relative to its center so the highlighted sector still matches
+            // the gesture tracked from the Enter button.
+            let finger = CGPoint(x: wheel.bounds.midX + wheelPreview.displacement.x,
+                                 y: wheel.bounds.midY + wheelPreview.displacement.y)
+            wheel.update(direction: wheelPreview.direction, finger: finger)
+        }
+    }
 
     func setPreviewBoundaries(_ visible: Bool) {
         controls.setPreviewBoundaries(visible)
@@ -281,6 +397,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
     }
 
     private func setKeyboardVisible(_ visible: Bool) {
+        if visible { cancelActionWheel() }
+        swipeHint.isHidden = visible
         controls.setKeyboardVisible(visible)
         controlsBottomToKeyboardGuide.constant = visible ? 0 : -(TerminalSurfaceConfiguration.bottomControlSafeAreaSpacing - 2)
         if visible {
@@ -308,6 +426,8 @@ struct TerminalSurfaceView: UIViewRepresentable {
     private var expandedKeyRowTrailing: NSLayoutConstraint!
     private var controlsHeight: NSLayoutConstraint!
     private var keyRowHeight: NSLayoutConstraint!
+    private var keyboardBottom: NSLayoutConstraint!
+    private var shortcutsBottom: NSLayoutConstraint!
     private var keyRow: TerminalKeyboardAccessory?
     private var keyboardVisible = false
     private var policy = TerminalInputControlPolicy()
@@ -337,9 +457,11 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyboardGroup.contentView.addSubview(keyboardButton)
         keyRowGroup.contentView.addSubview(rowHost)
         shortcutsGroup.contentView.addSubview(shortcutButton)
+        shortcutsBottom = shortcutsGroup.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2)
+        keyboardBottom = keyboardGroup.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2)
         NSLayoutConstraint.activate([
-            shortcutsGroup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), shortcutsGroup.widthAnchor.constraint(equalToConstant: 44), shortcutsGroup.heightAnchor.constraint(equalToConstant: 44), shortcutsGroup.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
-            keyboardGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), keyboardGroup.widthAnchor.constraint(equalToConstant: 44), keyboardGroup.heightAnchor.constraint(equalToConstant: 44), keyboardGroup.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            shortcutsGroup.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), shortcutsGroup.widthAnchor.constraint(equalToConstant: 44), shortcutsGroup.heightAnchor.constraint(equalToConstant: 44), shortcutsBottom,
+            keyboardGroup.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), keyboardGroup.widthAnchor.constraint(equalToConstant: 44), keyboardGroup.heightAnchor.constraint(equalToConstant: 44), keyboardBottom,
             keyboardButton.leadingAnchor.constraint(equalTo: keyboardGroup.contentView.leadingAnchor), keyboardButton.trailingAnchor.constraint(equalTo: keyboardGroup.contentView.trailingAnchor), keyboardButton.topAnchor.constraint(equalTo: keyboardGroup.contentView.topAnchor), keyboardButton.bottomAnchor.constraint(equalTo: keyboardGroup.contentView.bottomAnchor),
             shortcutButton.leadingAnchor.constraint(equalTo: shortcutsGroup.contentView.leadingAnchor), shortcutButton.trailingAnchor.constraint(equalTo: shortcutsGroup.contentView.trailingAnchor), shortcutButton.topAnchor.constraint(equalTo: shortcutsGroup.contentView.topAnchor), shortcutButton.bottomAnchor.constraint(equalTo: shortcutsGroup.contentView.bottomAnchor),
             rowHost.leadingAnchor.constraint(equalTo: keyRowGroup.contentView.leadingAnchor), rowHost.trailingAnchor.constraint(equalTo: keyRowGroup.contentView.trailingAnchor), rowHost.topAnchor.constraint(equalTo: keyRowGroup.contentView.topAnchor), rowHost.bottomAnchor.constraint(equalTo: keyRowGroup.contentView.bottomAnchor),
@@ -456,8 +578,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
         keyRowGroup.isHidden = false
         // Compact mode uses the same fixed-height row as the keyboard button;
         // terminal output ends above it rather than rendering underneath it.
-        controlsHeight.constant = 48
-        keyRowHeight.constant = 44
+        controlsHeight.constant = compact ? 80 : 48
+        keyRowHeight.constant = compact ? 76 : 44
+        keyboardBottom.constant = compact ? -28 : -2
+        shortcutsBottom.constant = compact ? -28 : -2
         if expanded {
             NSLayoutConstraint.deactivate([compactKeyRowLeading, compactKeyRowTrailing])
             NSLayoutConstraint.activate([expandedKeyRowLeading, expandedKeyRowTrailing])
@@ -485,7 +609,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
 @MainActor
 enum TerminalSurfaceConfiguration {
     static let bottomControlTopSpacing: CGFloat = 12
-    static let bottomControlSafeAreaSpacing: CGFloat = 24
+    static let bottomControlSafeAreaSpacing: CGFloat = 40
     static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     static let scrollsToTop = false
     static let contentPadding: CGFloat = 2

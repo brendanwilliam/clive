@@ -12,18 +12,57 @@ struct TerminalInputControlPolicy {
     }
 }
 
+enum TerminalWheelKey: CaseIterable, Equatable {
+    case enter, up, down, left, right
+
+    init(_ direction: ActionWheelDirection) {
+        switch direction {
+        case .up: self = .up
+        case .down: self = .down
+        case .left: self = .left
+        case .right: self = .right
+        }
+    }
+
+    var input: Data {
+        let sequence: String
+        switch self {
+        case .enter: sequence = "\r"
+        case .up: sequence = "\u{1b}[A"
+        case .down: sequence = "\u{1b}[B"
+        case .right: sequence = "\u{1b}[C"
+        case .left: sequence = "\u{1b}[D"
+        }
+        return Data(sequence.utf8)
+    }
+}
+
+struct TerminalNearbyArrowPolicy {
+    static func key(for displacement: CGPoint) -> TerminalWheelKey? {
+        let horizontal = abs(displacement.x)
+        let vertical = abs(displacement.y)
+        let dominant = max(horizontal, vertical)
+        let secondary = min(horizontal, vertical)
+        guard dominant >= 28, dominant >= secondary * 1.25 else { return nil }
+        if horizontal > vertical { return displacement.x > 0 ? .right : .left }
+        return displacement.y > 0 ? .down : .up
+    }
+
+    static func accepts(_ point: CGPoint, around button: CGRect, within bounds: CGRect) -> Bool {
+        let nearby = button.insetBy(dx: -44, dy: -40).intersection(bounds)
+        return nearby.contains(point) && !button.contains(point)
+    }
+}
+
 /// Fixed terminal navigation inputs hosted in the persistent bottom control bar.
 final class TerminalKeyboardAccessory: UIView {
     private enum Modifier: String { case shift, control, option, command }
-    private static let compactControlSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
-    private static let enterSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 14, weight: .regular)
     private let send: (Data) -> Void
     private let scrollView = UIScrollView()
     private let row = UIStackView()
-    private let compactStack = UIStackView()
     private let directionsGroup = UIVisualEffectView(effect: nil)
-    private let directionsStack = UIStackView()
-    private let enterButton = TerminalKeyButton(type: .system)
+    private let enterButton = ActionWheelControl(type: .system)
+    var wheelChanged: ((ActionWheelPreview?) -> Void)?
     private var expanded = false
     private var activeModifiers = Set<Modifier>()
 
@@ -37,16 +76,8 @@ final class TerminalKeyboardAccessory: UIView {
         row.translatesAutoresizingMaskIntoConstraints = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        compactStack.axis = .horizontal
-        compactStack.spacing = 0
-        compactStack.distribution = .equalCentering
-        compactStack.translatesAutoresizingMaskIntoConstraints = false
-        directionsStack.axis = .horizontal
-        directionsStack.distribution = .equalSpacing
-        directionsStack.spacing = 8
-        directionsStack.translatesAutoresizingMaskIntoConstraints = false
         directionsGroup.translatesAutoresizingMaskIntoConstraints = false
-        directionsGroup.layer.cornerRadius = 22
+        directionsGroup.layer.cornerRadius = 28
         directionsGroup.layer.cornerCurve = .continuous
         directionsGroup.clipsToBounds = true
         if #available(iOS 26.0, *) {
@@ -56,33 +87,41 @@ final class TerminalKeyboardAccessory: UIView {
         } else {
             directionsGroup.effect = UIBlurEffect(style: .systemMaterial)
         }
-        enterButton.isPrimary = true
+        enterButton.backgroundColor = .white
+        enterButton.tintColor = .black
+        enterButton.setTitleColor(.black, for: .normal)
         enterButton.accessibilityIdentifier = "enter"
         enterButton.accessibilityLabel = "Enter"
         enterButton.accessibilityValue = "\r"
-        enterButton.setImage(
-            UIImage(
-                systemName: "arrow.turn.down.left",
-                withConfiguration: Self.enterSymbolConfiguration
-            ),
-            for: .normal
-        )
+        enterButton.accessibilityHint = "Tap for Enter. Swipe nearby for arrows, or hold and drag for the wheel."
+        enterButton.accessibilityCustomActions = [
+            ("Up", TerminalWheelKey.up), ("Down", .down), ("Left", .left), ("Right", .right)
+        ].map { name, key in
+            UIAccessibilityCustomAction(name: name) { [weak self] _ in
+                self?.send(key.input)
+                return self != nil
+            }
+        }
         enterButton.setTitle("Enter", for: .normal)
         enterButton.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 15), maximumPointSize: 22)
-        enterButton.contentEdgeInsets = .zero
-        enterButton.titleEdgeInsets = .zero
-        enterButton.imageEdgeInsets = .zero
         enterButton.setContentHuggingPriority(.required, for: .horizontal)
         enterButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         enterButton.translatesAutoresizingMaskIntoConstraints = false
-        enterButton.semanticContentAttribute = .forceRightToLeft
-        enterButton.layer.cornerRadius = 22
-        enterButton.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
+        enterButton.layer.cornerRadius = 28
+        enterButton.layer.cornerCurve = .continuous
+        enterButton.onPreview = { [weak self] preview in self?.wheelChanged?(preview) }
+        enterButton.onResult = { [weak self] result in
+            switch result {
+            case .primary: self?.send(TerminalWheelKey.enter.input)
+            case .direction(let direction): self?.send(TerminalWheelKey(direction).input)
+            }
+        }
+        // The four tiny arrows remain a visual cue; the button is one accessibility element.
+        enterButton.setDirectionalCueVisible(true)
         addSubview(scrollView)
-        addSubview(compactStack)
+        addSubview(directionsGroup)
         scrollView.addSubview(row)
-        compactStack.addArrangedSubview(directionsGroup)
-        directionsGroup.contentView.addSubview(directionsStack)
+        directionsGroup.contentView.addSubview(enterButton)
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor), scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor), scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -91,22 +130,17 @@ final class TerminalKeyboardAccessory: UIView {
             row.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
             row.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
             row.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
-            compactStack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            compactStack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            compactStack.heightAnchor.constraint(equalToConstant: 44),
-            compactStack.widthAnchor.constraint(equalToConstant: 192),
-            directionsGroup.heightAnchor.constraint(equalToConstant: 44),
-            // The compact group has fixed arrow and Enter widths so the stack
-            // cannot stretch the center key to fill the available row.
-            directionsGroup.widthAnchor.constraint(equalToConstant: 192),
+            directionsGroup.centerXAnchor.constraint(equalTo: centerXAnchor),
+            directionsGroup.topAnchor.constraint(equalTo: topAnchor),
+            directionsGroup.heightAnchor.constraint(equalToConstant: 56),
+            // Keep the compact Enter control centered at its intrinsic width.
+            directionsGroup.widthAnchor.constraint(equalToConstant: 112),
             // Keep the compact center group tight; the expanded keyboard row
             // does not use this button.
-            enterButton.widthAnchor.constraint(equalToConstant: 100),
-            enterButton.heightAnchor.constraint(equalToConstant: 44),
-            directionsStack.leadingAnchor.constraint(equalTo: directionsGroup.contentView.leadingAnchor),
-            directionsStack.trailingAnchor.constraint(equalTo: directionsGroup.contentView.trailingAnchor),
-            directionsStack.topAnchor.constraint(equalTo: directionsGroup.contentView.topAnchor),
-            directionsStack.bottomAnchor.constraint(equalTo: directionsGroup.contentView.bottomAnchor),
+            enterButton.widthAnchor.constraint(equalToConstant: 112),
+            enterButton.heightAnchor.constraint(equalToConstant: 56),
+            enterButton.centerXAnchor.constraint(equalTo: directionsGroup.contentView.centerXAnchor),
+            enterButton.centerYAnchor.constraint(equalTo: directionsGroup.contentView.centerYAnchor),
         ])
         rebuildRow()
     }
@@ -115,35 +149,51 @@ final class TerminalKeyboardAccessory: UIView {
 
     func setKeyboardVisible(_ visible: Bool) {
         guard expanded != visible else { return }
+        if visible {
+            cancelWheel()
+            wheelChanged?(nil)
+        }
         expanded = visible
         rebuildRow()
     }
 
     var compactEnterButton: UIView { enterButton }
+    func cancelWheel() { enterButton.cancelWheel() }
+    func sendDirectionalKey(_ key: TerminalWheelKey) {
+        guard key != .enter else { return }
+        send(key.input)
+    }
+
+    static func makeSwipeHint() -> NSAttributedString {
+        let text = NSMutableAttributedString(string: "Tap for Enter ")
+        func appendSymbol(_ name: String) {
+            guard let image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 9, weight: .semibold)) else { return }
+            let attachment = NSTextAttachment(image: image)
+            attachment.bounds = CGRect(x: 0, y: -1, width: 10, height: 10)
+            text.append(NSAttributedString(attachment: attachment))
+        }
+        appendSymbol("arrow.turn.down.left")
+        text.append(NSAttributedString(string: ", Swipe for arrows  "))
+        appendSymbol("arrow.up.and.down.and.arrow.left.and.right")
+        return text
+    }
 
     private func rebuildRow() {
         row.arrangedSubviews.forEach { row.removeArrangedSubview($0); $0.removeFromSuperview() }
-        directionsStack.arrangedSubviews.forEach { directionsStack.removeArrangedSubview($0); $0.removeFromSuperview() }
         scrollView.isHidden = !expanded
-        compactStack.isHidden = expanded
+        directionsGroup.isHidden = expanded
         enterButton.isHidden = expanded
         guard expanded else {
-            directionsStack.addArrangedSubview(makeSymbolButton(symbolName: "arrow.down", identifier: "down", label: "Down", input: "\u{1b}[B"))
-            directionsStack.addArrangedSubview(enterButton)
-            directionsStack.addArrangedSubview(makeSymbolButton(symbolName: "arrow.up", identifier: "up", label: "Up", input: "\u{1b}[A"))
-            directionsStack.arrangedSubviews.first?.widthAnchor.constraint(equalToConstant: 38).isActive = true
-            directionsStack.arrangedSubviews.last?.widthAnchor.constraint(equalToConstant: 38).isActive = true
             return
         }
-        let keys: [(String, String, String, String?)] = expanded
-            ? [("Esc", "escape", "Escape", "\u{1b}"), ("⇥", "tab", "Tab", "\t"),
+        let keys: [(String, String, String, String?)] =
+            [("Esc", "escape", "Escape", "\u{1b}"), ("⇥", "tab", "Tab", "\t"),
                ("⇧", "shift", "Shift", nil), ("⌃", "control", "Control", nil),
                ("⌥", "option", "Option", nil), ("⌘", "command", "Command", nil),
                ("←", "left", "Left", "\u{1b}[D"), ("↓", "down", "Down", "\u{1b}[B"),
                ("↑", "up", "Up", "\u{1b}[A"), ("→", "right", "Right", "\u{1b}[C"),
                ("C", "c", "C", "c"), (".", "period", "Period", "."), ("/", "slash", "Slash", "/"),
                ("@", "at", "At sign", "@"), ("$", "dollar", "Dollar", "$")]
-            : [("↓", "down", "Down", "\u{1b}[B"), ("↑", "up", "Up", "\u{1b}[A"), ("↵", "enter", "Enter", "\r")]
         for (title, identifier, label, input) in keys {
             let button = makeButton(title: title, identifier: identifier, label: label, input: input)
             button.widthAnchor.constraint(greaterThanOrEqualToConstant: 34).isActive = true
@@ -158,22 +208,6 @@ final class TerminalKeyboardAccessory: UIView {
         button.setTitle(title, for: .normal)
         button.titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17), maximumPointSize: 24)
         button.titleLabel?.adjustsFontForContentSizeCategory = true
-        button.accessibilityIdentifier = identifier
-        button.accessibilityLabel = label
-        button.accessibilityValue = input
-        button.addTarget(self, action: #selector(pressed(_:)), for: .touchUpInside)
-        return button
-    }
-
-    private func makeSymbolButton(symbolName: String, identifier: String, label: String, input: String?) -> TerminalKeyButton {
-        let button = TerminalKeyButton(type: .system)
-        button.setImage(
-            UIImage(
-                systemName: symbolName,
-                withConfiguration: Self.compactControlSymbolConfiguration
-            ),
-            for: .normal
-        )
         button.accessibilityIdentifier = identifier
         button.accessibilityLabel = label
         button.accessibilityValue = input

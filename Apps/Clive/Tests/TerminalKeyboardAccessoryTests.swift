@@ -14,12 +14,30 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         XCTAssertEqual(policy.state, .compact)
     }
 
-    func testToolbarStartsWithHorizontalDownEnterUpControls() throws {
+    func testCompactToolbarHasOnlyEnterWithDirectionalCueAndAccessibleActions() throws {
         let accessory = TerminalKeyboardAccessory(send: { _ in })
-        for identifier in ["down", "up", "enter"] {
-            XCTAssertNotNil(accessory.descendant(withIdentifier: identifier))
+        let enter = try XCTUnwrap(accessory.descendant(withIdentifier: "enter") as? ActionWheelControl)
+        XCTAssertEqual(enter.accessibilityHint, "Tap for Enter. Swipe nearby for arrows, or hold and drag for the wheel.")
+        XCTAssertEqual(enter.accessibilityCustomActions?.map(\.name), ["Up", "Down", "Left", "Right"])
+        XCTAssertGreaterThanOrEqual(enter.subviews.compactMap { $0 as? UIImageView }.count, 4)
+        XCTAssertNil(enter.image(for: .normal))
+        let container = TerminalSurfaceContainer(frame: CGRect(x: 0, y: 0, width: 320, height: 640))
+        container.installKeyRow(accessory)
+        container.layoutIfNeeded()
+        let hint = try XCTUnwrap(container.descendant(withIdentifier: "enter-swipe-hint") as? UILabel)
+        let controls = try XCTUnwrap(container.subviews.compactMap { $0 as? TerminalBottomControls }.first)
+        XCTAssertNil(accessory.descendant(withIdentifier: "enter-swipe-hint"))
+        XCTAssertEqual(hint.frame.minY, controls.frame.maxY + 4, accuracy: 0.5)
+        XCTAssertFalse(hint.isUserInteractionEnabled)
+        XCTAssertTrue(hint.attributedText?.string.contains("Tap for Enter") == true)
+        XCTAssertTrue(hint.attributedText?.string.contains("Swipe for arrows") == true)
+        let attributedHint = try XCTUnwrap(hint.attributedText)
+        var attachmentCount = 0
+        attributedHint.enumerateAttribute(.attachment, in: NSRange(location: 0, length: attributedHint.length)) { value, _, _ in
+            if value != nil { attachmentCount += 1 }
         }
-        for removed in ["escape", "tab", "shift", "control", "option", "command", "left", "right"] {
+        XCTAssertEqual(attachmentCount, 2)
+        for removed in ["escape", "tab", "shift", "control", "option", "command", "left", "right", "down", "up"] {
             XCTAssertNil(accessory.descendant(withIdentifier: removed))
         }
     }
@@ -32,14 +50,162 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         }
     }
 
-    func testToolbarSendsDownUpAndEnterWithoutModifierState() throws {
+    func testAccessibleArrowActionsUseExistingSequences() throws {
         var sent: [Data] = []
         let accessory = TerminalKeyboardAccessory(send: { sent.append($0) })
-        for identifier in ["down", "up", "enter"] {
-            let button = try XCTUnwrap(accessory.descendant(withIdentifier: identifier) as? UIButton)
-            button.sendActions(for: .touchUpInside)
+        let enter = try XCTUnwrap(accessory.descendant(withIdentifier: "enter") as? ActionWheelControl)
+        for action in try XCTUnwrap(enter.accessibilityCustomActions) {
+            XCTAssertTrue(action.actionHandler?(action) == true)
         }
-        XCTAssertEqual(sent, [Data("\u{1b}[B".utf8), Data("\u{1b}[A".utf8), Data("\r".utf8)])
+        XCTAssertEqual(sent, [TerminalWheelKey.up, .down, .left, .right].map(\.input))
+    }
+
+    func testPrimaryAccessibilityActionSendsEnter() throws {
+        var sent: [Data] = []
+        let accessory = TerminalKeyboardAccessory(send: { sent.append($0) })
+        let enter = try XCTUnwrap(accessory.descendant(withIdentifier: "enter") as? ActionWheelControl)
+        XCTAssertTrue(enter.accessibilityActivate())
+        XCTAssertEqual(sent, [TerminalWheelKey.enter.input])
+    }
+
+    func testNearbySwipesSendOneArrowWithoutOpeningWheel() {
+        var sent: [Data] = []
+        let container = TerminalSurfaceContainer(frame: CGRect(x: 0, y: 0, width: 320, height: 640))
+        let accessory = TerminalKeyboardAccessory(send: { sent.append($0) })
+        container.installKeyRow(accessory)
+        for point in [CGPoint(x: 40, y: 0), CGPoint(x: 0, y: 40),
+                      CGPoint(x: -40, y: 0), CGPoint(x: 0, y: -40)] {
+            container.sendNearbyArrow(for: point)
+        }
+        container.sendNearbyArrow(for: CGPoint(x: 20, y: 20))
+        XCTAssertEqual(sent, [TerminalWheelKey.right, .down, .left, .up].map(\.input))
+        XCTAssertNil(container.descendant(withIdentifier: "terminal-action-wheel"))
+        accessory.setKeyboardVisible(true)
+        container.sendNearbyArrow(for: CGPoint(x: 40, y: 0))
+        XCTAssertEqual(sent.count, 4)
+    }
+
+    func testNearbySwipeRegionExcludesEnterAndAdjacentControls() {
+        let button = CGRect(x: 104, y: 500, width: 112, height: 56)
+        let bounds = CGRect(x: 0, y: 0, width: 320, height: 640)
+        XCTAssertTrue(TerminalNearbyArrowPolicy.accepts(CGPoint(x: 80, y: 528), around: button, within: bounds))
+        XCTAssertTrue(TerminalNearbyArrowPolicy.accepts(CGPoint(x: 160, y: 580), around: button, within: bounds))
+        for point in [CGPoint(x: 160, y: 528), CGPoint(x: 40, y: 528), CGPoint(x: 280, y: 528)] {
+            XCTAssertFalse(TerminalNearbyArrowPolicy.accepts(point, around: button, within: bounds))
+        }
+        XCTAssertNil(TerminalNearbyArrowPolicy.key(for: CGPoint(x: 20, y: 20)))
+        XCTAssertNil(TerminalNearbyArrowPolicy.key(for: CGPoint(x: 10, y: 0)))
+    }
+
+    func testWheelTapHoldAndAllFourDirections() {
+        var gesture = ActionWheelGesture()
+        gesture.begin(at: 1)
+        XCTAssertFalse(gesture.canPresentWheel(at: 1.34))
+        XCTAssertTrue(gesture.canPresentWheel(at: 1.35))
+        XCTAssertEqual(gesture.end(.zero, at: 1.34), .primary)
+        gesture.begin(at: 1.5)
+        XCTAssertEqual(gesture.end(CGPoint(x: 6, y: 0), at: 1.6), .primary)
+        gesture.begin(at: 2)
+        XCTAssertTrue(gesture.canPresentWheel(at: 2.36))
+        XCTAssertNil(gesture.end(.zero, at: 2.36))
+        gesture.begin(at: 2.5)
+        gesture.move(CGPoint(x: 12, y: 0))
+        XCTAssertTrue(gesture.canPresentWheel(at: 3))
+        XCTAssertNil(gesture.end(.zero, at: 2.6), "A short swipe back to center cannot become Enter")
+        for (point, key) in [
+            (CGPoint(x: 0, y: -35), ActionWheelDirection.up),
+            (CGPoint(x: 0, y: 35), .down),
+            (CGPoint(x: -35, y: 0), .left),
+            (CGPoint(x: 35, y: 0), .right),
+        ] {
+            gesture.begin(at: 3)
+            XCTAssertEqual(gesture.end(point, at: 3.1), .direction(key))
+            XCTAssertFalse(gesture.isActive)
+            XCTAssertNil(gesture.end(point, at: 3.2), "One gesture sends only once")
+        }
+    }
+
+    func testWheelUsesFourNinetyDegreeSectors() {
+        let choices: [(CGPoint, ActionWheelDirection)] = [
+            (CGPoint(x: 40, y: 39), .right), (CGPoint(x: 39, y: 40), .down),
+            (CGPoint(x: -39, y: 40), .down), (CGPoint(x: -40, y: 39), .left),
+            (CGPoint(x: -40, y: -39), .left), (CGPoint(x: -39, y: -40), .up),
+            (CGPoint(x: 39, y: -40), .up), (CGPoint(x: 40, y: -39), .right),
+        ]
+        for (point, expected) in choices {
+            XCTAssertEqual(ActionWheelDirection.forDisplacement(point), expected)
+            var gesture = ActionWheelGesture()
+            gesture.begin(at: 1)
+            gesture.move(point)
+            XCTAssertEqual(gesture.selection, expected)
+            XCTAssertEqual(gesture.end(point, at: 1.2), .direction(expected))
+        }
+        let wheel = ActionWheelView(frame: CGRect(x: 0, y: 0, width: 160, height: 160))
+        XCTAssertEqual(wheel.segmentCount, 4)
+        XCTAssertGreaterThan(wheel.segmentBounds(for: .right)?.minX ?? 0, 80)
+        XCTAssertLessThan(wheel.segmentBounds(for: .left)?.maxX ?? 160, 80)
+        XCTAssertLessThan(wheel.segmentBounds(for: .up)?.maxY ?? 160, 80)
+        XCTAssertGreaterThan(wheel.segmentBounds(for: .down)?.minY ?? 0, 80)
+        wheel.update(direction: .left, finger: CGPoint(x: 32, y: 80))
+        XCTAssertEqual(wheel.selectedDirection, .left)
+        XCTAssertTrue(wheel.hasVisibleDragLine)
+        XCTAssertNotNil(wheel.descendant(withIdentifier: "action-wheel-cancel"))
+        wheel.update(direction: nil, finger: CGPoint(x: 80, y: 80))
+        XCTAssertFalse(wheel.hasVisibleDragLine)
+    }
+
+    func testWheelStaysAvailableAfterSwipeAndLongDragUntilRelease() {
+        var gesture = ActionWheelGesture()
+        gesture.begin(at: 1)
+        gesture.move(CGPoint(x: 30, y: 0))
+        XCTAssertEqual(gesture.selection, .right)
+        XCTAssertFalse(gesture.canPresentWheel(at: 1.34))
+        XCTAssertTrue(gesture.canPresentWheel(at: 1.35), "Swiping first does not prevent the wheel from appearing")
+        gesture.move(CGPoint(x: 180, y: 0))
+        XCTAssertEqual(gesture.selection, .right)
+        XCTAssertTrue(gesture.isActive)
+        XCTAssertTrue(gesture.canPresentWheel(at: 1.5))
+        XCTAssertEqual(gesture.end(CGPoint(x: 180, y: 0), at: 1.5), .direction(.right))
+        XCTAssertFalse(gesture.canPresentWheel(at: 1.6))
+        XCTAssertNil(gesture.end(CGPoint(x: 180, y: 0), at: 1.6), "Release sends one arrow")
+
+        gesture.begin(at: 2)
+        gesture.move(CGPoint(x: 180, y: 0))
+        gesture.move(.zero)
+        XCTAssertTrue(gesture.canPresentWheel(at: 2.4))
+        XCTAssertNil(gesture.end(.zero, at: 2.4), "Returning to center cancels input only on release")
+        gesture.begin(at: 3)
+        gesture.cancel()
+        XCTAssertFalse(gesture.canPresentWheel(at: 3.4))
+        XCTAssertNil(gesture.end(CGPoint(x: 30, y: 0), at: 3.1))
+    }
+
+    func testWheelOverlayAppearsAndDismissesAboveCompactBar() {
+        let container = TerminalSurfaceContainer(frame: CGRect(x: 0, y: 0, width: 320, height: 640))
+        let accessory = TerminalKeyboardAccessory(send: { _ in })
+        container.installKeyRow(accessory)
+        container.layoutIfNeeded()
+        XCTAssertNil(container.descendant(withIdentifier: "terminal-action-wheel"))
+        accessory.wheelChanged?(ActionWheelPreview(direction: nil, displacement: .zero))
+        let centeredWheel = container.descendant(withIdentifier: "terminal-action-wheel") as? ActionWheelView
+        XCTAssertFalse(centeredWheel?.hasVisibleDragLine ?? true)
+        XCTAssertNil(centeredWheel?.selectedDirection)
+        accessory.wheelChanged?(ActionWheelPreview(direction: .up, displacement: CGPoint(x: 0, y: -38)))
+        let wheel = container.descendant(withIdentifier: "terminal-action-wheel") as? ActionWheelView
+        XCTAssertNotNil(wheel)
+        XCTAssertEqual(wheel?.bounds.size, CGSize(width: 160, height: 160))
+        XCTAssertEqual(wheel?.isUserInteractionEnabled, false)
+        XCTAssertGreaterThanOrEqual(wheel?.frame.minX ?? -1, 0)
+        XCTAssertEqual(wheel?.selectedDirection, .up)
+        XCTAssertTrue(wheel?.hasVisibleDragLine == true)
+        accessory.wheelChanged?(ActionWheelPreview(direction: .right, displacement: CGPoint(x: 180, y: 0)))
+        XCTAssertNotNil(container.descendant(withIdentifier: "terminal-action-wheel"))
+        XCTAssertEqual(wheel?.selectedDirection, .right)
+        accessory.wheelChanged?(nil)
+        XCTAssertNil(container.descendant(withIdentifier: "terminal-action-wheel"))
+        accessory.wheelChanged?(ActionWheelPreview(direction: .left, displacement: CGPoint(x: -38, y: 0)))
+        accessory.setKeyboardVisible(true)
+        XCTAssertNil(container.descendant(withIdentifier: "terminal-action-wheel"))
     }
 
     func testShiftTabSendsReverseTabSequence() throws {
@@ -68,7 +234,7 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         for width: CGFloat in [320, 834] {
             let controls = TerminalBottomControls()
             controls.installKeyRow(TerminalKeyboardAccessory(send: { _ in }))
-            controls.frame = CGRect(x: 0, y: 0, width: width, height: 48)
+            controls.frame = CGRect(x: 0, y: 0, width: width, height: 80)
             controls.layoutIfNeeded()
 
             XCTAssertFalse(controls.keyRowControlFrame.intersects(controls.shortcutsControlFrame))
@@ -78,11 +244,12 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
             XCTAssertGreaterThan(controls.keyRowControlFrame.width, 0)
             XCTAssertLessThan(controls.shortcutsControlFrame.maxX, controls.keyRowControlFrame.minX)
             XCTAssertEqual(controls.keyRowControlFrame.maxX, controls.keyboardControlFrame.minX - 4, accuracy: 0.5)
-            let enter = try XCTUnwrap(accessoryButton(in: controls, identifier: "enter") as? TerminalKeyButton)
+            let enter = try XCTUnwrap(accessoryButton(in: controls, identifier: "enter") as? ActionWheelControl)
             XCTAssertEqual(enter.backgroundColor, .white)
             XCTAssertEqual(enter.title(for: .normal), "Enter")
-            XCTAssertEqual(controls.keyRowControlFrame.height, 44, accuracy: 0.5)
-            XCTAssertEqual(enter.bounds.width, 100, accuracy: 0.5)
+            XCTAssertEqual(controls.keyRowControlFrame.height, 76, accuracy: 0.5)
+            XCTAssertEqual(enter.bounds.width, 112, accuracy: 0.5)
+            XCTAssertEqual(enter.bounds.height, 56, accuracy: 0.5)
             XCTAssertEqual(enter.convert(enter.bounds, to: controls).midX, controls.bounds.midX, accuracy: 0.5)
 
             controls.setKeyboardVisible(true)

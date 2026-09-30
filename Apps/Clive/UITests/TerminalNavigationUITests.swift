@@ -90,7 +90,22 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(app.buttons["shift"].exists)
 
         app.buttons["terminal-keyboard-button"].tap()
-        XCTAssertTrue(app.buttons["enter"].waitForExistence(timeout: 2))
+        let enter = app.buttons["enter"]
+        XCTAssertTrue(enter.waitForExistence(timeout: 2))
+        XCTAssertFalse(app.buttons["down"].exists)
+        XCTAssertFalse(app.buttons["up"].exists)
+        XCTAssertEqual(enter.label, "Enter")
+        enter.press(forDuration: 0.6)
+        XCTAssertTrue(app.otherElements["terminal-action-wheel"].waitForNonExistence(timeout: 2))
+    }
+
+    func testNearbyDownSwipeLeavesWheelClosedAndKeyboardHidden() {
+        let enter = app.buttons["enter"]
+        XCTAssertTrue(enter.waitForExistence(timeout: 2))
+        let start = enter.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.15))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 45)))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertFalse(app.otherElements["terminal-action-wheel"].exists)
     }
 
     func testHeaderPlacesSidebarTitleMenuAndNewTerminalOnOneRow() {
