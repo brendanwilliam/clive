@@ -73,26 +73,44 @@ final class TerminalKeyboardAccessoryTests: XCTestCase {
         let container = TerminalSurfaceContainer(frame: CGRect(x: 0, y: 0, width: 320, height: 640))
         let accessory = TerminalKeyboardAccessory(send: { sent.append($0) })
         container.installKeyRow(accessory)
-        for point in [CGPoint(x: 40, y: 0), CGPoint(x: 0, y: 40),
-                      CGPoint(x: -40, y: 0), CGPoint(x: 0, y: -40)] {
-            container.sendNearbyArrow(for: point)
+        container.layoutIfNeeded()
+        let button = accessory.compactEnterButton.convert(accessory.compactEnterButton.bounds, to: container)
+        let starts = [
+            CGPoint(x: button.maxX + 10, y: button.midY),
+            CGPoint(x: button.midX, y: button.maxY + 10),
+            CGPoint(x: button.minX - 10, y: button.midY),
+            CGPoint(x: button.midX, y: button.minY - 10),
+        ]
+        let movements = [CGPoint(x: 40, y: 0), CGPoint(x: 0, y: 40),
+                         CGPoint(x: -40, y: 0), CGPoint(x: 0, y: -40)]
+        for (start, movement) in zip(starts, movements) {
+            container.sendNearbyArrow(from: start, to: CGPoint(x: start.x + movement.x, y: start.y + movement.y))
         }
-        container.sendNearbyArrow(for: CGPoint(x: 20, y: 20))
+        container.sendNearbyArrow(from: starts[0], to: CGPoint(x: starts[0].x + 20, y: starts[0].y + 20))
         XCTAssertEqual(sent, [TerminalWheelKey.right, .down, .left, .up].map(\.input))
         XCTAssertNil(container.descendant(withIdentifier: "terminal-action-wheel"))
+        let above = CGPoint(x: button.midX, y: button.minY - 90)
+        container.sendNearbyArrow(from: above, to: CGPoint(x: button.midX, y: button.maxY + 10))
+        XCTAssertEqual(sent.last, TerminalWheelKey.down.input)
+        XCTAssertEqual(sent.count, 5)
         accessory.setKeyboardVisible(true)
-        container.sendNearbyArrow(for: CGPoint(x: 40, y: 0))
-        XCTAssertEqual(sent.count, 4)
+        container.sendNearbyArrow(from: starts[0], to: CGPoint(x: starts[0].x + 40, y: starts[0].y))
+        XCTAssertEqual(sent.count, 5)
     }
 
-    func testNearbySwipeRegionExcludesEnterAndAdjacentControls() {
+    func testNearbySwipeCanStartAboveAndCrossEnterWithoutCapturingAdjacentControls() {
         let button = CGRect(x: 104, y: 500, width: 112, height: 56)
         let bounds = CGRect(x: 0, y: 0, width: 320, height: 640)
         XCTAssertTrue(TerminalNearbyArrowPolicy.accepts(CGPoint(x: 80, y: 528), around: button, within: bounds))
         XCTAssertTrue(TerminalNearbyArrowPolicy.accepts(CGPoint(x: 160, y: 580), around: button, within: bounds))
+        XCTAssertTrue(TerminalNearbyArrowPolicy.accepts(CGPoint(x: 160, y: 400), around: button, within: bounds))
         for point in [CGPoint(x: 160, y: 528), CGPoint(x: 40, y: 528), CGPoint(x: 280, y: 528)] {
             XCTAssertFalse(TerminalNearbyArrowPolicy.accepts(point, around: button, within: bounds))
         }
+        XCTAssertEqual(TerminalNearbyArrowPolicy.key(from: CGPoint(x: 160, y: 400), to: CGPoint(x: 160, y: 580), around: button), .down)
+        XCTAssertNil(TerminalNearbyArrowPolicy.key(from: CGPoint(x: 232, y: 400), to: CGPoint(x: 232, y: 580), around: button))
+        XCTAssertNil(TerminalNearbyArrowPolicy.key(from: CGPoint(x: 160, y: 400), to: CGPoint(x: 160, y: 475), around: button))
+        XCTAssertNil(TerminalNearbyArrowPolicy.key(from: CGPoint(x: 160, y: 528), to: CGPoint(x: 160, y: 580), around: button))
         XCTAssertNil(TerminalNearbyArrowPolicy.key(for: CGPoint(x: 20, y: 20)))
         XCTAssertNil(TerminalNearbyArrowPolicy.key(for: CGPoint(x: 10, y: 0)))
     }

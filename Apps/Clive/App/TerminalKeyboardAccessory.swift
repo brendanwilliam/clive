@@ -50,7 +50,37 @@ struct TerminalNearbyArrowPolicy {
 
     static func accepts(_ point: CGPoint, around button: CGRect, within bounds: CGRect) -> Bool {
         let nearby = button.insetBy(dx: -44, dy: -40).intersection(bounds)
-        return nearby.contains(point) && !button.contains(point)
+        let approach = CGRect(x: button.minX - 24, y: button.minY - 120,
+                              width: button.width + 48, height: 120).intersection(bounds)
+        return (nearby.contains(point) || approach.contains(point)) && !button.contains(point)
+    }
+
+    static func key(from start: CGPoint, to end: CGPoint, around button: CGRect) -> TerminalWheelKey? {
+        guard !button.contains(start),
+              let key = key(for: CGPoint(x: end.x - start.x, y: end.y - start.y)) else { return nil }
+        let nearby = button.insetBy(dx: -44, dy: -40)
+        guard nearby.contains(start) || crosses(button, from: start, to: end) else { return nil }
+        return key
+    }
+
+    private static func crosses(_ rect: CGRect, from start: CGPoint, to end: CGPoint) -> Bool {
+        var entry: CGFloat = 0
+        var exit: CGFloat = 1
+        for (origin, change, lower, upper) in [
+            (start.x, end.x - start.x, rect.minX, rect.maxX),
+            (start.y, end.y - start.y, rect.minY, rect.maxY),
+        ] {
+            if abs(change) < .ulpOfOne {
+                if origin < lower || origin > upper { return false }
+                continue
+            }
+            let first = (lower - origin) / change
+            let last = (upper - origin) / change
+            entry = max(entry, min(first, last))
+            exit = min(exit, max(first, last))
+            if entry > exit { return false }
+        }
+        return true
     }
 }
 

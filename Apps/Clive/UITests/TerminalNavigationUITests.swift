@@ -60,14 +60,17 @@ final class TerminalNavigationUITests: XCTestCase {
         let first = terminalSurface(firstID)
         XCTAssertTrue(first.waitForExistence(timeout: 3))
         let keyboard = app.buttons["terminal-keyboard-button"]
-        XCTAssertFalse(keyboard.exists)
-        XCTAssertTrue(app.buttons["down"].exists)
-        XCTAssertTrue(app.buttons["up"].exists)
+        XCTAssertTrue(keyboard.exists)
+        XCTAssertEqual(keyboard.label, "Show keyboard")
         XCTAssertTrue(app.buttons["enter"].exists)
+        XCTAssertFalse(app.buttons["down"].exists)
+        XCTAssertFalse(app.buttons["up"].exists)
         first.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
         XCTAssertEqual(keyboard.label, "Hide keyboard")
+        XCTAssertTrue(app.buttons["down"].exists)
+        XCTAssertTrue(app.buttons["up"].exists)
         keyboard.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     }
@@ -104,6 +107,16 @@ final class TerminalNavigationUITests: XCTestCase {
         XCTAssertTrue(enter.waitForExistence(timeout: 2))
         let start = enter.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.15))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 45)))
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        XCTAssertFalse(app.otherElements["terminal-action-wheel"].exists)
+    }
+
+    func testDownSwipeCanStartAboveAndPassThroughEnter() {
+        let enter = app.buttons["enter"]
+        XCTAssertTrue(enter.waitForExistence(timeout: 2))
+        let start = enter.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: -75))
+        let end = enter.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1)).withOffset(CGVector(dx: 0, dy: 14))
+        start.press(forDuration: 0.05, thenDragTo: end)
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         XCTAssertFalse(app.otherElements["terminal-action-wheel"].exists)
     }

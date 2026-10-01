@@ -297,12 +297,17 @@ struct TerminalSurfaceView: UIViewRepresentable {
     @objc private func nearbyArrowChanged(_ gesture: UIPanGestureRecognizer) {
         guard gesture.state == .ended,
               let button = keyRow?.compactEnterButton, !button.isHidden else { return }
-        sendNearbyArrow(for: gesture.translation(in: self))
+        let end = gesture.location(in: self)
+        let movement = gesture.translation(in: self)
+        let start = CGPoint(x: end.x - movement.x, y: end.y - movement.y)
+        sendNearbyArrow(from: start, to: end)
     }
 
-    func sendNearbyArrow(for displacement: CGPoint) {
+    func sendNearbyArrow(from start: CGPoint, to end: CGPoint) {
         guard let button = keyRow?.compactEnterButton, !button.isHidden,
-              let key = TerminalNearbyArrowPolicy.key(for: displacement) else { return }
+              let key = TerminalNearbyArrowPolicy.key(
+                from: start, to: end, around: button.convert(button.bounds, to: self)
+              ) else { return }
         keyRow?.sendDirectionalKey(key)
     }
 
