@@ -312,12 +312,15 @@ struct WorkspaceView: View {
     private var terminalHeader: some View {
         HStack(spacing: 8) {
             terminalSidebarButton
-            if !coordinator.sessions.isEmpty {
+            if coordinator.sessions.isEmpty {
+                Spacer(minLength: 0)
+            } else {
                 terminalTitleMenu
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             terminalActions
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var connectionPresentation: ConnectionStatusPresentation {
@@ -486,6 +489,10 @@ struct WorkspaceView: View {
                             accessibilityIdentifier: "terminal-surface-\(session.id.uuidString)",
                             isSelected: true,
                             shortcuts: coordinator.preferences.value.shortcuts,
+                            terminalTheme: coordinator.preferences.value.terminalTheme,
+                            customTerminalForeground: coordinator.preferences.value.customTerminalForeground,
+                            customTerminalBackground: coordinator.preferences.value.customTerminalBackground,
+                            customTerminalPalette: coordinator.preferences.value.customTerminalPalette,
                             openDrawer: { coordinator.showTerminalList() },
                             createTerminal: { navigate { coordinator.addShell() } },
                             selectAdjacentTerminal: selectAdjacentTerminal,
@@ -947,6 +954,27 @@ private struct SettingsView: View {
                     LabeledContent("Active Terminals", value: "\(coordinator.activeSessionCount)")
                 }
                 Section {
+                    Picker("Theme", selection: Binding(
+                        get: { preferences.value.terminalTheme },
+                        set: { preferences.value.terminalTheme = $0 }
+                    )) {
+                        ForEach(TerminalThemePreset.allCases) { theme in
+                            Text(theme.title).tag(theme)
+                        }
+                    }
+                    .accessibilityIdentifier("settings-terminal-theme-picker")
+                    if preferences.value.terminalTheme == .custom {
+                        NavigationLink("Customize colors") {
+                            TerminalThemeEditorView(preferences: preferences)
+                        }
+                        .accessibilityIdentifier("settings-terminal-theme-editor-link")
+                    }
+                } header: {
+                    Text("Terminal Appearance")
+                } footer: {
+                    Text("Custom themes include text, background, and all 16 ANSI colors.")
+                }
+                Section {
                     Toggle("Cellular connections", isOn: Binding(
                         get: { preferences.value.allowsCellularConnections },
                         set: { preferences.value.allowsCellularConnections = $0 }
@@ -1016,6 +1044,46 @@ private struct SettingsView: View {
         } message: {
             Text("The Mac must be online. Clive will revoke this iPhone on the Mac before removing the connection from this phone.")
         }
+    }
+}
+
+private struct TerminalThemeEditorView: View {
+    @Bindable var preferences: AppPreferencesModel
+
+    private static let ansiColorNames = [
+        "Black", "Red", "Green", "Yellow", "Blue", "Magenta", "Cyan", "White",
+        "Bright black", "Bright red", "Bright green", "Bright yellow",
+        "Bright blue", "Bright magenta", "Bright cyan", "Bright white",
+    ]
+
+    var body: some View {
+        Form {
+            Section("Default colors") {
+                ColorPicker("Text", selection: colorBinding(for: \.customTerminalForeground), supportsOpacity: false)
+                ColorPicker("Background", selection: colorBinding(for: \.customTerminalBackground), supportsOpacity: false)
+            }
+            Section("ANSI colors") {
+                ForEach(Self.ansiColorNames.indices, id: \.self) { index in
+                    ColorPicker(Self.ansiColorNames[index], selection: paletteColorBinding(at: index), supportsOpacity: false)
+                }
+            }
+        }
+        .navigationTitle("Terminal Colors")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func colorBinding(for keyPath: WritableKeyPath<AppPreferences, TerminalColorPreference>) -> Binding<Color> {
+        Binding(
+            get: { preferences.value[keyPath: keyPath].swiftUIColor },
+            set: { preferences.value[keyPath: keyPath] = TerminalColorPreference(color: $0) }
+        )
+    }
+
+    private func paletteColorBinding(at index: Int) -> Binding<Color> {
+        Binding(
+            get: { preferences.value.customTerminalPalette[index].swiftUIColor },
+            set: { preferences.value.customTerminalPalette[index] = TerminalColorPreference(color: $0) }
+        )
     }
 }
 

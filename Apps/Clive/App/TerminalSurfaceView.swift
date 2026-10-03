@@ -12,6 +12,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
     let accessibilityIdentifier: String
     let isSelected: Bool
     let shortcuts: [CLIShortcut]
+    let terminalTheme: TerminalThemePreset
+    let customTerminalForeground: TerminalColorPreference
+    let customTerminalBackground: TerminalColorPreference
+    let customTerminalPalette: [TerminalColorPreference]
     let openDrawer: () -> Void
     let createTerminal: () -> Void
     let selectAdjacentTerminal: (Bool) -> Void
@@ -25,6 +29,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
         accessibilityIdentifier: String,
         isSelected: Bool,
         shortcuts: [CLIShortcut],
+        terminalTheme: TerminalThemePreset = .cliveDark,
+        customTerminalForeground: TerminalColorPreference = .white,
+        customTerminalBackground: TerminalColorPreference = .black,
+        customTerminalPalette: [TerminalColorPreference] = TerminalColorPreference.cliveANSIPalette,
         openDrawer: @escaping () -> Void,
         createTerminal: @escaping () -> Void = {},
         selectAdjacentTerminal: @escaping (Bool) -> Void,
@@ -37,6 +45,10 @@ struct TerminalSurfaceView: UIViewRepresentable {
         self.accessibilityIdentifier = accessibilityIdentifier
         self.isSelected = isSelected
         self.shortcuts = shortcuts
+        self.terminalTheme = terminalTheme
+        self.customTerminalForeground = customTerminalForeground
+        self.customTerminalBackground = customTerminalBackground
+        self.customTerminalPalette = customTerminalPalette
         self.openDrawer = openDrawer
         self.createTerminal = createTerminal
         self.selectAdjacentTerminal = selectAdjacentTerminal
@@ -68,7 +80,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         terminal.inputAccessoryView = nil
         terminal.linkReporting = .implicit
         terminal.linkHighlightMode = .hoverWithModifier
-        terminal.installColors(TerminalSurfaceConfiguration.ansiColors)
+        context.coordinator.applyTerminalStyle(resolvedTerminalStyle, to: terminal)
         terminal.accessibilityIdentifier = accessibilityIdentifier
         terminal.accessibilityLabel = "Terminal"
         terminal.accessibilityValue = isSelected ? "Selected" : "Not selected"
@@ -96,6 +108,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         context.coordinator.selectAdjacentTerminal = selectAdjacentTerminal
         context.coordinator.runShortcut = runShortcut
         context.coordinator.manageShortcuts = manageShortcuts
+        context.coordinator.applyTerminalStyle(resolvedTerminalStyle, to: uiView.terminal)
         uiView.configureShortcutMenu(
             shortcuts,
             run: runShortcut,
@@ -104,6 +117,15 @@ struct TerminalSurfaceView: UIViewRepresentable {
         uiView.setPreviewBoundaries(previewBoundaries)
         uiView.terminal.accessibilityIdentifier = accessibilityIdentifier
         uiView.terminal.accessibilityValue = isSelected ? "Selected" : "Not selected"
+    }
+
+    private var resolvedTerminalStyle: TerminalThemeStyle {
+        TerminalSurfaceConfiguration.style(
+            for: terminalTheme,
+            customForeground: customTerminalForeground,
+            customBackground: customTerminalBackground,
+            customPalette: customTerminalPalette
+        )
     }
 
     final class Coordinator: NSObject, TerminalViewDelegate, @unchecked Sendable {
@@ -119,6 +141,7 @@ struct TerminalSurfaceView: UIViewRepresentable {
         private var edgeObserver: TerminalLeftEdgeObserver?
         private var rightEdgeObserver: TerminalRightEdgeObserver?
         private var horizontalSwitchObserver: TerminalHorizontalSwitchObserver?
+        private var appliedTerminalStyle: TerminalThemeStyle?
 
         init(
             session: SessionClient?,
@@ -155,6 +178,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
             horizontalSwitchObserver = TerminalHorizontalSwitchObserver.install(on: container.terminal) { [weak self] forward in
                 self?.selectAdjacentTerminal(forward)
             }
+        }
+
+        @MainActor func applyTerminalStyle(_ style: TerminalThemeStyle, to terminal: TerminalView) {
+            guard appliedTerminalStyle != style else { return }
+            TerminalSurfaceConfiguration.apply(style, to: terminal)
+            appliedTerminalStyle = style
         }
 
         func send(source: TerminalView, data: ArraySlice<UInt8>) {
@@ -482,6 +511,12 @@ struct TerminalSurfaceView: UIViewRepresentable {
 }
 
 
+struct TerminalThemeStyle: Equatable {
+    let foreground: TerminalColorPreference
+    let background: TerminalColorPreference
+    let ansiPalette: [TerminalColorPreference]
+}
+
 @MainActor
 enum TerminalSurfaceConfiguration {
     static let bottomControlTopSpacing: CGFloat = 12
@@ -489,19 +524,104 @@ enum TerminalSurfaceConfiguration {
     static let keyboardDismissMode: UIScrollView.KeyboardDismissMode = .none
     static let scrollsToTop = false
     static let contentPadding: CGFloat = 2
-    static let ansiColors: [SwiftTerm.Color] = [
-        color(0x00, 0x00, 0x00), color(0xC2, 0x36, 0x21),
-        color(0x25, 0xBC, 0x24), color(0xAD, 0xAD, 0x27),
-        color(0x49, 0x2E, 0xE1), color(0xD3, 0x38, 0xD3),
-        color(0x33, 0xBB, 0xC8), color(0xCB, 0xCC, 0xCD),
-        color(0x81, 0x83, 0x83), color(0xFC, 0x39, 0x1F),
-        color(0x31, 0xE7, 0x22), color(0xEA, 0xEC, 0x23),
-        color(0x58, 0x33, 0xFF), color(0xF9, 0x35, 0xF8),
-        color(0x14, 0xF0, 0xF0), color(0xE9, 0xEB, 0xEB),
-    ]
 
-    private static func color(_ red: UInt16, _ green: UInt16, _ blue: UInt16) -> SwiftTerm.Color {
-        SwiftTerm.Color(red: red * 257, green: green * 257, blue: blue * 257)
+    private static let solarizedPalette = palette([
+        0x002B36, 0xDC322F, 0x859900, 0xB58900,
+        0x268BD2, 0xD33682, 0x2AA198, 0xEEE8D5,
+        0x073642, 0xCB4B16, 0x586E75, 0x657B83,
+        0x839496, 0x6C71C4, 0x93A1A1, 0xFDF6E3,
+    ])
+    private static let draculaPalette = palette([
+        0x282A36, 0xFF5555, 0x50FA7B, 0xF1FA8C,
+        0xBD93F9, 0xFF79C6, 0x8BE9FD, 0xF8F8F2,
+        0x6272A4, 0xFF6E6E, 0x69FF94, 0xFFFFA5,
+        0xD6ACFF, 0xFF92DF, 0xA4FFFF, 0xFFFFFF,
+    ])
+
+    static func style(
+        for preset: TerminalThemePreset,
+        customForeground: TerminalColorPreference,
+        customBackground: TerminalColorPreference,
+        customPalette: [TerminalColorPreference]
+    ) -> TerminalThemeStyle {
+        switch preset {
+        case .cliveDark:
+            return TerminalThemeStyle(
+                foreground: .white,
+                background: .black,
+                ansiPalette: TerminalColorPreference.cliveANSIPalette
+            )
+        case .dracula:
+            return TerminalThemeStyle(
+                foreground: color(0xF8F8F2),
+                background: color(0x282A36),
+                ansiPalette: draculaPalette
+            )
+        case .solarizedDark:
+            return TerminalThemeStyle(
+                foreground: color(0x839496),
+                background: color(0x002B36),
+                ansiPalette: solarizedPalette
+            )
+        case .solarizedLight:
+            return TerminalThemeStyle(
+                foreground: color(0x657B83),
+                background: color(0xFDF6E3),
+                ansiPalette: solarizedPalette
+            )
+        case .custom:
+            return TerminalThemeStyle(
+                foreground: customForeground,
+                background: customBackground,
+                ansiPalette: customPalette.count == 16 ? customPalette : TerminalColorPreference.cliveANSIPalette
+            )
+        }
+    }
+
+    static func apply(_ style: TerminalThemeStyle, to terminal: TerminalView) {
+        terminal.nativeForegroundColor = style.foreground.uiColor
+        terminal.nativeBackgroundColor = style.background.uiColor
+        terminal.backgroundColor = style.background.uiColor
+        terminal.installColors(style.ansiPalette.map(\.swiftTermColor))
+    }
+
+    private static func palette(_ values: [UInt32]) -> [TerminalColorPreference] {
+        values.map { TerminalColorPreference(hex: $0) }
+    }
+
+    private static func color(_ value: UInt32) -> TerminalColorPreference {
+        TerminalColorPreference(hex: value)
+    }
+}
+
+@MainActor
+extension TerminalColorPreference {
+    var uiColor: UIColor {
+        UIColor(red: CGFloat(red) / 255, green: CGFloat(green) / 255, blue: CGFloat(blue) / 255, alpha: 1)
+    }
+
+    var swiftTermColor: SwiftTerm.Color {
+        SwiftTerm.Color(red: UInt16(red) * 257, green: UInt16(green) * 257, blue: UInt16(blue) * 257)
+    }
+
+    var swiftUIColor: SwiftUI.Color {
+        SwiftUI.Color(.sRGB, red: Double(red) / 255, green: Double(green) / 255, blue: Double(blue) / 255)
+    }
+
+    init(color: SwiftUI.Color) {
+        let uiColor = UIColor(color)
+        var red: CGFloat = 1
+        var green: CGFloat = 1
+        var blue: CGFloat = 1
+        guard uiColor.getRed(&red, green: &green, blue: &blue, alpha: nil) else {
+            self = .white
+            return
+        }
+        self.init(
+            red: UInt8((min(max(red, 0), 1) * 255).rounded()),
+            green: UInt8((min(max(green, 0), 1) * 255).rounded()),
+            blue: UInt8((min(max(blue, 0), 1) * 255).rounded())
+        )
     }
 }
 
